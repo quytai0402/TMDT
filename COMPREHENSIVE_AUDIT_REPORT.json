@@ -1,0 +1,1432 @@
+{
+  "timestamp": "2025-10-21T08:27:21.239Z",
+  "summary": {
+    "total": 154,
+    "passed": 148,
+    "failed": 0,
+    "warnings": 6,
+    "healthScore": 96
+  },
+  "results": [
+    {
+      "category": "Database Schema",
+      "check": "User collection",
+      "status": "pass",
+      "message": "User collection exists with 14 documents",
+      "details": {
+        "model": "User",
+        "count": 14
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Account collection",
+      "status": "pass",
+      "message": "Account collection exists with 1 documents",
+      "details": {
+        "model": "Account",
+        "count": 1
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Session collection",
+      "status": "pass",
+      "message": "Session collection exists with 0 documents",
+      "details": {
+        "model": "Session",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "VerificationToken collection",
+      "status": "pass",
+      "message": "VerificationToken collection exists with 0 documents",
+      "details": {
+        "model": "VerificationToken",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Listing collection",
+      "status": "pass",
+      "message": "Listing collection exists with 24 documents",
+      "details": {
+        "model": "Listing",
+        "count": 24
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "BlockedDate collection",
+      "status": "pass",
+      "message": "BlockedDate collection exists with 0 documents",
+      "details": {
+        "model": "BlockedDate",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "PricingRule collection",
+      "status": "pass",
+      "message": "PricingRule collection exists with 0 documents",
+      "details": {
+        "model": "PricingRule",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Amenity collection",
+      "status": "pass",
+      "message": "Amenity collection exists with 13 documents",
+      "details": {
+        "model": "Amenity",
+        "count": 13
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "NeighborhoodGuide collection",
+      "status": "pass",
+      "message": "NeighborhoodGuide collection exists with 0 documents",
+      "details": {
+        "model": "NeighborhoodGuide",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Booking collection",
+      "status": "pass",
+      "message": "Booking collection exists with 97 documents",
+      "details": {
+        "model": "Booking",
+        "count": 97
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Payment collection",
+      "status": "pass",
+      "message": "Payment collection exists with 0 documents",
+      "details": {
+        "model": "Payment",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "PaymentMethod collection",
+      "status": "pass",
+      "message": "PaymentMethod collection exists with 0 documents",
+      "details": {
+        "model": "PaymentMethod",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Transaction collection",
+      "status": "pass",
+      "message": "Transaction collection exists with 0 documents",
+      "details": {
+        "model": "Transaction",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Review collection",
+      "status": "pass",
+      "message": "Review collection exists with 96 documents",
+      "details": {
+        "model": "Review",
+        "count": 96
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Message collection",
+      "status": "pass",
+      "message": "Message collection exists with 0 documents",
+      "details": {
+        "model": "Message",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Conversation collection",
+      "status": "pass",
+      "message": "Conversation collection exists with 0 documents",
+      "details": {
+        "model": "Conversation",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Notification collection",
+      "status": "pass",
+      "message": "Notification collection exists with 1 documents",
+      "details": {
+        "model": "Notification",
+        "count": 1
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Wishlist collection",
+      "status": "pass",
+      "message": "Wishlist collection exists with 0 documents",
+      "details": {
+        "model": "Wishlist",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Collection collection",
+      "status": "pass",
+      "message": "Collection collection exists with 0 documents",
+      "details": {
+        "model": "Collection",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Quest collection",
+      "status": "pass",
+      "message": "Quest collection exists with 0 documents",
+      "details": {
+        "model": "Quest",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "UserQuest collection",
+      "status": "pass",
+      "message": "UserQuest collection exists with 0 documents",
+      "details": {
+        "model": "UserQuest",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "RewardTier collection",
+      "status": "pass",
+      "message": "RewardTier collection exists with 4 documents",
+      "details": {
+        "model": "RewardTier",
+        "count": 4
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "RewardBadge collection",
+      "status": "pass",
+      "message": "RewardBadge collection exists with 3 documents",
+      "details": {
+        "model": "RewardBadge",
+        "count": 3
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "UserBadge collection",
+      "status": "pass",
+      "message": "UserBadge collection exists with 0 documents",
+      "details": {
+        "model": "UserBadge",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "RewardAction collection",
+      "status": "pass",
+      "message": "RewardAction collection exists with 0 documents",
+      "details": {
+        "model": "RewardAction",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "RewardTransaction collection",
+      "status": "pass",
+      "message": "RewardTransaction collection exists with 0 documents",
+      "details": {
+        "model": "RewardTransaction",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "RewardCatalogItem collection",
+      "status": "pass",
+      "message": "RewardCatalogItem collection exists with 0 documents",
+      "details": {
+        "model": "RewardCatalogItem",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "RewardRedemption collection",
+      "status": "pass",
+      "message": "RewardRedemption collection exists with 0 documents",
+      "details": {
+        "model": "RewardRedemption",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "HostProfile collection",
+      "status": "pass",
+      "message": "HostProfile collection exists with 6 documents",
+      "details": {
+        "model": "HostProfile",
+        "count": 6
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "TeamMember collection",
+      "status": "pass",
+      "message": "TeamMember collection exists with 0 documents",
+      "details": {
+        "model": "TeamMember",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Dispute collection",
+      "status": "pass",
+      "message": "Dispute collection exists with 0 documents",
+      "details": {
+        "model": "Dispute",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Promotion collection",
+      "status": "pass",
+      "message": "Promotion collection exists with 0 documents",
+      "details": {
+        "model": "Promotion",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "AuditLog collection",
+      "status": "pass",
+      "message": "AuditLog collection exists with 0 documents",
+      "details": {
+        "model": "AuditLog",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Service collection",
+      "status": "pass",
+      "message": "Service collection exists with 12 documents",
+      "details": {
+        "model": "Service",
+        "count": 12
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "ServiceBooking collection",
+      "status": "pass",
+      "message": "ServiceBooking collection exists with 0 documents",
+      "details": {
+        "model": "ServiceBooking",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Experience collection",
+      "status": "pass",
+      "message": "Experience collection exists with 12 documents",
+      "details": {
+        "model": "Experience",
+        "count": 12
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "ExperienceBooking collection",
+      "status": "pass",
+      "message": "ExperienceBooking collection exists with 0 documents",
+      "details": {
+        "model": "ExperienceBooking",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "ExperienceReview collection",
+      "status": "pass",
+      "message": "ExperienceReview collection exists with 0 documents",
+      "details": {
+        "model": "ExperienceReview",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Post collection",
+      "status": "pass",
+      "message": "Post collection exists with 0 documents",
+      "details": {
+        "model": "Post",
+        "count": 0
+      }
+    },
+    {
+      "category": "Database Schema",
+      "check": "Comment collection",
+      "status": "pass",
+      "message": "Comment collection exists with 0 documents",
+      "details": {
+        "model": "Comment",
+        "count": 0
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Authentication API",
+      "status": "pass",
+      "message": "Authentication API exists",
+      "details": {
+        "path": "app/api/auth"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "User Profile API",
+      "status": "pass",
+      "message": "User Profile API exists",
+      "details": {
+        "path": "app/api/user/profile/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Listings API",
+      "status": "pass",
+      "message": "Listings API exists",
+      "details": {
+        "path": "app/api/listings/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Listing Detail API",
+      "status": "pass",
+      "message": "Listing Detail API exists",
+      "details": {
+        "path": "app/api/listings/[id]/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Bookings API",
+      "status": "pass",
+      "message": "Bookings API exists",
+      "details": {
+        "path": "app/api/bookings/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Booking Detail API",
+      "status": "pass",
+      "message": "Booking Detail API exists",
+      "details": {
+        "path": "app/api/bookings/[id]/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Payments API",
+      "status": "pass",
+      "message": "Payments API exists",
+      "details": {
+        "path": "app/api/payments/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Reviews API",
+      "status": "pass",
+      "message": "Reviews API exists",
+      "details": {
+        "path": "app/api/reviews/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Messages API",
+      "status": "pass",
+      "message": "Messages API exists",
+      "details": {
+        "path": "app/api/messages/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Conversations API",
+      "status": "pass",
+      "message": "Conversations API exists",
+      "details": {
+        "path": "app/api/conversations/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Notifications API",
+      "status": "pass",
+      "message": "Notifications API exists",
+      "details": {
+        "path": "app/api/notifications/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Wishlist API",
+      "status": "pass",
+      "message": "Wishlist API exists",
+      "details": {
+        "path": "app/api/wishlist/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Quests API",
+      "status": "pass",
+      "message": "Quests API exists",
+      "details": {
+        "path": "app/api/quests/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Quest Tracking API",
+      "status": "pass",
+      "message": "Quest Tracking API exists",
+      "details": {
+        "path": "app/api/quests/track/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Reward Tiers API",
+      "status": "pass",
+      "message": "Reward Tiers API exists",
+      "details": {
+        "path": "app/api/rewards/tiers/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Reward Actions API",
+      "status": "pass",
+      "message": "Reward Actions API exists",
+      "details": {
+        "path": "app/api/rewards/actions/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Reward History API",
+      "status": "pass",
+      "message": "Reward History API exists",
+      "details": {
+        "path": "app/api/rewards/history/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Search API",
+      "status": "pass",
+      "message": "Search API exists",
+      "details": {
+        "path": "app/api/search/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Experiences API",
+      "status": "pass",
+      "message": "Experiences API exists",
+      "details": {
+        "path": "app/api/experiences/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Services API",
+      "status": "pass",
+      "message": "Services API exists",
+      "details": {
+        "path": "app/api/services/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Community API",
+      "status": "warning",
+      "message": "Community API missing (optional)",
+      "details": {
+        "path": "app/api/community/route.ts"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "Admin APIs",
+      "status": "pass",
+      "message": "Admin APIs exists",
+      "details": {
+        "path": "app/api/admin"
+      }
+    },
+    {
+      "category": "API Endpoints",
+      "check": "AI APIs",
+      "status": "pass",
+      "message": "AI APIs exists",
+      "details": {
+        "path": "app/api/ai"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Home Page",
+      "status": "pass",
+      "message": "Home Page exists",
+      "details": {
+        "path": "app/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Search Page",
+      "status": "pass",
+      "message": "Search Page exists",
+      "details": {
+        "path": "app/search/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Listing Detail Page",
+      "status": "pass",
+      "message": "Listing Detail Page exists",
+      "details": {
+        "path": "app/listing/[id]/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Login Page",
+      "status": "pass",
+      "message": "Login Page exists",
+      "details": {
+        "path": "app/login/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Register Page",
+      "status": "pass",
+      "message": "Register Page exists",
+      "details": {
+        "path": "app/register/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Profile Page",
+      "status": "pass",
+      "message": "Profile Page exists",
+      "details": {
+        "path": "app/profile/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Dashboard Page",
+      "status": "pass",
+      "message": "Dashboard Page exists",
+      "details": {
+        "path": "app/dashboard/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Trips Page",
+      "status": "pass",
+      "message": "Trips Page exists",
+      "details": {
+        "path": "app/trips/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Wishlist Page",
+      "status": "pass",
+      "message": "Wishlist Page exists",
+      "details": {
+        "path": "app/wishlist/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Messages Page",
+      "status": "pass",
+      "message": "Messages Page exists",
+      "details": {
+        "path": "app/messages/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Booking Page",
+      "status": "pass",
+      "message": "Booking Page exists",
+      "details": {
+        "path": "app/booking/[id]/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Rewards Page",
+      "status": "pass",
+      "message": "Rewards Page exists",
+      "details": {
+        "path": "app/rewards/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Loyalty Page",
+      "status": "pass",
+      "message": "Loyalty Page exists",
+      "details": {
+        "path": "app/loyalty/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Host Dashboard",
+      "status": "pass",
+      "message": "Host Dashboard exists",
+      "details": {
+        "path": "app/host/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "About Page",
+      "status": "pass",
+      "message": "About Page exists",
+      "details": {
+        "path": "app/about/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Help Page",
+      "status": "pass",
+      "message": "Help Page exists",
+      "details": {
+        "path": "app/help/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Terms Page",
+      "status": "pass",
+      "message": "Terms Page exists",
+      "details": {
+        "path": "app/terms/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Privacy Page",
+      "status": "pass",
+      "message": "Privacy Page exists",
+      "details": {
+        "path": "app/privacy/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Experiences Page",
+      "status": "pass",
+      "message": "Experiences Page exists",
+      "details": {
+        "path": "app/experiences/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Collections Page",
+      "status": "pass",
+      "message": "Collections Page exists",
+      "details": {
+        "path": "app/collections/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Community Page",
+      "status": "pass",
+      "message": "Community Page exists",
+      "details": {
+        "path": "app/community/page.tsx"
+      }
+    },
+    {
+      "category": "Frontend Pages",
+      "check": "Admin Dashboard",
+      "status": "pass",
+      "message": "Admin Dashboard exists",
+      "details": {
+        "path": "app/admin/page.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Header/Navbar",
+      "status": "pass",
+      "message": "Header/Navbar exists",
+      "details": {
+        "path": "components/header.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Footer",
+      "status": "pass",
+      "message": "Footer exists",
+      "details": {
+        "path": "components/footer.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Listing Card",
+      "status": "pass",
+      "message": "Listing Card exists",
+      "details": {
+        "path": "components/listing-card.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Listing Grid",
+      "status": "pass",
+      "message": "Listing Grid exists",
+      "details": {
+        "path": "components/listing-grid.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Search Bar",
+      "status": "pass",
+      "message": "Search Bar exists",
+      "details": {
+        "path": "components/search-bar.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Filters",
+      "status": "pass",
+      "message": "Filters exists",
+      "details": {
+        "path": "components/advanced-filters.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Booking Widget",
+      "status": "pass",
+      "message": "Booking Widget exists",
+      "details": {
+        "path": "components/booking-widget.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Booking Summary",
+      "status": "pass",
+      "message": "Booking Summary exists",
+      "details": {
+        "path": "components/booking-summary.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Calendar",
+      "status": "pass",
+      "message": "Calendar exists",
+      "details": {
+        "path": "components/availability-calendar.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Review Card",
+      "status": "pass",
+      "message": "Review Card exists",
+      "details": {
+        "path": "components/review-card.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Rating Stars",
+      "status": "pass",
+      "message": "Rating Stars exists",
+      "details": {
+        "path": "components/rating-stars.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "User Avatar",
+      "status": "pass",
+      "message": "User Avatar exists",
+      "details": {
+        "path": "components/user-avatar.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "User Profile Card",
+      "status": "warning",
+      "message": "User Profile Card missing (optional)",
+      "details": {
+        "path": "components/user-profile-card.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Auth Modal",
+      "status": "pass",
+      "message": "Auth Modal exists",
+      "details": {
+        "path": "components/auth-modal.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Auth Provider",
+      "status": "pass",
+      "message": "Auth Provider exists",
+      "details": {
+        "path": "components/auth-provider.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Message Thread",
+      "status": "pass",
+      "message": "Message Thread exists",
+      "details": {
+        "path": "components/message-thread.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Conversation List",
+      "status": "pass",
+      "message": "Conversation List exists",
+      "details": {
+        "path": "components/conversation-list.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Quests Panel",
+      "status": "pass",
+      "message": "Quests Panel exists",
+      "details": {
+        "path": "components/quests-panel.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Quest Completion Modal",
+      "status": "pass",
+      "message": "Quest Completion Modal exists",
+      "details": {
+        "path": "components/quest-completion-modal.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Points Notification",
+      "status": "pass",
+      "message": "Points Notification exists",
+      "details": {
+        "path": "components/points-earned-notification.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "User Rewards Badge",
+      "status": "pass",
+      "message": "User Rewards Badge exists",
+      "details": {
+        "path": "components/user-rewards-badge.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Daily Check-in",
+      "status": "pass",
+      "message": "Daily Check-in exists",
+      "details": {
+        "path": "components/daily-check-in.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Map Component",
+      "status": "pass",
+      "message": "Map Component exists",
+      "details": {
+        "path": "components/map.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Button",
+      "status": "pass",
+      "message": "Button exists",
+      "details": {
+        "path": "components/ui/button.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Input",
+      "status": "pass",
+      "message": "Input exists",
+      "details": {
+        "path": "components/ui/input.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Modal/Dialog",
+      "status": "pass",
+      "message": "Modal/Dialog exists",
+      "details": {
+        "path": "components/ui/dialog.tsx"
+      }
+    },
+    {
+      "category": "Core Components",
+      "check": "Toast",
+      "status": "pass",
+      "message": "Toast exists",
+      "details": {
+        "path": "components/ui/toast.tsx"
+      }
+    },
+    {
+      "category": "Library Functions",
+      "check": "Quests Library",
+      "status": "pass",
+      "message": "Quests Library has all required functions",
+      "details": {
+        "functions": [
+          "trackQuestProgress",
+          "trackBookingQuest",
+          "trackReviewQuest"
+        ]
+      }
+    },
+    {
+      "category": "Library Functions",
+      "check": "Rewards Library",
+      "status": "pass",
+      "message": "Rewards Library has all required functions",
+      "details": {
+        "functions": [
+          "awardPoints",
+          "checkTierUpgrade"
+        ]
+      }
+    },
+    {
+      "category": "Library Functions",
+      "check": "Database Library",
+      "status": "pass",
+      "message": "Database Library has all required functions",
+      "details": {
+        "functions": [
+          "prisma"
+        ]
+      }
+    },
+    {
+      "category": "Library Functions",
+      "check": "Auth Library",
+      "status": "pass",
+      "message": "Auth Library has all required functions",
+      "details": {
+        "functions": [
+          "getSession",
+          "getCurrentUser"
+        ]
+      }
+    },
+    {
+      "category": "Library Functions",
+      "check": "Utils Library",
+      "status": "pass",
+      "message": "Utils Library has all required functions",
+      "details": {
+        "functions": [
+          "cn"
+        ]
+      }
+    },
+    {
+      "category": "Feature Integration",
+      "check": "Booking Quest Tracking",
+      "status": "pass",
+      "message": "Booking flow integrates quest tracking"
+    },
+    {
+      "category": "Feature Integration",
+      "check": "Review Quest Tracking",
+      "status": "pass",
+      "message": "Review submission integrates quest tracking"
+    },
+    {
+      "category": "Feature Integration",
+      "check": "Wishlist Quest Tracking",
+      "status": "pass",
+      "message": "Wishlist actions integrated with quest tracking"
+    },
+    {
+      "category": "Feature Integration",
+      "check": "Auth Integration",
+      "status": "pass",
+      "message": "Authentication system configured"
+    },
+    {
+      "category": "Feature Integration",
+      "check": "Payment Integration",
+      "status": "pass",
+      "message": "Payment system (Stripe) integrated"
+    },
+    {
+      "category": "Dependencies",
+      "check": "next",
+      "status": "pass",
+      "message": "next installed (15.2.4)",
+      "details": {
+        "category": "Core Framework"
+      }
+    },
+    {
+      "category": "Dependencies",
+      "check": "react",
+      "status": "pass",
+      "message": "react installed (^19)",
+      "details": {
+        "category": "Core Framework"
+      }
+    },
+    {
+      "category": "Dependencies",
+      "check": "react-dom",
+      "status": "pass",
+      "message": "react-dom installed (^19)",
+      "details": {
+        "category": "Core Framework"
+      }
+    },
+    {
+      "category": "Dependencies",
+      "check": "@prisma/client",
+      "status": "pass",
+      "message": "@prisma/client installed (^6.17.1)",
+      "details": {
+        "category": "Database"
+      }
+    },
+    {
+      "category": "Dependencies",
+      "check": "prisma",
+      "status": "pass",
+      "message": "prisma installed (^6.17.1)",
+      "details": {
+        "category": "Database"
+      }
+    },
+    {
+      "category": "Dependencies",
+      "check": "next-auth",
+      "status": "pass",
+      "message": "next-auth installed (^4.24.11)",
+      "details": {
+        "category": "Authentication"
+      }
+    },
+    {
+      "category": "Dependencies",
+      "check": "stripe",
+      "status": "pass",
+      "message": "stripe installed (^19.1.0)",
+      "details": {
+        "category": "Payments"
+      }
+    },
+    {
+      "category": "Dependencies",
+      "check": "framer-motion",
+      "status": "pass",
+      "message": "framer-motion installed (^12.23.24)",
+      "details": {
+        "category": "Animations"
+      }
+    },
+    {
+      "category": "Dependencies",
+      "check": "canvas-confetti",
+      "status": "pass",
+      "message": "canvas-confetti installed (^1.9.3)",
+      "details": {
+        "category": "Animations"
+      }
+    },
+    {
+      "category": "Dependencies",
+      "check": "sonner",
+      "status": "pass",
+      "message": "sonner installed (^1.7.4)",
+      "details": {
+        "category": "Notifications"
+      }
+    },
+    {
+      "category": "Dependencies",
+      "check": "tailwindcss",
+      "status": "pass",
+      "message": "tailwindcss installed (^4.1.9)",
+      "details": {
+        "category": "Styling"
+      }
+    },
+    {
+      "category": "Dependencies",
+      "check": "typescript",
+      "status": "pass",
+      "message": "typescript installed (^5)",
+      "details": {
+        "category": "Development"
+      }
+    },
+    {
+      "category": "Dependencies",
+      "check": "@types/node",
+      "status": "pass",
+      "message": "@types/node installed (^22)",
+      "details": {
+        "category": "Development"
+      }
+    },
+    {
+      "category": "Dependencies",
+      "check": "@types/react",
+      "status": "pass",
+      "message": "@types/react installed (^19)",
+      "details": {
+        "category": "Development"
+      }
+    },
+    {
+      "category": "Configuration Files",
+      "check": "Next.js Config",
+      "status": "pass",
+      "message": "Next.js Config exists",
+      "details": {
+        "path": "next.config.mjs"
+      }
+    },
+    {
+      "category": "Configuration Files",
+      "check": "TypeScript Config",
+      "status": "pass",
+      "message": "TypeScript Config exists",
+      "details": {
+        "path": "tsconfig.json"
+      }
+    },
+    {
+      "category": "Configuration Files",
+      "check": "Tailwind Config",
+      "status": "pass",
+      "message": "Tailwind Config exists",
+      "details": {
+        "path": "tailwind.config.ts"
+      }
+    },
+    {
+      "category": "Configuration Files",
+      "check": "PostCSS Config",
+      "status": "pass",
+      "message": "PostCSS Config exists",
+      "details": {
+        "path": "postcss.config.mjs"
+      }
+    },
+    {
+      "category": "Configuration Files",
+      "check": "Prisma Schema",
+      "status": "pass",
+      "message": "Prisma Schema exists",
+      "details": {
+        "path": "prisma/schema.prisma"
+      }
+    },
+    {
+      "category": "Configuration Files",
+      "check": "Environment Variables",
+      "status": "pass",
+      "message": "Environment Variables exists",
+      "details": {
+        "path": ".env"
+      }
+    },
+    {
+      "category": "Configuration Files",
+      "check": "Local Environment Variables",
+      "status": "pass",
+      "message": "Local Environment Variables exists",
+      "details": {
+        "path": ".env.local"
+      }
+    },
+    {
+      "category": "Configuration Files",
+      "check": "ESLint Config",
+      "status": "pass",
+      "message": "ESLint Config exists",
+      "details": {
+        "path": ".eslintrc.json"
+      }
+    },
+    {
+      "category": "Configuration Files",
+      "check": "Prettier Config",
+      "status": "warning",
+      "message": "Prettier Config missing (optional)",
+      "details": {
+        "path": ".prettierrc"
+      }
+    },
+    {
+      "category": "Environment Variables",
+      "check": "DATABASE_URL",
+      "status": "pass",
+      "message": "DATABASE_URL configured",
+      "details": {
+        "description": "MongoDB connection string"
+      }
+    },
+    {
+      "category": "Environment Variables",
+      "check": "NEXTAUTH_SECRET",
+      "status": "pass",
+      "message": "NEXTAUTH_SECRET configured",
+      "details": {
+        "description": "NextAuth secret key"
+      }
+    },
+    {
+      "category": "Environment Variables",
+      "check": "NEXTAUTH_URL",
+      "status": "pass",
+      "message": "NEXTAUTH_URL configured",
+      "details": {
+        "description": "NextAuth URL"
+      }
+    },
+    {
+      "category": "Environment Variables",
+      "check": "STRIPE_SECRET_KEY",
+      "status": "warning",
+      "message": "STRIPE_SECRET_KEY missing (optional)",
+      "details": {
+        "description": "Stripe secret key"
+      }
+    },
+    {
+      "category": "Environment Variables",
+      "check": "STRIPE_PUBLISHABLE_KEY",
+      "status": "warning",
+      "message": "STRIPE_PUBLISHABLE_KEY missing (optional)",
+      "details": {
+        "description": "Stripe publishable key"
+      }
+    },
+    {
+      "category": "Environment Variables",
+      "check": "NEXT_PUBLIC_APP_URL",
+      "status": "pass",
+      "message": "NEXT_PUBLIC_APP_URL configured",
+      "details": {
+        "description": "App URL"
+      }
+    },
+    {
+      "category": "Type Safety",
+      "check": "Types Directory",
+      "status": "pass",
+      "message": "Types directory exists"
+    },
+    {
+      "category": "Type Safety",
+      "check": "types/index.ts",
+      "status": "pass",
+      "message": "Type file index.ts exists"
+    },
+    {
+      "category": "Type Safety",
+      "check": "Prisma Client Types",
+      "status": "warning",
+      "message": "Prisma client types not generated",
+      "fix": "Run: npx prisma generate"
+    }
+  ],
+  "fixes": [
+    "Run: npx prisma generate"
+  ]
+}

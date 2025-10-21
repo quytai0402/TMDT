@@ -1,0 +1,444 @@
+"use client"
+
+import { Header } from "@/components/header"
+import { Footer } from "@/components/footer"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Crown, Sparkles, Zap, CreditCard, Building, Wallet, Check, ArrowLeft, Shield, Lock } from "lucide-react"
+import { useSearchParams, useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
+import Link from "next/link"
+import { Skeleton } from "@/components/ui/skeleton"
+import { cn } from "@/lib/utils"
+import { Skeleton } from "@/components/ui/skeleton"
+
+interface MembershipPlan {
+  id: string
+  slug: string
+  name: string
+  tagline?: string | null
+  description?: string | null
+  icon?: string | null
+  color?: string | null
+  badge?: string | null
+  monthlyPrice: number
+  annualPrice: number
+  savings?: number | null
+  isPopular: boolean
+  features: string[]
+  exclusiveFeatures: string[]
+}
+
+const iconComponents: Record<string, React.ComponentType<{ className?: string }>> = {
+  sparkles: Sparkles,
+  crown: Crown,
+  zap: Zap,
+}
+
+export default function MembershipCheckoutPage() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const tier = searchParams.get("tier") || "gold"
+  const billing = searchParams.get("billing") || "annually"
+  
+  const [paymentMethod, setPaymentMethod] = useState("credit_card")
+  const [agreeToTerms, setAgreeToTerms] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [plan, setPlan] = useState<MembershipPlan | null>(null)
+  const [loadingPlan, setLoadingPlan] = useState(true)
+  const [planError, setPlanError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    const fetchPlan = async () => {
+      try {
+        setLoadingPlan(true)
+        const response = await fetch(`/api/membership/plans?slug=${tier}`, {
+          signal: controller.signal,
+          cache: 'no-store',
+        })
+        if (!response.ok) {
+          throw new Error('Failed to fetch membership plan')
+        }
+        const data = await response.json()
+        if (!data.plan) {
+          throw new Error('Membership plan not found')
+        }
+        setPlan(data.plan)
+        setPlanError(null)
+      } catch (err) {
+        if (controller.signal.aborted) return
+        console.error('Membership plan fetch error:', err)
+        setPlan(null)
+        setPlanError('Không tìm thấy gói membership bạn chọn. Vui lòng quay lại và thử lại.')
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoadingPlan(false)
+        }
+      }
+    }
+
+    fetchPlan()
+    return () => controller.abort()
+  }, [tier])
+
+  const price = plan ? (billing === "monthly" ? plan.monthlyPrice : plan.annualPrice) : 0
+  const pricePerMonth = plan ? (billing === "monthly" ? plan.monthlyPrice : Math.round(plan.annualPrice / 12)) : 0
+  const savings = plan ? plan.savings ?? Math.max(plan.monthlyPrice * 12 - plan.annualPrice, 0) : 0
+  const iconKey = plan?.icon?.toLowerCase() ?? 'crown'
+  const IconComponent = iconComponents[iconKey] ?? Crown
+  const gradient = plan?.color ?? 'from-yellow-400 to-yellow-600'
+  const planName = plan?.name ?? tier.toUpperCase()
+
+  const formatPrice = (amount: number) => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND'
+    }).format(amount)
+  }
+
+  const handlePayment = async () => {
+    if (!agreeToTerms) {
+      alert("Vui lòng đồng ý với điều khoản và điều kiện")
+      return
+    }
+    if (!plan) {
+      setPlanError('Vui lòng chọn lại gói membership trước khi thanh toán.')
+      return
+    }
+
+    setIsProcessing(true)
+    
+    // Simulate payment processing
+    setTimeout(() => {
+      setIsProcessing(false)
+      // Redirect to success page
+      router.push(`/membership/success?tier=${tier}&billing=${billing}`)
+    }, 2000)
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <main className="flex-1 bg-muted/30">
+        <div className="container mx-auto px-4 py-12">
+          {/* Back Button */}
+          <Link href="/membership">
+            <Button variant="ghost" className="mb-6">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Quay lại
+            </Button>
+          </Link>
+
+          <div className="grid lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
+            {/* Payment Form */}
+            <div className="lg:col-span-2 space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-2xl">Thông tin thanh toán</CardTitle>
+                  <CardDescription>Chọn phương thức thanh toán phù hợp với bạn</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Payment Method Selection */}
+                  <div className="space-y-4">
+                    <Label className="text-base font-semibold">Phương thức thanh toán</Label>
+                    <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod}>
+                      <div className="flex items-center space-x-3 border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition-colors">
+                        <RadioGroupItem value="credit_card" id="credit_card" />
+                        <Label htmlFor="credit_card" className="flex items-center gap-2 cursor-pointer flex-1">
+                          <CreditCard className="h-5 w-5 text-primary" />
+                          <span>Thẻ tín dụng / Thẻ ghi nợ</span>
+                        </Label>
+                      </div>
+
+                      <div className="flex items-center space-x-3 border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition-colors">
+                        <RadioGroupItem value="bank_transfer" id="bank_transfer" />
+                        <Label htmlFor="bank_transfer" className="flex items-center gap-2 cursor-pointer flex-1">
+                          <Building className="h-5 w-5 text-primary" />
+                          <span>Chuyển khoản ngân hàng</span>
+                        </Label>
+                      </div>
+
+                      <div className="flex items-center space-x-3 border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition-colors">
+                        <RadioGroupItem value="e_wallet" id="e_wallet" />
+                        <Label htmlFor="e_wallet" className="flex items-center gap-2 cursor-pointer flex-1">
+                          <Wallet className="h-5 w-5 text-primary" />
+                          <span>Ví điện tử (MoMo, ZaloPay, VNPay)</span>
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+
+                  {/* Credit Card Form */}
+                  {paymentMethod === "credit_card" && (
+                    <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
+                      <div className="space-y-2">
+                        <Label htmlFor="card_number">Số thẻ</Label>
+                        <Input
+                          id="card_number"
+                          placeholder="1234 5678 9012 3456"
+                          maxLength={19}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="expiry">Ngày hết hạn</Label>
+                          <Input
+                            id="expiry"
+                            placeholder="MM/YY"
+                            maxLength={5}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="cvv">CVV</Label>
+                          <Input
+                            id="cvv"
+                            placeholder="123"
+                            maxLength={3}
+                            type="password"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="card_name">Tên chủ thẻ</Label>
+                        <Input
+                          id="card_name"
+                          placeholder="NGUYEN VAN A"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg text-sm text-blue-900">
+                        <Shield className="h-4 w-4" />
+                        <span>Thông tin thẻ được mã hóa và bảo mật tuyệt đối</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bank Transfer Instructions */}
+                  {paymentMethod === "bank_transfer" && (
+                    <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+                      <p className="text-sm font-medium">Thông tin chuyển khoản:</p>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Ngân hàng:</span>
+                          <span className="font-medium">Vietcombank</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Số tài khoản:</span>
+                          <span className="font-medium">1234567890</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Chủ tài khoản:</span>
+                          <span className="font-medium">HOMESTAY BOOKING</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Nội dung:</span>
+                          <span className="font-medium">MEMBERSHIP {tier.toUpperCase()}</span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        * Membership sẽ được kích hoạt trong vòng 24h sau khi nhận được thanh toán
+                      </p>
+                    </div>
+                  )}
+
+                  {/* E-Wallet Options */}
+                  {paymentMethod === "e_wallet" && (
+                    <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
+                      <p className="text-sm">Chọn ví điện tử của bạn:</p>
+                      <div className="grid grid-cols-3 gap-3">
+                        <Button variant="outline" className="h-auto py-4">
+                          <div className="text-center">
+                            <div className="font-bold text-pink-600">MoMo</div>
+                          </div>
+                        </Button>
+                        <Button variant="outline" className="h-auto py-4">
+                          <div className="text-center">
+                            <div className="font-bold text-blue-600">ZaloPay</div>
+                          </div>
+                        </Button>
+                        <Button variant="outline" className="h-auto py-4">
+                          <div className="text-center">
+                            <div className="font-bold text-red-600">VNPay</div>
+                          </div>
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Terms Agreement */}
+                  <div className="flex items-start space-x-2 pt-4">
+                    <Checkbox
+                      id="terms"
+                      checked={agreeToTerms}
+                      onCheckedChange={(checked) => setAgreeToTerms(checked as boolean)}
+                    />
+                    <label htmlFor="terms" className="text-sm text-muted-foreground leading-relaxed">
+                      Tôi đồng ý với{" "}
+                      <Link href="/terms" className="text-primary hover:underline">
+                        Điều khoản dịch vụ
+                      </Link>
+                      ,{" "}
+                      <Link href="/privacy" className="text-primary hover:underline">
+                        Chính sách bảo mật
+                      </Link>
+                      {" "}và{" "}
+                      <Link href="/membership/terms" className="text-primary hover:underline">
+                        Điều khoản membership
+                      </Link>
+                    </label>
+                  </div>
+                </CardContent>
+
+                <CardFooter>
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    onClick={handlePayment}
+                    disabled={!agreeToTerms || isProcessing}
+                  >
+                    {isProcessing ? (
+                      "Đang xử lý..."
+                    ) : (
+                      <>
+                        <Lock className="h-4 w-4 mr-2" />
+                        Thanh toán {formatPrice(price)}
+                      </>
+                    )}
+                  </Button>
+                </CardFooter>
+              </Card>
+            </div>
+
+            {/* Order Summary */}
+            <div className="lg:col-span-1">
+              <Card className="sticky top-24">
+                <CardHeader>
+                  <CardTitle>Tóm tắt đơn hàng</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {planError && (
+                    <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                      {planError}
+                    </div>
+                  )}
+
+                  <div className="flex items-start gap-3">
+                    <div className={cn("inline-flex w-12 h-12 items-center justify-center rounded-lg bg-gradient-to-br shrink-0", gradient)}>
+                      {loadingPlan ? (
+                        <Skeleton className="h-6 w-6 rounded-md" />
+                      ) : (
+                        <IconComponent className="h-6 w-6 text-white" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      {loadingPlan ? (
+                        <div className="space-y-2">
+                          <Skeleton className="h-5 w-36" />
+                          <Skeleton className="h-4 w-32" />
+                        </div>
+                      ) : (
+                        <>
+                          <h3 className="font-semibold text-lg">{planName} Membership</h3>
+                          {plan?.tagline && (
+                            <p className="text-sm text-muted-foreground">{plan.tagline}</p>
+                          )}
+                          <p className="text-sm text-muted-foreground">
+                            {billing === "monthly" ? "Thanh toán hàng tháng" : "Thanh toán hàng năm"}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">
+                        {billing === "monthly" ? "Phí hàng tháng" : "Phí hàng năm"}
+                      </span>
+                      {loadingPlan ? (
+                        <Skeleton className="h-4 w-24" />
+                      ) : (
+                        <span className="font-medium">{formatPrice(price)}</span>
+                      )}
+                    </div>
+
+                    {billing === "annually" && !loadingPlan && (
+                      <>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Giá trị mỗi tháng</span>
+                          <span className="font-medium">{formatPrice(pricePerMonth)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm text-green-600">
+                          <span>Tiết kiệm</span>
+                          <span className="font-semibold">
+                            {formatPrice(savings)}
+                          </span>
+                        </div>
+                      </>
+                    )}
+
+                    <Separator />
+
+                    <div className="flex justify-between text-base font-bold">
+                      <span>Tổng cộng</span>
+                      {loadingPlan ? (
+                        <Skeleton className="h-5 w-24" />
+                      ) : (
+                        <span>{formatPrice(price)}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-3">
+                    <p className="text-sm font-semibold">Quyền lợi chính:</p>
+                    {loadingPlan ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-full" />
+                        <Skeleton className="h-4 w-5/6" />
+                        <Skeleton className="h-4 w-2/3" />
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {(plan?.features.slice(0, 3) ?? []).map((feature, index) => (
+                          <div key={index} className="flex items-start gap-2 text-sm">
+                            <Check className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                            <span>{feature}</span>
+                          </div>
+                        ))}
+                        {(plan?.exclusiveFeatures.slice(0, 2) ?? []).map((feature, index) => (
+                          <div key={`exclusive-${index}`} className="flex items-start gap-2 text-sm">
+                            <Lock className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                            <span>{feature}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-center gap-2 p-3 bg-muted rounded-lg">
+                    <Lock className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Thanh toán an toàn & bảo mật</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  )
+}

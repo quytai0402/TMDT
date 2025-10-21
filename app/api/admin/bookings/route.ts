@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import type { Prisma } from "@prisma/client"
 
 const normalizePhone = (value?: string | null) =>
   value ? value.replace(/\D/g, "") : null
@@ -26,8 +27,8 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const page = parseInt(searchParams.get("page") || "1")
-    const limit = parseInt(searchParams.get("limit") || "20")
+    const page = parseInt(searchParams.get("page") || "1", 10)
+    const limit = parseInt(searchParams.get("limit") || "20", 10)
     const status = searchParams.get("status") || ""
     const search = searchParams.get("search") || ""
     const normalizedSearch = search.replace(/\D/g, "")
@@ -35,15 +36,15 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit
 
     // Build where clause
-    const where: any = {}
+    const where: Prisma.BookingWhereInput = {}
 
     if (status && status !== "all") {
       where.status = status
     }
 
     if (search) {
-      where.OR = [
-        { 
+      const orConditions: Prisma.BookingWhereInput[] = [
+        {
           guest: {
             OR: [
               { name: { contains: search, mode: "insensitive" } },
@@ -56,24 +57,22 @@ export async function GET(request: NextRequest) {
             title: { contains: search, mode: "insensitive" },
           },
         },
-        {
-          contactName: { contains: search, mode: "insensitive" },
-        },
-        {
-          contactPhone: { contains: search },
-        },
+        { contactName: { contains: search, mode: "insensitive" } },
+        { contactPhone: { contains: search } },
       ]
 
       if (normalizedSearch) {
-        where.OR.push({
+        orConditions.push({
           contactPhoneNormalized: { contains: normalizedSearch },
         })
-        where.OR.push({
+        orConditions.push({
           guest: {
             phone: { contains: search },
           },
         })
       }
+
+      where.OR = orConditions
     }
 
     // Get bookings
@@ -120,7 +119,10 @@ export async function GET(request: NextRequest) {
       prisma.booking.count({ where }),
     ])
 
-    const phoneInfoMap = new Map<string, { normalized: string | null; raw: string | null }>()
+    const phoneInfoMap = new Map<
+      string,
+      { normalized: string | null; raw: string | null }
+    >()
     for (const booking of bookings) {
       const rawPhone = booking.contactPhone || booking.guest?.phone || null
       const normalized = booking.contactPhoneNormalized || normalizePhone(rawPhone)
@@ -130,10 +132,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const guestHistoryByKey = new Map<string, { totalBookings: number; totalSpent: number }>()
+    const guestHistoryByKey = new Map<
+      string,
+      { totalBookings: number; totalSpent: number }
+    >()
     await Promise.all(
       Array.from(phoneInfoMap.entries()).map(async ([key, info]) => {
-        const phoneConditions: any[] = []
+        const phoneConditions: Prisma.BookingWhereInput[] = []
         if (info.normalized) {
           phoneConditions.push({ contactPhoneNormalized: info.normalized })
         }
@@ -158,7 +163,7 @@ export async function GET(request: NextRequest) {
 
         guestHistoryByKey.set(key, {
           totalBookings: history.length,
-          totalSpent: history.reduce((sum, item) => sum + (item.totalPrice || 0), 0),
+          totalSpent: history.reduce((sum, item) => sum + item.totalPrice ?? 0, 0),
         })
       })
     )

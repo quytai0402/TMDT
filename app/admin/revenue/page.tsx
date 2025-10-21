@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/header'
@@ -44,19 +44,7 @@ export default function AdminRevenuePage() {
   const [year, setYear] = useState(new Date().getFullYear())
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/login')
-    } else if (status === 'authenticated') {
-      if (session?.user?.role !== 'ADMIN') {
-        router.push('/')
-      } else {
-        loadRevenue()
-      }
-    }
-  }, [status, session, year])
-
-  const loadRevenue = async () => {
+  const loadRevenue = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -80,7 +68,7 @@ export default function AdminRevenuePage() {
           revenue,
           bookings: result.monthlyBookings?.[idx] || 0
         })) || [],
-        topHosts: result.byListing?.slice(0, 10).map((listing: any) => ({
+        topHosts: result.byListing?.slice(0, 10).map((listing: { title: string; revenue: number; bookings: number }) => ({
           hostName: listing.title,
           revenue: listing.revenue,
           bookings: listing.bookings
@@ -94,7 +82,23 @@ export default function AdminRevenuePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [year])
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login')
+      return
+    }
+
+    if (status === 'authenticated') {
+      if (session?.user?.role !== 'ADMIN') {
+        router.push('/')
+        return
+      }
+
+      loadRevenue()
+    }
+  }, [status, session, router, loadRevenue])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', {

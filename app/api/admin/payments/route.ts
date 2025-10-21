@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import type { Prisma } from '@prisma/client'
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,15 +13,16 @@ export async function GET(req: NextRequest) {
     }
 
     const searchParams = req.nextUrl.searchParams
-    const filter = searchParams.get('filter') || 'all'
+    const filterParam = searchParams.get('filter') || 'all'
+    const filter = filterParam as 'all' | 'completed' | 'pending' | 'failed'
     const search = searchParams.get('search') || ''
     const normalizedSearch = search.replace(/\D/g, '')
 
     // Build where clause
-    const where: any = {}
-    
+    const where: Prisma.PaymentWhereInput = {}
+
     if (search) {
-      where.OR = [
+      const orConditions: Prisma.PaymentWhereInput[] = [
         { id: { contains: search, mode: 'insensitive' } },
         { booking: { guest: { name: { contains: search, mode: 'insensitive' } } } },
         { booking: { guest: { email: { contains: search, mode: 'insensitive' } } } },
@@ -29,10 +31,12 @@ export async function GET(req: NextRequest) {
       ]
 
       if (normalizedSearch) {
-        where.OR.push({
+        orConditions.push({
           booking: { contactPhoneNormalized: { contains: normalizedSearch } },
         })
       }
+
+      where.OR = orConditions
     }
 
     if (filter === 'completed') {
@@ -72,7 +76,7 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    const todayRevenue = todayPayments.reduce((sum: number, p: any) => sum + p.amount, 0)
+    const todayRevenue = todayPayments.reduce((sum, payment) => sum + payment.amount, 0)
 
     const completedCount = await prisma.payment.count({ where: { status: 'COMPLETED' } })
     const pendingCount = await prisma.payment.count({ where: { status: 'PENDING' } })

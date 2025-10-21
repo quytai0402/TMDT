@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AdminLayout } from '@/components/admin-layout'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -20,23 +20,28 @@ interface Review {
   flagged?: boolean
 }
 
+interface ReviewStats {
+  total: number
+  pending: number
+  flagged: number
+  averageRating: number
+}
+
+const DEFAULT_STATS: ReviewStats = {
+  total: 0,
+  pending: 0,
+  flagged: 0,
+  averageRating: 0,
+}
+
 export default function AdminReviewsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [reviews, setReviews] = useState<Review[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
-  const [stats, setStats] = useState({
-    total: 0,
-    pending: 0,
-    flagged: 0,
-    averageRating: 0
-  })
+  const [stats, setStats] = useState<ReviewStats>(DEFAULT_STATS)
 
-  useEffect(() => {
-    fetchReviews()
-  }, [filter, searchQuery])
-
-  const fetchReviews = async () => {
+  const fetchReviews = useCallback(async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
@@ -46,13 +51,17 @@ export default function AdminReviewsPage() {
       const res = await fetch(`/api/admin/reviews?${params}`)
       const data = await res.json()
       setReviews(data.reviews || [])
-      setStats(data.stats || stats)
+      setStats(data.stats || DEFAULT_STATS)
     } catch (error) {
       console.error('Failed to fetch reviews:', error)
     } finally {
       setLoading(false)
     }
-  }
+  }, [filter, searchQuery])
+
+  useEffect(() => {
+    fetchReviews()
+  }, [fetchReviews])
 
   return (
     <AdminLayout>

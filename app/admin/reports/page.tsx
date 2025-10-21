@@ -3,10 +3,9 @@
 import { AdminLayout } from '@/components/admin-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { Download, TrendingUp, TrendingDown, DollarSign, Users, Calendar } from 'lucide-react'
+import { Download, TrendingUp, TrendingDown } from 'lucide-react'
 
 const revenueData = [
   { month: "T1", revenue: 450000000, bookings: 234, users: 1200 },
@@ -165,7 +164,9 @@ export default function AdminReportsPage() {
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={(entry: any) => `${entry.name} ${(entry.percent * 100).toFixed(0)}%`}
+                      label={(entry: { name: string; percent?: number }) =>
+                        `${entry.name} ${entry.percent ? (entry.percent * 100).toFixed(0) : 0}%`
+                      }
                       outerRadius={120}
                       fill="#8884d8"
                       dataKey="value"

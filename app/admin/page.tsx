@@ -1,6 +1,24 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+
+interface AdminStats {
+  totalUsers: number
+  totalListings: number
+  totalBookings: number
+  totalRevenue: number
+  newUsersThisMonth: number
+  newListingsThisMonth: number
+}
+
+const DEFAULT_STATS: AdminStats = {
+  totalUsers: 1234,
+  totalListings: 10567,
+  totalBookings: 3421,
+  totalRevenue: 2450000000,
+  newUsersThisMonth: 125,
+  newListingsThisMonth: 89,
+}
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { AdminLayout } from '@/components/admin-layout'
@@ -40,14 +58,19 @@ export default function AdminDashboardPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState({
-    totalUsers: 1234,
-    totalListings: 10567,
-    totalBookings: 3421,
-    totalRevenue: 2450000000,
-    newUsersThisMonth: 125,
-    newListingsThisMonth: 89,
-  })
+
+  const [stats, setStats] = useState<AdminStats>(DEFAULT_STATS)
+
+  const loadAdminData = useCallback(async () => {
+    try {
+      // TODO: replace with real API once available
+      setStats(DEFAULT_STATS)
+      setLoading(false)
+    } catch (error) {
+      console.error('Error loading admin data:', error)
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -59,17 +82,7 @@ export default function AdminDashboardPage() {
         loadAdminData()
       }
     }
-  }, [status, session])
-
-  const loadAdminData = async () => {
-    try {
-      // Mock data for now - already set in initial state
-      setLoading(false)
-    } catch (error) {
-      console.error('Error loading admin data:', error)
-      setLoading(false)
-    }
-  }
+  }, [status, session, router, loadAdminData])
 
   if (status === 'loading' || loading) {
     return (

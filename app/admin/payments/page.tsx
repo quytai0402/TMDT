@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AdminLayout } from '@/components/admin-layout'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Search, DollarSign, TrendingUp, Clock, ArrowDownRight, ArrowUpRight, Loader2 } from 'lucide-react'
+import { Search, DollarSign, TrendingUp, Clock, ArrowDownRight, Loader2 } from 'lucide-react'
 
 interface Payment {
   id: string
@@ -37,24 +37,30 @@ interface Payment {
   }
 }
 
+interface PaymentStats {
+  total: number
+  completed: number
+  pending: number
+  failed: number
+  totalAmount: number
+}
+
+const DEFAULT_STATS: PaymentStats = {
+  total: 0,
+  completed: 0,
+  pending: 0,
+  failed: 0,
+  totalAmount: 0,
+}
+
 export default function AdminPaymentsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
-  const [stats, setStats] = useState({
-    total: 0,
-    completed: 0,
-    pending: 0,
-    failed: 0,
-    totalAmount: 0
-  })
+  const [stats, setStats] = useState<PaymentStats>(DEFAULT_STATS)
 
-  useEffect(() => {
-    fetchPayments()
-  }, [filter, searchQuery])
-
-  const fetchPayments = async () => {
+  const fetchPayments = useCallback(async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
@@ -64,16 +70,23 @@ export default function AdminPaymentsPage() {
       const res = await fetch(`/api/admin/payments?${params}`)
       const data = await res.json()
       setPayments(data.payments || [])
-      setStats(data.stats || stats)
+      setStats(data.stats || DEFAULT_STATS)
     } catch (error) {
       console.error('Failed to fetch payments:', error)
+      setStats(DEFAULT_STATS)
     } finally {
       setLoading(false)
     }
-  }
+  }, [filter, searchQuery])
+
+  useEffect(() => {
+    fetchPayments()
+  }, [fetchPayments])
+
+  type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline'
 
   const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { variant: any; label: string }> = {
+    const statusMap: Record<string, { variant: BadgeVariant; label: string }> = {
       COMPLETED: { variant: 'default', label: 'Thành công' },
       PENDING: { variant: 'secondary', label: 'Đang xử lý' },
       FAILED: { variant: 'destructive', label: 'Thất bại' },

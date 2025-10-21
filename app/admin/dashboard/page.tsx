@@ -4,9 +4,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { 
-  Users, Home, DollarSign, TrendingUp, AlertCircle, CheckCircle2, 
-  Clock, Shield, Star, MessageSquare, ArrowUp, ArrowDown, AlertTriangle
+import {
+  Users, Home, DollarSign, TrendingUp, AlertCircle, CheckCircle2,
+  Clock, Shield, Star, MessageSquare, ArrowUp, AlertTriangle
 } from "lucide-react"
 import { UserManagement } from "@/components/admin-user-management"
 import { ListingModeration } from "@/components/admin-listing-moderation"

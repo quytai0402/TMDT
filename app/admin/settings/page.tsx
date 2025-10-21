@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Settings, Bell, Shield, Mail, DollarSign, Globe } from 'lucide-react'
+import { Settings, Bell, Shield, Mail, DollarSign } from 'lucide-react'
 
 export default function AdminSettingsPage() {
   return (

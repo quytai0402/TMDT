@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { AdminLayout } from '@/components/admin-layout'
@@ -29,8 +29,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Search, MoreVertical, UserCheck, UserX, Loader2, ArrowLeft } from 'lucide-react'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Search, MoreVertical, UserCheck, UserX, Loader2 } from 'lucide-react'
 
 interface User {
   id: string
@@ -55,19 +54,7 @@ export default function AdminUsersPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState<string>('ALL')
 
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/login')
-    } else if (status === 'authenticated') {
-      if (session?.user?.role !== 'ADMIN') {
-        router.push('/')
-      } else {
-        loadUsers()
-      }
-    }
-  }, [status, session, roleFilter])
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
@@ -83,7 +70,23 @@ export default function AdminUsersPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [roleFilter])
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/login')
+      return
+    }
+
+    if (status === 'authenticated') {
+      if (session?.user?.role !== 'ADMIN') {
+        router.push('/')
+        return
+      }
+
+      loadUsers()
+    }
+  }, [status, session, router, loadUsers])
 
   const updateUserRole = async (userId: string, newRole: string) => {
     try {
@@ -117,9 +120,16 @@ export default function AdminUsersPage() {
     }
   }
 
-  const filteredUsers = users.filter(user =>
-    user.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.email?.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredUsers = useMemo(
+    () =>
+      users.filter((user) => {
+        const normalized = searchQuery.toLowerCase()
+        return (
+          user.name?.toLowerCase().includes(normalized) ||
+          user.email?.toLowerCase().includes(normalized)
+        )
+      }),
+    [users, searchQuery]
   )
 
   const formatDate = (date: string) => {

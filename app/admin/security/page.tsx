@@ -23,10 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  Shield, Lock, Key, AlertTriangle, Eye, UserX, Clock,
-  CheckCircle2, XCircle, Activity, Server, Database, Globe
-} from "lucide-react"
+import { Shield, Lock, AlertTriangle, UserX, CheckCircle2, Activity, Server } from "lucide-react"
 import { useState } from "react"
 
 export default function AdminSecurityPage() {

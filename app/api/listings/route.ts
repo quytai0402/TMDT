@@ -4,6 +4,8 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { generateSlug } from '@/lib/helpers'
 import { getMembershipForUser } from '@/lib/membership'
+import { notifyAdmins, notifyUser } from '@/lib/notifications'
+import { NotificationType } from '@prisma/client'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
@@ -199,7 +201,15 @@ export async function POST(req: NextRequest) {
         ...validatedData,
         slug,
         hostId: session.user.id,
-        status: 'DRAFT',
+        status: 'PENDING',
+      },
+      include: {
+        host: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
     })
 
@@ -215,6 +225,30 @@ export async function POST(req: NextRequest) {
         },
       })
     }
+
+    const hostName = listing.host?.name || session.user.name || 'Host'
+
+    await notifyAdmins({
+      type: NotificationType.SYSTEM,
+      title: 'Listing mới chờ duyệt',
+      message: `${hostName} vừa gửi "${listing.title}" để duyệt.`,
+      link: `/admin/listings?highlight=${listing.id}`,
+      data: {
+        listingId: listing.id,
+        hostId: listing.hostId,
+      },
+    })
+
+    await notifyUser(listing.hostId, {
+      type: NotificationType.SYSTEM,
+      title: 'Đã gửi listing để duyệt',
+      message: `Listing "${listing.title}" đang chờ quản trị viên phê duyệt.`,
+      link: `/host/listings/${listing.id}`,
+      data: {
+        listingId: listing.id,
+        status: listing.status,
+      },
+    })
 
     return NextResponse.json({ listing }, { status: 201 })
   } catch (error) {

@@ -1,6 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -9,7 +11,6 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
   SelectContent,
@@ -18,23 +19,19 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
-  Image as ImageIcon,
-  Plus,
-  Save,
-  Eye,
-  Trash2,
-  Upload,
-  ArrowUp,
   ArrowDown,
+  ArrowUp,
   Edit2,
+  Eye,
   Home,
-  FileText,
   Layout,
+  FileText,
+  Save,
   Sparkles,
+  Trash2,
 } from "lucide-react"
-import { toast } from "sonner"
 
-interface HeroBanner {
+type HeroBanner = {
   id: string
   title: string
   subtitle: string
@@ -45,17 +42,17 @@ interface HeroBanner {
   order: number
 }
 
-interface FeaturedCollection {
+type FeaturedCollection = {
   id: string
   name: string
   description: string
   imageUrl: string
-  listings: string[]
+  listingIds: string[]
   isActive: boolean
   order: number
 }
 
-interface BlogPost {
+type BlogPost = {
   id: string
   title: string
   excerpt: string
@@ -67,363 +64,290 @@ interface BlogPost {
   tags: string[]
 }
 
+type CmsResponse = {
+  heroBanners: HeroBanner[]
+  featuredCollections: FeaturedCollection[]
+  blogPosts: BlogPost[]
+}
+
 export function ContentManagementSystem() {
-  const [heroBanners, setHeroBanners] = useState<HeroBanner[]>([
-    {
-      id: "1",
-      title: "Khám phá Việt Nam theo cách riêng của bạn",
-      subtitle: "Hơn 10,000+ homestay độc đáo đang chờ bạn",
-      imageUrl: "/hero1.jpg",
-      ctaText: "Khám phá ngay",
-      ctaLink: "/search",
-      isActive: true,
-      order: 1,
-    },
-    {
-      id: "2",
-      title: "Ưu đãi mùa hè - Giảm đến 30%",
-      subtitle: "Đặt ngay homestay yêu thích với giá tốt nhất",
-      imageUrl: "/hero2.jpg",
-      ctaText: "Xem ưu đãi",
-      ctaLink: "/deals",
-      isActive: true,
-      order: 2,
-    },
-  ])
-
-  const [collections, setCollections] = useState<FeaturedCollection[]>([
-    {
-      id: "1",
-      name: "Biển xanh cát trắng",
-      description: "Homestay view biển tuyệt đẹp",
-      imageUrl: "/collection-beach.jpg",
-      listings: ["L001", "L002", "L003"],
-      isActive: true,
-      order: 1,
-    },
-    {
-      id: "2",
-      name: "Núi rừng Đà Lạt",
-      description: "Không gian yên tĩnh giữa núi rừng",
-      imageUrl: "/collection-mountain.jpg",
-      listings: ["L004", "L005"],
-      isActive: true,
-      order: 2,
-    },
-  ])
-
-  const [blogPosts, setBlogPosts] = useState<BlogPost[]>([
-    {
-      id: "1",
-      title: "10 homestay view biển đẹp nhất Việt Nam",
-      excerpt: "Khám phá những homestay ven biển tuyệt vời cho kỳ nghỉ hè của bạn",
-      content: "Nội dung bài viết đầy đủ...",
-      coverImage: "/blog1.jpg",
-      author: "Admin",
-      publishedAt: "2024-01-15",
-      isPublished: true,
-      tags: ["Biển", "Du lịch", "Homestay"],
-    },
-  ])
-
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [heroBanners, setHeroBanners] = useState<HeroBanner[]>([])
+  const [collections, setCollections] = useState<FeaturedCollection[]>([])
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>([])
   const [editingBanner, setEditingBanner] = useState<HeroBanner | null>(null)
   const [editingCollection, setEditingCollection] = useState<FeaturedCollection | null>(null)
   const [editingPost, setEditingPost] = useState<BlogPost | null>(null)
 
-  // Hero Banner Functions
-  const handleSaveBanner = () => {
-    if (!editingBanner) return
-
-    if (editingBanner.id === "new") {
-      setHeroBanners([
-        ...heroBanners,
-        { ...editingBanner, id: Date.now().toString(), order: heroBanners.length + 1 },
-      ])
-    } else {
-      setHeroBanners(heroBanners.map((b) => (b.id === editingBanner.id ? editingBanner : b)))
+  useEffect(() => {
+    const loadCms = async () => {
+      try {
+        setLoading(true)
+        const res = await fetch("/api/admin/cms")
+        if (!res.ok) throw new Error("Failed to load CMS")
+        const data: CmsResponse = await res.json()
+        setHeroBanners(data.heroBanners || [])
+        setCollections(data.featuredCollections || [])
+        setBlogPosts(data.blogPosts || [])
+      } catch (error) {
+        console.error("CMS load error:", error)
+        toast.error("Không thể tải dữ liệu CMS")
+      } finally {
+        setLoading(false)
+      }
     }
+    loadCms()
+  }, [])
 
-    setEditingBanner(null)
-    toast.success("Đã lưu hero banner")
+  const saveCms = async (payload: Partial<CmsResponse>) => {
+    try {
+      setSaving(true)
+      const res = await fetch("/api/admin/cms", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) throw new Error("Save failed")
+      const data: CmsResponse = await res.json()
+      setHeroBanners(data.heroBanners)
+      setCollections(data.featuredCollections)
+      setBlogPosts(data.blogPosts)
+      toast.success("Đã lưu nội dung CMS")
+    } catch (error) {
+      console.error("CMS save error:", error)
+      toast.error("Không thể lưu nội dung CMS")
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const handleDeleteBanner = (id: string) => {
-    setHeroBanners(heroBanners.filter((b) => b.id !== id))
-    toast.success("Đã xóa hero banner")
-  }
+  const activeCollections = useMemo(() => collections.filter((item) => item.isActive), [collections])
 
-  const moveBanner = (id: string, direction: "up" | "down") => {
-    const index = heroBanners.findIndex((b) => b.id === id)
-    if (
-      (direction === "up" && index === 0) ||
-      (direction === "down" && index === heroBanners.length - 1)
-    )
-      return
+  const moveItem = <T extends { order: number }>(items: T[], id: string, direction: "up" | "down") => {
+    const index = items.findIndex((item) => (item as any).id === id)
+    if (index < 0) return items
+    if (direction === "up" && index === 0) return items
+    if (direction === "down" && index === items.length - 1) return items
 
-    const newBanners = [...heroBanners]
     const targetIndex = direction === "up" ? index - 1 : index + 1
-    ;[newBanners[index], newBanners[targetIndex]] = [newBanners[targetIndex], newBanners[index]]
-
-    // Update order
-    newBanners.forEach((b, i) => {
-      b.order = i + 1
+    const updated = [...items]
+    ;[updated[index], updated[targetIndex]] = [updated[targetIndex], updated[index]]
+    updated.forEach((item, idx) => {
+      item.order = idx + 1
     })
-
-    setHeroBanners(newBanners)
-    toast.success("Đã cập nhật thứ tự")
+    return updated
   }
 
-  // Collection Functions
-  const handleSaveCollection = () => {
-    if (!editingCollection) return
-
-    if (editingCollection.id === "new") {
-      setCollections([
-        ...collections,
-        { ...editingCollection, id: Date.now().toString(), order: collections.length + 1 },
-      ])
-    } else {
-      setCollections(
-        collections.map((c) => (c.id === editingCollection.id ? editingCollection : c))
-      )
-    }
-
-    setEditingCollection(null)
-    toast.success("Đã lưu collection")
-  }
-
-  const handleDeleteCollection = (id: string) => {
-    setCollections(collections.filter((c) => c.id !== id))
-    toast.success("Đã xóa collection")
-  }
-
-  // Blog Post Functions
-  const handleSavePost = () => {
-    if (!editingPost) return
-
-    if (editingPost.id === "new") {
-      setBlogPosts([
-        ...blogPosts,
-        { ...editingPost, id: Date.now().toString(), publishedAt: new Date().toISOString() },
-      ])
-    } else {
-      setBlogPosts(blogPosts.map((p) => (p.id === editingPost.id ? editingPost : p)))
-    }
-
-    setEditingPost(null)
-    toast.success("Đã lưu bài viết")
-  }
-
-  const handleDeletePost = (id: string) => {
-    setBlogPosts(blogPosts.filter((p) => p.id !== id))
-    toast.success("Đã xóa bài viết")
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Đang tải dữ liệu CMS...</CardTitle>
+            <CardDescription>Vui lòng chờ trong giây lát.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground">Hệ thống đang tải nội dung hiện có.</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
-    <div className="container max-w-7xl py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Content Management System</h1>
-        <p className="text-muted-foreground">
-          Quản lý nội dung homepage, collections, và blog posts
-        </p>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Trung tâm nội dung</h1>
+          <p className="text-muted-foreground mt-2">
+            Quản lý hero banner, bộ sưu tập nổi bật và bài viết blog trên trang chủ
+          </p>
+        </div>
+        <Button onClick={() => saveCms({ heroBanners, featuredCollections: collections, blogPosts })} disabled={saving}>
+          <Save className="h-4 w-4 mr-2" />
+          Lưu toàn bộ
+        </Button>
       </div>
 
       <Tabs defaultValue="hero" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4 max-w-[600px]">
-          <TabsTrigger value="hero">
-            <Layout className="h-4 w-4 mr-2" />
+        <TabsList>
+          <TabsTrigger value="hero" className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4" />
             Hero Banner
           </TabsTrigger>
-          <TabsTrigger value="collections">
-            <Sparkles className="h-4 w-4 mr-2" />
-            Collections
+          <TabsTrigger value="collections" className="flex items-center gap-2">
+            <Layout className="h-4 w-4" />
+            Bộ sưu tập
           </TabsTrigger>
-          <TabsTrigger value="featured">
-            <Home className="h-4 w-4 mr-2" />
-            Featured
-          </TabsTrigger>
-          <TabsTrigger value="blog">
-            <FileText className="h-4 w-4 mr-2" />
+          <TabsTrigger value="blog" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
             Blog
           </TabsTrigger>
         </TabsList>
 
-        {/* Hero Banner Tab */}
         <TabsContent value="hero" className="space-y-6">
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Hero Banners</CardTitle>
-                  <CardDescription>
-                    Quản lý banner hiển thị trên trang chủ
-                  </CardDescription>
-                </div>
-                <Button
-                  onClick={() =>
-                    setEditingBanner({
-                      id: "new",
-                      title: "",
-                      subtitle: "",
-                      imageUrl: "",
-                      ctaText: "Khám phá",
-                      ctaLink: "/search",
-                      isActive: true,
-                      order: heroBanners.length + 1,
-                    })
-                  }
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Thêm Banner
-                </Button>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Hero banner</CardTitle>
+                <CardDescription>Hiển thị ở đỉnh trang chủ, giúp thu hút khách.</CardDescription>
               </div>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  setEditingBanner({
+                    id: "new",
+                    title: "",
+                    subtitle: "",
+                    imageUrl: "",
+                    ctaText: "",
+                    ctaLink: "",
+                    isActive: true,
+                    order: heroBanners.length + 1,
+                  })
+                }
+              >
+                Thêm banner
+              </Button>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {heroBanners.map((banner, index) => (
-                  <Card key={banner.id}>
-                    <CardContent className="pt-6">
-                      <div className="flex items-start gap-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h3 className="font-semibold">{banner.title}</h3>
-                            <Badge variant={banner.isActive ? "default" : "secondary"}>
-                              {banner.isActive ? "Đang hiển thị" : "Ẩn"}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground mb-2">{banner.subtitle}</p>
-                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span>CTA: {banner.ctaText}</span>
-                            <span>→</span>
-                            <span>{banner.ctaLink}</span>
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => moveBanner(banner.id, "up")}
-                            disabled={index === 0}
-                          >
-                            <ArrowUp className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => moveBanner(banner.id, "down")}
-                            disabled={index === heroBanners.length - 1}
-                          >
-                            <ArrowDown className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setEditingBanner(banner)}
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeleteBanner(banner.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+            <CardContent className="space-y-4">
+              {heroBanners.map((banner) => (
+                <div key={banner.id} className="border rounded-lg p-4 space-y-3 bg-muted/30">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold">{banner.title || "Chưa đặt tiêu đề"}</h3>
+                      <p className="text-sm text-muted-foreground">{banner.subtitle}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={banner.isActive ? "default" : "secondary"}>
+                        {banner.isActive ? "Đang hiển thị" : "Đang ẩn"}
+                      </Badge>
+                      <Button variant="ghost" size="icon" onClick={() => setHeroBanners(moveItem(heroBanners, banner.id, "up"))}>
+                        <ArrowUp className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => setHeroBanners(moveItem(heroBanners, banner.id, "down"))}>
+                        <ArrowDown className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => setEditingBanner(banner)}>
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={async () => {
+                          const filtered = heroBanners.filter((item) => item.id !== banner.id)
+                          setHeroBanners(filtered)
+                          await saveCms({ heroBanners: filtered })
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Eye className="h-4 w-4" /> {banner.ctaText || "Chưa đặt CTA"}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Home className="h-4 w-4" /> {banner.ctaLink || "/"}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </CardContent>
           </Card>
 
-          {/* Hero Banner Editor */}
           {editingBanner && (
             <Card>
               <CardHeader>
-                <CardTitle>
-                  {editingBanner.id === "new" ? "Thêm Hero Banner" : "Chỉnh sửa Hero Banner"}
-                </CardTitle>
+                <CardTitle>{editingBanner.id === "new" ? "Thêm banner" : "Chỉnh sửa banner"}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="banner-title">Tiêu đề</Label>
-                  <Input
-                    id="banner-title"
-                    value={editingBanner.title}
-                    onChange={(e) =>
-                      setEditingBanner({ ...editingBanner, title: e.target.value })
-                    }
-                    placeholder="VD: Khám phá Việt Nam..."
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="banner-subtitle">Phụ đề</Label>
-                  <Input
-                    id="banner-subtitle"
-                    value={editingBanner.subtitle}
-                    onChange={(e) =>
-                      setEditingBanner({ ...editingBanner, subtitle: e.target.value })
-                    }
-                    placeholder="VD: Hơn 10,000+ homestay..."
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="banner-image">URL Hình ảnh</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="banner-image"
-                      value={editingBanner.imageUrl}
-                      onChange={(e) =>
-                        setEditingBanner({ ...editingBanner, imageUrl: e.target.value })
-                      }
-                      placeholder="/hero.jpg"
-                    />
-                    <Button variant="outline" size="icon">
-                      <Upload className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="banner-cta">Text CTA</Label>
+                    <Label>Tiêu đề</Label>
                     <Input
-                      id="banner-cta"
+                      value={editingBanner.title}
+                      onChange={(event) =>
+                        setEditingBanner((prev) => prev && { ...prev, title: event.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Phụ đề</Label>
+                    <Input
+                      value={editingBanner.subtitle}
+                      onChange={(event) =>
+                        setEditingBanner((prev) => prev && { ...prev, subtitle: event.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>CTA text</Label>
+                    <Input
                       value={editingBanner.ctaText}
-                      onChange={(e) =>
-                        setEditingBanner({ ...editingBanner, ctaText: e.target.value })
+                      onChange={(event) =>
+                        setEditingBanner((prev) => prev && { ...prev, ctaText: event.target.value })
                       }
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="banner-link">Link CTA</Label>
+                    <Label>CTA link</Label>
                     <Input
-                      id="banner-link"
                       value={editingBanner.ctaLink}
-                      onChange={(e) =>
-                        setEditingBanner({ ...editingBanner, ctaLink: e.target.value })
+                      onChange={(event) =>
+                        setEditingBanner((prev) => prev && { ...prev, ctaLink: event.target.value })
                       }
                     />
                   </div>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="space-y-2">
+                  <Label>Ảnh banner</Label>
+                  <Input
+                    value={editingBanner.imageUrl}
+                    onChange={(event) =>
+                      setEditingBanner((prev) => prev && { ...prev, imageUrl: event.target.value })
+                    }
+                    placeholder="/images/home/hero.jpg"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label>Hiển thị</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Tắt nếu muốn ẩn banner tạm thời khỏi trang chủ.
+                    </p>
+                  </div>
                   <Switch
-                    id="banner-active"
                     checked={editingBanner.isActive}
                     onCheckedChange={(checked) =>
-                      setEditingBanner({ ...editingBanner, isActive: checked })
+                      setEditingBanner((prev) => prev && { ...prev, isActive: checked })
                     }
                   />
-                  <Label htmlFor="banner-active">Hiển thị banner</Label>
                 </div>
-                <div className="flex gap-2">
-                  <Button onClick={handleSaveBanner}>
-                    <Save className="h-4 w-4 mr-2" />
-                    Lưu
-                  </Button>
+                <div className="flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setEditingBanner(null)}>
                     Hủy
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      if (!editingBanner.title || !editingBanner.imageUrl) {
+                        toast.error("Vui lòng nhập đầy đủ tiêu đề và hình ảnh")
+                        return
+                      }
+                      const updated =
+                        editingBanner.id === "new"
+                          ? [...heroBanners, { ...editingBanner, id: `banner-${Date.now()}` }]
+                          : heroBanners.map((item) =>
+                              item.id === editingBanner.id ? editingBanner : item,
+                            )
+                      setHeroBanners(updated)
+                      setEditingBanner(null)
+                      await saveCms({ heroBanners: updated })
+                    }}
+                  >
+                    Lưu banner
                   </Button>
                 </div>
               </CardContent>
@@ -431,134 +355,195 @@ export function ContentManagementSystem() {
           )}
         </TabsContent>
 
-        {/* Collections Tab */}
         <TabsContent value="collections" className="space-y-6">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Bộ sưu tập nổi bật</CardTitle>
+                <CardDescription>
+                  Tối đa 6 bộ sưu tập sẽ hiển thị trong mục "Collections".
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  setEditingCollection({
+                    id: "new",
+                    name: "",
+                    description: "",
+                    imageUrl: "",
+                    listingIds: [],
+                    isActive: true,
+                    order: collections.length + 1,
+                  })
+                }
+              >
+                Thêm bộ sưu tập
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {collections.map((collection) => (
+                <div key={collection.id} className="border rounded-lg p-4 space-y-3 bg-muted/30">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold">{collection.name || "Chưa đặt tên"}</h3>
+                      <p className="text-sm text-muted-foreground">{collection.description}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={collection.isActive ? "default" : "secondary"}>
+                        {collection.isActive ? "Đang hiển thị" : "Đang ẩn"}
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setCollections(moveItem(collections, collection.id, "up"))}
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setCollections(moveItem(collections, collection.id, "down"))}
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => setEditingCollection(collection)}>
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={async () => {
+                          const filtered = collections.filter((item) => item.id !== collection.id)
+                          setCollections(filtered)
+                          await saveCms({ featuredCollections: filtered })
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="text-sm text-muted-foreground flex flex-wrap gap-2">
+                    <span>
+                      Hiển thị: {collection.isActive ? "Có" : "Không"} • Thứ tự {collection.order}
+                    </span>
+                    <span>
+                      Liên kết:{" "}
+                      {collection.listingIds.length > 0
+                        ? `${collection.listingIds.length} listings`
+                        : "Chưa liên kết"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Featured Collections</CardTitle>
-                  <CardDescription>
-                    Quản lý bộ sưu tập homestay nổi bật
-                  </CardDescription>
+                  <CardTitle>Số bộ sưu tập đang hiển thị</CardTitle>
+                  <CardDescription>Giới hạn đề xuất: tối đa 6 bộ sưu tập nổi bật.</CardDescription>
                 </div>
-                <Button
-                  onClick={() =>
-                    setEditingCollection({
-                      id: "new",
-                      name: "",
-                      description: "",
-                      imageUrl: "",
-                      listings: [],
-                      isActive: true,
-                      order: collections.length + 1,
-                    })
-                  }
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Thêm Collection
-                </Button>
+                <Badge variant={activeCollections.length > 6 ? "destructive" : "default"}>
+                  {activeCollections.length} đang hiển thị
+                </Badge>
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {collections.map((collection) => (
-                  <Card key={collection.id}>
-                    <CardContent className="pt-6">
-                      <div className="flex items-start justify-between mb-2">
-                        <h3 className="font-semibold">{collection.name}</h3>
-                        <Badge variant={collection.isActive ? "default" : "secondary"}>
-                          {collection.isActive ? "Active" : "Hidden"}
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground mb-3">
-                        {collection.description}
-                      </p>
-                      <div className="text-xs text-muted-foreground mb-3">
-                        {collection.listings.length} listings
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setEditingCollection(collection)}
-                        >
-                          <Edit2 className="h-3 w-3 mr-1" />
-                          Sửa
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDeleteCollection(collection.id)}
-                        >
-                          <Trash2 className="h-3 w-3 mr-1" />
-                          Xóa
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </CardContent>
           </Card>
 
-          {/* Collection Editor */}
           {editingCollection && (
             <Card>
               <CardHeader>
                 <CardTitle>
-                  {editingCollection.id === "new" ? "Thêm Collection" : "Chỉnh sửa Collection"}
+                  {editingCollection.id === "new" ? "Thêm bộ sưu tập" : "Chỉnh sửa bộ sưu tập"}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Tên Collection</Label>
-                  <Input
-                    value={editingCollection.name}
-                    onChange={(e) =>
-                      setEditingCollection({ ...editingCollection, name: e.target.value })
-                    }
-                  />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Tên bộ sưu tập</Label>
+                    <Input
+                      value={editingCollection.name}
+                      onChange={(event) =>
+                        setEditingCollection((prev) => prev && { ...prev, name: event.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Ảnh đại diện</Label>
+                    <Input
+                      value={editingCollection.imageUrl}
+                      onChange={(event) =>
+                        setEditingCollection((prev) => prev && { ...prev, imageUrl: event.target.value })
+                      }
+                      placeholder="/images/collections/..."
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Mô tả</Label>
                   <Textarea
                     value={editingCollection.description}
-                    onChange={(e) =>
-                      setEditingCollection({ ...editingCollection, description: e.target.value })
+                    onChange={(event) =>
+                      setEditingCollection((prev) => prev && { ...prev, description: event.target.value })
                     }
+                    rows={3}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>URL Hình ảnh</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={editingCollection.imageUrl}
-                      onChange={(e) =>
-                        setEditingCollection({ ...editingCollection, imageUrl: e.target.value })
-                      }
-                    />
-                    <Button variant="outline" size="icon">
-                      <Upload className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  <Label>Danh sách listing ID (phân cách bởi dấu phẩy)</Label>
+                  <Input
+                    value={editingCollection.listingIds.join(",")}
+                    onChange={(event) =>
+                      setEditingCollection((prev) => prev && {
+                        ...prev,
+                        listingIds: event.target.value
+                          .split(",")
+                          .map((id) => id.trim())
+                          .filter(Boolean),
+                      })
+                    }
+                    placeholder="ID listing 1, ID listing 2"
+                  />
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Hiển thị</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Tắt để ẩn bộ sưu tập khỏi trang chủ.
+                    </p>
+                  </div>
                   <Switch
                     checked={editingCollection.isActive}
                     onCheckedChange={(checked) =>
-                      setEditingCollection({ ...editingCollection, isActive: checked })
+                      setEditingCollection((prev) => prev && { ...prev, isActive: checked })
                     }
                   />
-                  <Label>Hiển thị collection</Label>
                 </div>
-                <div className="flex gap-2">
-                  <Button onClick={handleSaveCollection}>
-                    <Save className="h-4 w-4 mr-2" />
-                    Lưu
-                  </Button>
+                <div className="flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setEditingCollection(null)}>
                     Hủy
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      if (!editingCollection.name) {
+                        toast.error("Vui lòng nhập tên bộ sưu tập")
+                        return
+                      }
+                      const updated =
+                        editingCollection.id === "new"
+                          ? [...collections, { ...editingCollection, id: `collection-${Date.now()}` }]
+                          : collections.map((item) =>
+                              item.id === editingCollection.id ? editingCollection : item,
+                            )
+                      setCollections(updated)
+                      setEditingCollection(null)
+                      await saveCms({ featuredCollections: updated })
+                    }}
+                  >
+                    Lưu bộ sưu tập
                   </Button>
                 </div>
               </CardContent>
@@ -566,178 +551,170 @@ export function ContentManagementSystem() {
           )}
         </TabsContent>
 
-        {/* Featured Listings Tab */}
-        <TabsContent value="featured" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Featured Listings</CardTitle>
-              <CardDescription>
-                Chọn các homestay nổi bật hiển thị trên trang chủ
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Tính năng đang được phát triển...
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Blog Tab */}
         <TabsContent value="blog" className="space-y-6">
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Blog Posts</CardTitle>
-                  <CardDescription>Quản lý bài viết blog</CardDescription>
-                </div>
-                <Button
-                  onClick={() =>
-                    setEditingPost({
-                      id: "new",
-                      title: "",
-                      excerpt: "",
-                      content: "",
-                      coverImage: "",
-                      author: "Admin",
-                      publishedAt: new Date().toISOString(),
-                      isPublished: false,
-                      tags: [],
-                    })
-                  }
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Viết bài mới
-                </Button>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Bài viết blog</CardTitle>
+                <CardDescription>
+                  Các bài viết hỗ trợ SEO và cập nhật nội dung cho trang chủ.
+                </CardDescription>
               </div>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  setEditingPost({
+                    id: "new",
+                    title: "",
+                    excerpt: "",
+                    content: "",
+                    coverImage: "",
+                    author: "LuxeStay Team",
+                    publishedAt: new Date().toISOString(),
+                    isPublished: false,
+                    tags: [],
+                  })
+                }
+              >
+                Thêm bài viết
+              </Button>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {blogPosts.map((post) => (
-                  <Card key={post.id}>
-                    <CardContent className="pt-6">
-                      <div className="flex items-start gap-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h3 className="font-semibold">{post.title}</h3>
-                            <Badge variant={post.isPublished ? "default" : "secondary"}>
-                              {post.isPublished ? "Published" : "Draft"}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground mb-2">{post.excerpt}</p>
-                          <div className="flex flex-wrap gap-1 mb-2">
-                            {post.tags.map((tag) => (
-                              <Badge key={tag} variant="outline">
-                                {tag}
-                              </Badge>
-                            ))}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {post.author} • {new Date(post.publishedAt).toLocaleDateString("vi-VN")}
-                          </div>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button variant="ghost" size="icon" onClick={() => setEditingPost(post)}>
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDeletePost(post.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+            <CardContent className="space-y-4">
+              {blogPosts.map((post) => (
+                <div key={post.id} className="border rounded-lg p-4 space-y-3 bg-muted/30">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold">{post.title || "Chưa có tiêu đề"}</h3>
+                      <p className="text-sm text-muted-foreground">{post.excerpt}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={post.isPublished ? "default" : "secondary"}>
+                        {post.isPublished ? "Đã xuất bản" : "Bản nháp"}
+                      </Badge>
+                      <Button variant="ghost" size="icon" onClick={() => setEditingPost(post)}>
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={async () => {
+                          const filtered = blogPosts.filter((item) => item.id !== post.id)
+                          setBlogPosts(filtered)
+                          await saveCms({ blogPosts: filtered })
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                    <span>Tác giả: {post.author}</span>
+                    <span>Ngày xuất bản: {new Date(post.publishedAt).toLocaleDateString("vi-VN")}</span>
+                    <span>Tags: {post.tags.join(", ") || "Chưa có"}</span>
+                  </div>
+                </div>
+              ))}
             </CardContent>
           </Card>
 
-          {/* Blog Post Editor */}
           {editingPost && (
             <Card>
               <CardHeader>
-                <CardTitle>
-                  {editingPost.id === "new" ? "Viết bài mới" : "Chỉnh sửa bài viết"}
-                </CardTitle>
+                <CardTitle>{editingPost.id === "new" ? "Thêm bài viết" : "Chỉnh sửa bài viết"}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Tiêu đề</Label>
                   <Input
                     value={editingPost.title}
-                    onChange={(e) => setEditingPost({ ...editingPost, title: e.target.value })}
-                    placeholder="Tiêu đề bài viết..."
+                    onChange={(event) =>
+                      setEditingPost((prev) => prev && { ...prev, title: event.target.value })
+                    }
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Mô tả ngắn</Label>
                   <Textarea
                     value={editingPost.excerpt}
-                    onChange={(e) => setEditingPost({ ...editingPost, excerpt: e.target.value })}
-                    placeholder="Mô tả ngắn về bài viết..."
+                    onChange={(event) =>
+                      setEditingPost((prev) => prev && { ...prev, excerpt: event.target.value })
+                    }
+                    rows={3}
                   />
                 </div>
                 <div className="space-y-2">
                   <Label>Nội dung</Label>
                   <Textarea
                     value={editingPost.content}
-                    onChange={(e) => setEditingPost({ ...editingPost, content: e.target.value })}
-                    placeholder="Nội dung bài viết..."
-                    className="min-h-[200px]"
+                    onChange={(event) =>
+                      setEditingPost((prev) => prev && { ...prev, content: event.target.value })
+                    }
+                    rows={6}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>Ảnh bìa</Label>
-                  <div className="flex gap-2">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Ảnh bìa</Label>
                     <Input
                       value={editingPost.coverImage}
-                      onChange={(e) =>
-                        setEditingPost({ ...editingPost, coverImage: e.target.value })
+                      onChange={(event) =>
+                        setEditingPost((prev) => prev && { ...prev, coverImage: event.target.value })
+                      }
+                      placeholder="/images/blog/..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Tags (ngăn cách bởi dấu phẩy)</Label>
+                    <Input
+                      value={editingPost.tags.join(",")}
+                      onChange={(event) =>
+                        setEditingPost((prev) => prev && {
+                          ...prev,
+                          tags: event.target.value
+                            .split(",")
+                            .map((tag) => tag.trim())
+                            .filter(Boolean),
+                        })
                       }
                     />
-                    <Button variant="outline" size="icon">
-                      <Upload className="h-4 w-4" />
-                    </Button>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Tags (phân cách bởi dấu phẩy)</Label>
-                  <Input
-                    value={editingPost.tags.join(", ")}
-                    onChange={(e) =>
-                      setEditingPost({
-                        ...editingPost,
-                        tags: e.target.value.split(",").map((t) => t.trim()),
-                      })
-                    }
-                    placeholder="Du lịch, Homestay, Biển"
-                  />
-                </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>Trạng thái</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Bật để hiển thị bài viết trên trang blog.
+                    </p>
+                  </div>
                   <Switch
                     checked={editingPost.isPublished}
                     onCheckedChange={(checked) =>
-                      setEditingPost({ ...editingPost, isPublished: checked })
+                      setEditingPost((prev) => prev && { ...prev, isPublished: checked })
                     }
                   />
-                  <Label>Publish bài viết</Label>
                 </div>
-                <div className="flex gap-2">
-                  <Button onClick={handleSavePost}>
-                    <Save className="h-4 w-4 mr-2" />
-                    Lưu
-                  </Button>
+                <div className="flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setEditingPost(null)}>
                     Hủy
                   </Button>
-                  <Button variant="outline">
-                    <Eye className="h-4 w-4 mr-2" />
-                    Preview
+                  <Button
+                    onClick={async () => {
+                      if (!editingPost.title || !editingPost.coverImage) {
+                        toast.error("Vui lòng nhập đầy đủ tiêu đề và ảnh bìa")
+                        return
+                      }
+                      const updated =
+                        editingPost.id === "new"
+                          ? [...blogPosts, { ...editingPost, id: `blog-${Date.now()}` }]
+                          : blogPosts.map((item) =>
+                              item.id === editingPost.id ? editingPost : item,
+                            )
+                      setBlogPosts(updated)
+                      setEditingPost(null)
+                      await saveCms({ blogPosts: updated })
+                    }}
+                  >
+                    Lưu bài viết
                   </Button>
                 </div>
               </CardContent>

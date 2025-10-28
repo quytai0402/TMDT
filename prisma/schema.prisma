@@ -946,6 +946,42 @@ model Notification {
   @@map("notifications")
 }
 
+model SystemSetting {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  key       String   @unique
+  value     Json?
+  updatedBy String?  @db.ObjectId
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model PaymentGatewayConfig {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  gateway   String
+  config    Json
+  isEnabled Boolean  @default(true)
+  updatedBy String?  @db.ObjectId
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([gateway])
+  @@map("payment_gateway_configs")
+}
+
+model CmsBlock {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  key       String   @unique
+  label     String?
+  data      Json
+  updatedBy String?  @db.ObjectId
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("cms_blocks")
+}
+
 // ============================================
 // WISHLIST & COLLECTIONS
 // ============================================
@@ -1728,4 +1764,41 @@ enum ExperienceStatus {
   ACTIVE
   PAUSED
   INACTIVE
+}
+
+enum LiveChatStatus {
+  WAITING
+  CONNECTED
+  ENDED
+}
+
+model LiveChatSession {
+  id            String           @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String?
+  userName      String?
+  userEmail     String?
+  status        LiveChatStatus   @default(WAITING)
+  queuePosition Int?             @default(1)
+  metadata      Json?
+  createdAt     DateTime         @default(now())
+  connectedAt   DateTime?
+  endedAt       DateTime?
+  messages      LiveChatMessage[]
+
+  @@map("live_chat_sessions")
+  @@index([status, createdAt])
+}
+
+model LiveChatMessage {
+  id         String          @id @default(auto()) @map("_id") @db.ObjectId
+  sessionId  String          @db.ObjectId
+  sender     String
+  content    String
+  metadata   Json?
+  createdAt  DateTime        @default(now())
+
+  session    LiveChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("live_chat_messages")
+  @@index([sessionId, createdAt])
 }

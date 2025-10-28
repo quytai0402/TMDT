@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { usePathname, useRouter } from "next/navigation"
+import { useSession, signOut } from "next-auth/react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -24,7 +25,6 @@ import {
   MessageSquare,
   Settings,
   BarChart3,
-  Bell,
   Search,
   Menu,
   Home,
@@ -33,67 +33,78 @@ import {
   ChevronRight,
   LogOut,
 } from "lucide-react"
+import { NotificationCenter } from "@/components/notification-center"
 
-const navItems = [
+type NavMetrics = {
+  users?: number
+  listings?: number
+  bookings?: number
+}
+
+type NavItem = {
+  title: string
+  href: string
+  icon: typeof LayoutDashboard
+  badgeKey?: keyof NavMetrics
+  fallbackBadge?: string | null
+}
+
+type NavItemWithBadge = NavItem & { badge: string | null }
+
+const NAV_ITEMS: NavItem[] = [
   {
     title: "Tổng quan",
     href: "/admin",
     icon: LayoutDashboard,
-    badge: null,
   },
   {
     title: "Người dùng",
     href: "/admin/users",
     icon: Users,
-    badge: "1.2k",
+    badgeKey: "users",
   },
   {
     title: "Chỗ nghỉ",
     href: "/admin/listings",
     icon: Building2,
-    badge: "10k+",
+    badgeKey: "listings",
   },
   {
     title: "Đặt phòng",
     href: "/admin/bookings",
     icon: Calendar,
-    badge: "342",
+    badgeKey: "bookings",
   },
   {
     title: "Thanh toán",
     href: "/admin/payments",
     icon: DollarSign,
-    badge: null,
   },
   {
     title: "Đánh giá",
     href: "/admin/reviews",
     icon: FileText,
-    badge: "23",
   },
   {
     title: "Tin nhắn",
     href: "/admin/messages",
     icon: MessageSquare,
-    badge: "12",
   },
   {
     title: "Báo cáo",
     href: "/admin/reports",
     icon: BarChart3,
-    badge: null,
   },
   {
     title: "Bảo mật",
     href: "/admin/security",
     icon: Shield,
-    badge: "!",
+    fallbackBadge: "!",
   },
   {
     title: "Cài đặt",
     href: "/admin/settings",
     icon: Settings,
-    badge: null,
   },
 ]
 
@@ -102,9 +113,56 @@ interface AdminLayoutProps {
 }
 
 export function AdminLayout({ children }: AdminLayoutProps) {
+  const { data: session } = useSession()
   const pathname = usePathname()
   const router = useRouter()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [metrics, setMetrics] = useState<NavMetrics>({})
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    const fetchMetrics = async () => {
+      try {
+        const res = await fetch("/api/admin/analytics?period=30", {
+          cache: "no-store",
+          signal: controller.signal,
+        })
+        if (!res.ok) return
+
+        const data = await res.json()
+        setMetrics({
+          users: data?.overview?.totalUsers,
+          listings: data?.overview?.totalListings,
+          bookings: data?.overview?.totalBookings,
+        })
+      } catch (err) {
+        if ((err as Error).name === "AbortError") return
+        console.error("Failed to load navigation metrics:", err)
+      }
+    }
+
+    fetchMetrics()
+    return () => controller.abort()
+  }, [])
+
+  const navItemsWithBadges: NavItemWithBadge[] = useMemo(() => {
+    const formatBadge = (value?: number) => {
+      if (typeof value !== "number") return null
+      return new Intl.NumberFormat("vi-VN", {
+        notation: "compact",
+        maximumFractionDigits: 1,
+      }).format(value)
+    }
+
+    return NAV_ITEMS.map<NavItemWithBadge>((item) => {
+      const badgeValue = item.badgeKey ? formatBadge(metrics[item.badgeKey]) : null
+      return {
+        ...item,
+        badge: badgeValue ?? item.fallbackBadge ?? null,
+      }
+    })
+  }, [metrics])
 
   const isActive = (href: string) => {
     if (href === "/admin") {
@@ -130,7 +188,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-        {navItems.map((item) => {
+        {navItemsWithBadges.map((item) => {
           const active = isActive(item.href)
           return (
             <Link
@@ -219,30 +277,26 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
             {/* Right Section */}
             <div className="flex items-center gap-3">
-              {/* Notifications */}
-              <Button variant="ghost" size="icon" className="relative">
-                <Bell className="h-5 w-5" />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-              </Button>
+              <NotificationCenter />
 
               {/* User Menu */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="gap-2">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src="/avatars/admin.jpg" />
-                      <AvatarFallback className="bg-gradient-to-br from-primary to-pink-500 text-white">
-                        AD
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="hidden md:block text-left">
-                      <div className="text-sm font-semibold">Admin User</div>
-                      <div className="text-xs text-muted-foreground">admin@luxestay.vn</div>
-                    </div>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>Tài khoản</DropdownMenuLabel>
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={session?.user?.image || undefined} />
+                        <AvatarFallback className="bg-gradient-to-br from-primary to-pink-500 text-white">
+                          {session?.user?.name?.[0]?.toUpperCase() || session?.user?.email?.[0]?.toUpperCase() || "A"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="hidden md:block text-left">
+                        <div className="text-sm font-semibold">{session?.user?.name || "Admin"}</div>
+                        <div className="text-xs text-muted-foreground">{session?.user?.email || "admin@luxestay.vn"}</div>
+                      </div>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuLabel>Tài khoản</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem>
                     <Settings className="h-4 w-4 mr-2" />
@@ -253,7 +307,7 @@ export function AdminLayout({ children }: AdminLayoutProps) {
                     Hồ sơ
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="text-red-600">
+                  <DropdownMenuItem className="text-red-600" onSelect={() => signOut({ callbackUrl: '/' })}>
                     <LogOut className="h-4 w-4 mr-2" />
                     Đăng xuất
                   </DropdownMenuItem>

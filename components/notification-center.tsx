@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { formatDistanceToNow } from 'date-fns'
 import { vi } from 'date-fns/locale'
 import { toast } from 'sonner'
+import { pusherClient } from '@/lib/pusher'
 
 interface Notification {
   id: string
@@ -130,6 +131,45 @@ export function NotificationCenter() {
   useEffect(() => {
     updateFaviconBadge(unreadCount)
   }, [unreadCount, updateFaviconBadge])
+
+  useEffect(() => {
+    if (!session?.user?.id || !pusherClient) return
+
+    const channelName = `private-user-${session.user.id}-notifications`
+    try {
+      const channel = pusherClient.subscribe(channelName)
+      setIsConnected(true)
+
+      const handleNotification = (payload: { notification: Notification }) => {
+        setUnreadCount((prev) => prev + 1)
+
+        if (open) {
+          setNotifications((prev) => {
+            const next = [payload.notification, ...prev]
+            return next.slice(0, 50)
+          })
+        }
+
+        toast.success(payload.notification.title, {
+          description: payload.notification.message,
+          action: {
+            label: "Xem",
+            onClick: () => setOpen(true),
+          },
+        })
+      }
+
+      channel.bind("notification:created", handleNotification)
+
+      return () => {
+        channel.unbind("notification:created", handleNotification)
+        pusherClient.unsubscribe(channelName)
+        setIsConnected(false)
+      }
+    } catch (error) {
+      console.error("Pusher subscription error:", error)
+    }
+  }, [session?.user?.id, open])
 
   useEffect(() => {
     if (session?.user && open) {

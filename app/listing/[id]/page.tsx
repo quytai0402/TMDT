@@ -31,9 +31,13 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { getMembershipForUser } from "@/lib/membership"
 
-async function getListingData(id: string) {
+const HEX_OBJECT_ID_REGEX = /^[a-fA-F0-9]{24}$/
+
+async function getListingData(identifier: string) {
+  const isObjectId = HEX_OBJECT_ID_REGEX.test(identifier)
+
   const listing = await prisma.listing.findUnique({
-    where: { id, status: 'ACTIVE' },
+    where: isObjectId ? { id: identifier } : { slug: identifier },
     include: {
       host: {
         select: {
@@ -72,7 +76,7 @@ async function getListingData(id: string) {
     },
   })
 
-  if (!listing) {
+  if (!listing || listing.status !== 'ACTIVE') {
     return null
   }
 
@@ -112,6 +116,7 @@ async function getListingData(id: string) {
     amenities: amenityNames,
     averageRating: avgRating,
     locationString,
+    slugOrId: listing.slug ?? listing.id,
   }
 }
 
@@ -129,14 +134,16 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
     const isAdmin = session?.user?.role === 'ADMIN'
     const isHost = session?.user?.id === listing.host.id
 
+    const listingPath = listing.slugOrId
+
     if (!session?.user?.id) {
-      redirect(`/membership?reason=secret-listing&returnTo=${encodeURIComponent(`/listing/${listing.id}`)}`)
+      redirect(`/membership?reason=secret-listing&returnTo=${encodeURIComponent(`/listing/${listingPath}`)}`)
     }
 
     if (!isAdmin && !isHost) {
       const membership = await getMembershipForUser(session.user.id)
       if (!membership?.isActive) {
-        redirect(`/membership?reason=secret-listing&returnTo=${encodeURIComponent(`/listing/${listing.id}`)}`)
+        redirect(`/membership?reason=secret-listing&returnTo=${encodeURIComponent(`/listing/${listingPath}`)}`)
       }
     }
   }

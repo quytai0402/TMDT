@@ -4,8 +4,10 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { calculateNights, calculateServiceFee, calculateTotalPrice, calculateDistance } from '@/lib/helpers'
 import { sendBookingConfirmationEmail } from '@/lib/email'
+import { notifyAdmins, notifyUser } from '@/lib/notifications'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
+import { NotificationType } from '@prisma/client'
 
 const createBookingSchema = z
   .object({
@@ -743,15 +745,31 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Send notification to host
-    await prisma.notification.create({
+    const bookingRef = booking.id.slice(-6).toUpperCase()
+
+    await notifyUser(listing.hostId, {
+      type: NotificationType.BOOKING_REQUEST,
+      title: 'Yêu cầu đặt phòng mới',
+      message: `${contactName} muốn đặt "${listing.title}" (${bookingRef}).`,
+      link: `/host/bookings/${booking.id}`,
       data: {
-        userId: listing.hostId,
-        type: 'BOOKING_REQUEST',
-        title: 'New Booking Request',
-        message: `${contactName} đã yêu cầu đặt ${listing.title}`,
-        link: `/host/bookings/${booking.id}`,
-        data: { bookingId: booking.id, contactPhone },
+        bookingId: booking.id,
+        listingId: listing.id,
+        contactPhone,
+        checkIn: booking.checkIn,
+        checkOut: booking.checkOut,
+      },
+    })
+
+    await notifyAdmins({
+      type: NotificationType.BOOKING_REQUEST,
+      title: 'Đơn đặt phòng mới',
+      message: `Đơn ${bookingRef} cho "${listing.title}" cần theo dõi.`,
+      link: `/admin/bookings?highlight=${booking.id}`,
+      data: {
+        bookingId: booking.id,
+        listingId: listing.id,
+        hostId: listing.hostId,
       },
     })
 

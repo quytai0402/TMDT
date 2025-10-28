@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { calculateNights, calculateTotalPrice } from '@/lib/helpers'
+import { calculateNights, calculateTotalPrice, calculateDistance } from '@/lib/helpers'
 import { sendBookingConfirmationEmail } from '@/lib/email'
 import { z } from 'zod'
 
@@ -54,6 +54,59 @@ const createBookingSchema = z
     path: ['checkOut'],
     message: 'Check-out date must be after check-in date',
   })
+
+interface SplitStayConflictDetail {
+  type: 'booking' | 'blocked'
+  range: {
+    startDate: string
+    endDate: string
+  }
+  note?: string | null
+}
+
+interface AlternativeListingSuggestion {
+  id: string
+  title: string
+  slug?: string | null
+  image?: string | null
+  city: string
+  state?: string | null
+  country: string
+  basePrice: number
+  estimatedTotal: number
+  priceDifference: number
+  distanceKm?: number | null
+}
+
+interface SplitStaySegment {
+  id: string
+  type: 'primary' | 'gap'
+  startDate: string
+  endDate: string
+  nights: number
+  estimatedTotal?: number
+  conflicts?: SplitStayConflictDetail[]
+  alternatives?: AlternativeListingSuggestion[]
+}
+
+interface SplitStaySuggestionPayload {
+  message: string
+  requested: {
+    startDate: string
+    endDate: string
+    nights: number
+  }
+  primaryListing: {
+    id: string
+    title: string
+    basePrice: number
+    cleaningFee: number
+    city: string
+    state?: string | null
+    country: string
+  }
+  segments: SplitStaySegment[]
+}
 
 // GET bookings
 export async function GET(req: NextRequest) {
@@ -224,6 +277,287 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const formatInputDate = (date: Date) => {
+      const year = date.getUTCFullYear()
+      const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+      const day = String(date.getUTCDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+
+    const addDays = (date: Date, amount: number) => {
+      const result = new Date(date)
+      result.setUTCDate(result.getUTCDate() + amount)
+      return result
+    }
+
+    const buildSplitStaySuggestion = async (): Promise<SplitStaySuggestionPayload | null> => {
+      const overlappingBookings = await prisma.booking.findMany({
+        where: {
+          listingId: listing.id,
+          status: { in: ['CONFIRMED', 'PENDING'] },
+          checkIn: { lt: checkOutDate },
+          checkOut: { gt: checkInDate },
+        },
+        select: {
+          id: true,
+          checkIn: true,
+          checkOut: true,
+          contactName: true,
+        },
+        orderBy: { checkIn: 'asc' },
+      })
+
+      const overlappingBlockedDates = await prisma.blockedDate.findMany({
+        where: {
+          listingId: listing.id,
+          startDate: { lt: checkOutDate },
+          endDate: { gt: checkInDate },
+        },
+        select: {
+          id: true,
+          startDate: true,
+          endDate: true,
+          reason: true,
+        },
+        orderBy: { startDate: 'asc' },
+      })
+
+      const nights: Array<{
+        start: Date
+        end: Date
+        available: boolean
+        conflict?: SplitStayConflictDetail
+      }> = []
+
+      let cursor = new Date(checkInDate)
+      while (cursor < checkOutDate) {
+        const nightStart = new Date(cursor)
+        const nightEnd = addDays(cursor, 1)
+
+        const bookingConflict = overlappingBookings.find(
+          (booking) => booking.checkIn < nightEnd && booking.checkOut > nightStart
+        )
+        const blockedConflict = overlappingBlockedDates.find(
+          (blocked) => blocked.startDate < nightEnd && blocked.endDate > nightStart
+        )
+
+        let conflictDetail: SplitStayConflictDetail | undefined
+        if (bookingConflict) {
+          conflictDetail = {
+            type: 'booking',
+            range: {
+              startDate: formatInputDate(bookingConflict.checkIn),
+              endDate: formatInputDate(bookingConflict.checkOut),
+            },
+            note: bookingConflict.contactName,
+          }
+        } else if (blockedConflict) {
+          conflictDetail = {
+            type: 'blocked',
+            range: {
+              startDate: formatInputDate(blockedConflict.startDate),
+              endDate: formatInputDate(blockedConflict.endDate),
+            },
+            note: blockedConflict.reason,
+          }
+        }
+
+        nights.push({
+          start: nightStart,
+          end: nightEnd,
+          available: !bookingConflict && !blockedConflict,
+          conflict: conflictDetail,
+        })
+
+        cursor = nightEnd
+      }
+
+      const hasUnavailableNight = nights.some((night) => !night.available)
+      if (!hasUnavailableNight) {
+        return null
+      }
+
+      const segments: SplitStaySegment[] = []
+      let currentSegment: SplitStaySegment | null = null
+
+      for (let i = 0; i < nights.length; i++) {
+        const night = nights[i]
+        const type: 'primary' | 'gap' = night.available ? 'primary' : 'gap'
+
+        if (!currentSegment || currentSegment.type !== type) {
+          if (currentSegment) {
+            segments.push(currentSegment)
+          }
+
+          currentSegment = {
+            id: `${type}-${segments.length + 1}`,
+            type,
+            startDate: formatInputDate(night.start),
+            endDate: formatInputDate(night.end),
+            nights: 1,
+          }
+
+          if (type === 'primary') {
+            currentSegment.estimatedTotal = calculateTotalPrice(
+              listing.basePrice,
+              currentSegment.nights,
+              listing.cleaningFee ?? 0
+            )
+          } else if (night.conflict) {
+            currentSegment.conflicts = [night.conflict]
+          }
+        } else {
+          currentSegment.endDate = formatInputDate(night.end)
+          currentSegment.nights += 1
+
+          if (currentSegment.type === 'primary') {
+            currentSegment.estimatedTotal = calculateTotalPrice(
+              listing.basePrice,
+              currentSegment.nights,
+              listing.cleaningFee ?? 0
+            )
+          } else if (night.conflict) {
+            const existingConflicts = currentSegment.conflicts ?? []
+            const alreadyAdded = existingConflicts.some(
+              (conflict) =>
+                conflict.range.startDate === night.conflict?.range.startDate &&
+                conflict.range.endDate === night.conflict?.range.endDate &&
+                conflict.type === night.conflict?.type
+            )
+
+            if (!alreadyAdded && night.conflict) {
+              currentSegment.conflicts = [...existingConflicts, night.conflict]
+            }
+          }
+        }
+      }
+
+      if (currentSegment) {
+        segments.push(currentSegment)
+      }
+
+      const primarySegments = segments.filter((segment) => segment.type === 'primary')
+      const gapSegments = segments.filter((segment) => segment.type === 'gap')
+
+      if (primarySegments.length === 0 || gapSegments.length === 0) {
+        return null
+      }
+
+      const baseSegmentTotalsByNights = new Map<number, number>()
+
+      for (const segment of gapSegments) {
+        const gapStart = new Date(segment.startDate)
+        const gapEnd = new Date(segment.endDate)
+
+        const alternativeListings = await prisma.listing.findMany({
+          where: {
+            status: 'ACTIVE',
+            id: { not: listing.id },
+            maxGuests: { gte: totalGuests },
+            city: listing.city,
+            propertyType: listing.propertyType,
+            bookings: {
+              none: {
+                status: { in: ['CONFIRMED', 'PENDING'] },
+                checkIn: { lt: gapEnd },
+                checkOut: { gt: gapStart },
+              },
+            },
+            blockedDates: {
+              none: {
+                startDate: { lt: gapEnd },
+                endDate: { gt: gapStart },
+              },
+            },
+          },
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            images: true,
+            city: true,
+            state: true,
+            country: true,
+            basePrice: true,
+            cleaningFee: true,
+            latitude: true,
+            longitude: true,
+          },
+          orderBy: {
+            basePrice: 'asc',
+          },
+          take: 6,
+        })
+
+        const baseSegmentTotal =
+          baseSegmentTotalsByNights.get(segment.nights) ??
+          calculateTotalPrice(listing.basePrice, segment.nights, listing.cleaningFee ?? 0)
+        baseSegmentTotalsByNights.set(segment.nights, baseSegmentTotal)
+
+        const alternatives: AlternativeListingSuggestion[] = alternativeListings.map((alt) => {
+          const estimatedTotal = calculateTotalPrice(
+            alt.basePrice,
+            segment.nights,
+            alt.cleaningFee ?? 0
+          )
+          const priceDifference = estimatedTotal - baseSegmentTotal
+
+          let distanceKm: number | null = null
+          if (
+            typeof listing.latitude === 'number' &&
+            typeof listing.longitude === 'number' &&
+            typeof alt.latitude === 'number' &&
+            typeof alt.longitude === 'number'
+          ) {
+            distanceKm = Number(
+              calculateDistance(
+                listing.latitude,
+                listing.longitude,
+                alt.latitude,
+                alt.longitude
+              ).toFixed(1)
+            )
+          }
+
+          return {
+            id: alt.id,
+            title: alt.title,
+            slug: alt.slug ?? undefined,
+            image: alt.images?.[0],
+            city: alt.city,
+            state: alt.state ?? undefined,
+            country: alt.country,
+            basePrice: alt.basePrice,
+            estimatedTotal,
+            priceDifference,
+            distanceKm,
+          }
+        })
+
+        segment.alternatives = alternatives
+      }
+
+      return {
+        message:
+          'Một số đêm trong khoảng lưu trú đã kín. Bạn có thể tạm chuyển sang phòng khác cho những đêm này hoặc điều chỉnh lịch.',
+        requested: {
+          startDate: formatInputDate(checkInDate),
+          endDate: formatInputDate(checkOutDate),
+          nights: nights.length,
+        },
+        primaryListing: {
+          id: listing.id,
+          title: listing.title,
+          basePrice: listing.basePrice,
+          cleaningFee: listing.cleaningFee ?? 0,
+          city: listing.city,
+          state: listing.state ?? undefined,
+          country: listing.country,
+        },
+        segments,
+      }
+    }
+
     // Check pets
     if ((validatedData.pets || 0) > 0 && !listing.allowPets) {
       return NextResponse.json(
@@ -261,6 +595,8 @@ export async function POST(req: NextRequest) {
     })
 
     if (conflictingBooking) {
+      const splitSuggestion = await buildSplitStaySuggestion()
+
       return NextResponse.json(
         {
           error: 'Khoảng thời gian này đã có khách đặt trước',
@@ -268,8 +604,9 @@ export async function POST(req: NextRequest) {
             checkIn: conflictingBooking.checkIn,
             checkOut: conflictingBooking.checkOut,
           },
+          splitSuggestion,
         },
-        { status: 400 }
+        { status: 409 }
       )
     }
 
@@ -295,6 +632,8 @@ export async function POST(req: NextRequest) {
     })
 
     if (blockedDate) {
+      const splitSuggestion = await buildSplitStaySuggestion()
+
       return NextResponse.json(
         {
           error: 'Khoảng thời gian này đã được host chặn',
@@ -302,8 +641,9 @@ export async function POST(req: NextRequest) {
             startDate: blockedDate.startDate,
             endDate: blockedDate.endDate,
           },
+          splitSuggestion,
         },
-        { status: 400 }
+        { status: 409 }
       )
     }
 

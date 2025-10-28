@@ -12,6 +12,7 @@ import { PaymentMethods } from "@/components/payment-methods"
 import { useToast } from "@/hooks/use-toast"
 import { useAuthModal } from "@/hooks/use-auth-modal"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { cn } from "@/lib/utils"
 
 interface HostInfo {
   name?: string | null
@@ -50,6 +51,59 @@ interface CheckoutStep {
   status: StepStatus
 }
 
+interface SplitStayConflictDetail {
+  type: "booking" | "blocked"
+  range: {
+    startDate: string
+    endDate: string
+  }
+  note?: string | null
+}
+
+interface AlternativeListingSuggestion {
+  id: string
+  title: string
+  slug?: string
+  image?: string | null
+  city: string
+  state?: string | null
+  country: string
+  basePrice: number
+  estimatedTotal: number
+  priceDifference: number
+  distanceKm?: number | null
+}
+
+interface SplitStaySegment {
+  id: string
+  type: "primary" | "gap"
+  startDate: string
+  endDate: string
+  nights: number
+  estimatedTotal?: number
+  conflicts?: SplitStayConflictDetail[]
+  alternatives?: AlternativeListingSuggestion[]
+}
+
+interface SplitStaySuggestion {
+  message: string
+  requested: {
+    startDate: string
+    endDate: string
+    nights: number
+  }
+  primaryListing: {
+    id: string
+    title: string
+    basePrice: number
+    cleaningFee: number
+    city: string
+    state?: string | null
+    country: string
+  }
+  segments: SplitStaySegment[]
+}
+
 const formatForInput = (date: Date) => {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, "0")
@@ -69,6 +123,17 @@ const calculateNights = (checkIn: string, checkOut: string) => {
   const diff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
   return diff > 0 ? diff : 0
 }
+
+const formatDisplayDate = (value: string) => {
+  if (!value) {
+    return ""
+  }
+
+  const date = new Date(`${value}T12:00:00`)
+  return date.toLocaleDateString("vi-VN")
+}
+
+const formatCurrency = (amount: number) => `${amount.toLocaleString("vi-VN")}₫`
 
 export function BookingCheckout({
   listing,
@@ -99,6 +164,10 @@ export function BookingCheckout({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [bookingCode, setBookingCode] = useState<string | null>(null)
   const paymentSectionRef = useRef<HTMLDivElement | null>(null)
+  const splitSuggestionSectionRef = useRef<HTMLDivElement | null>(null)
+  const [splitSuggestion, setSplitSuggestion] = useState<SplitStaySuggestion | null>(null)
+  const [selectedAlternatives, setSelectedAlternatives] = useState<Record<string, string>>({})
+  const [splitPlanApplied, setSplitPlanApplied] = useState(false)
 
   const summaryListing = useMemo(() => {
     const locationParts = [listing.city, listing.state, listing.country].filter(Boolean)
@@ -170,6 +239,9 @@ export function BookingCheckout({
   }, [tripInfoValid, bookingCreated])
 
   const handleCheckInChange = (value: string) => {
+    setSplitSuggestion(null)
+    setSplitPlanApplied(false)
+    setSelectedAlternatives({})
     setCheckIn(value)
 
     if (!value) {
@@ -186,12 +258,56 @@ export function BookingCheckout({
     }
   }
 
+  const handleCheckOutChange = (value: string) => {
+    setSplitSuggestion(null)
+    setSplitPlanApplied(false)
+    setSelectedAlternatives({})
+    setCheckOut(value)
+  }
+
+  const handleSelectAlternative = (segmentId: string, listingId: string) => {
+    setSelectedAlternatives((prev) => ({
+      ...prev,
+      [segmentId]: listingId,
+    }))
+  }
+
+  const handleApplySegmentDates = (segment: SplitStaySegment) => {
+    setCheckIn(segment.startDate)
+    setCheckOut(segment.endDate)
+    setSplitPlanApplied(true)
+    toast({
+      title: "Đã áp dụng lịch tạm thời",
+      description: `Đặt phòng hiện tại sẽ áp dụng cho giai đoạn ${formatDisplayDate(segment.startDate)} - ${formatDisplayDate(segment.endDate)}.`,
+    })
+  }
+
+  const handleResetSplitSuggestion = () => {
+    setSplitSuggestion(null)
+    setSelectedAlternatives({})
+    setSplitPlanApplied(false)
+  }
+
+  const primarySplitSegments = useMemo(
+    () => splitSuggestion?.segments.filter((segment) => segment.type === "primary") ?? [],
+    [splitSuggestion],
+  )
+  const gapSplitSegments = useMemo(
+    () => splitSuggestion?.segments.filter((segment) => segment.type === "gap") ?? [],
+    [splitSuggestion],
+  )
+  const firstPrimarySegment = primarySplitSegments[0]
+  const lastPrimarySegment =
+    primarySplitSegments.length > 1 ? primarySplitSegments[primarySplitSegments.length - 1] : null
+
   const canCreateBooking = tripInfoValid && guestInfoCompleted
   const confirmButtonLabel = isSubmitting
     ? "Đang tạo đặt phòng..."
     : bookingCreated
       ? "Tạo lại đơn đặt phòng"
-      : "Xác nhận & tạo đơn đặt phòng"
+      : splitPlanApplied
+        ? "Tạo đặt phòng cho khoảng đã chọn"
+        : "Xác nhận & tạo đơn đặt phòng"
 
   const handleCreateBooking = async () => {
     if (!checkIn || !checkOut || nights <= 0) {
@@ -245,6 +361,27 @@ export function BookingCheckout({
       const data = await response.json()
 
       if (!response.ok) {
+        if (response.status === 409 && data?.splitSuggestion) {
+          setBookingId(null)
+          setBookingCode(null)
+          setSplitSuggestion(data.splitSuggestion as SplitStaySuggestion)
+          setSelectedAlternatives({})
+          setSplitPlanApplied(false)
+
+          toast({
+            title: "Một số đêm đã kín phòng",
+            description:
+              data.error ||
+              "Bạn có thể tham khảo gợi ý chia kỳ nghỉ tạm thời trước khi tiếp tục.",
+          })
+
+          setTimeout(() => {
+            splitSuggestionSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }, 300)
+
+          return
+        }
+
         if (data?.conflict) {
           const formatter = new Intl.DateTimeFormat("vi-VN", {
             day: "2-digit",
@@ -273,6 +410,9 @@ export function BookingCheckout({
       }
 
       const booking = data.booking || data
+      setSplitSuggestion(null)
+      setSelectedAlternatives({})
+      setSplitPlanApplied(false)
       setBookingId(booking.id)
       setBookingCode(booking.id?.slice(-8).toUpperCase?.() || null)
 
@@ -379,7 +519,7 @@ export function BookingCheckout({
                     type="date"
                     value={checkOut}
                     min={checkIn}
-                    onChange={(e) => setCheckOut(e.target.value)}
+                    onChange={(e) => handleCheckOutChange(e.target.value)}
                   />
                 </div>
               </div>
@@ -404,14 +544,254 @@ export function BookingCheckout({
                   </AlertDescription>
                 </Alert>
               )}
-            </CardContent>
-          </Card>
+          </CardContent>
+        </Card>
 
-          <GuestInfoForm
-            onInfoChange={setGuestInfo}
-            onLoginClick={authModal.openLogin}
-            titlePrefix="Bước 2 ·"
-          />
+        {splitSuggestion && (
+          <div ref={splitSuggestionSectionRef}>
+            <Card className="border border-primary/40 bg-primary/5">
+              <CardHeader>
+                <CardTitle className="text-lg text-primary">
+                  Phát hiện đêm hết phòng · Đề xuất chia kỳ nghỉ
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {splitSuggestion.message}
+                </p>
+                <div className="mt-3 rounded-md bg-white/60 px-3 py-2 text-sm text-foreground shadow-sm">
+                  Khoảng yêu cầu:{" "}
+                  <span className="font-semibold text-primary">
+                    {formatDisplayDate(splitSuggestion.requested.startDate)} →{" "}
+                    {formatDisplayDate(splitSuggestion.requested.endDate)}
+                  </span>{" "}
+                  · {splitSuggestion.requested.nights} đêm · {splitSuggestion.primaryListing.title}
+                </div>
+              </CardHeader>
+
+              <CardContent className="space-y-6">
+                <div className="space-y-4">
+                  {splitSuggestion.segments.map((segment) => {
+                    const isPrimary = segment.type === "primary"
+                    const locationLabel = [splitSuggestion.primaryListing.city, splitSuggestion.primaryListing.state, splitSuggestion.primaryListing.country]
+                      .filter(Boolean)
+                      .join(", ")
+                    const hasAlternatives = (segment.alternatives?.length ?? 0) > 0
+                    const selectedAlternative = selectedAlternatives[segment.id]
+                    const isCurrentRange = checkIn === segment.startDate && checkOut === segment.endDate
+
+                    return (
+                      <div
+                        key={segment.id}
+                        className={cn(
+                          "rounded-lg border bg-white/80 p-4 shadow-sm transition-all",
+                          isPrimary ? "border-emerald-200" : "border-amber-200",
+                        )}
+                      >
+                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                          <div className="space-y-1">
+                            <p
+                              className={cn(
+                                "text-sm font-semibold",
+                                isPrimary ? "text-emerald-700" : "text-amber-700",
+                              )}
+                            >
+                              {isPrimary ? "Phòng hiện tại còn trống" : "Đêm chưa có phòng phù hợp"}
+                            </p>
+                            <p className="text-sm text-foreground">
+                              {formatDisplayDate(segment.startDate)} → {formatDisplayDate(segment.endDate)} · {segment.nights} đêm
+                            </p>
+                            {isPrimary ? (
+                              <p className="text-xs text-muted-foreground">
+                                Địa điểm: {locationLabel}. Ước tính chi phí:{" "}
+                                <span className="font-semibold text-foreground">
+                                  {segment.estimatedTotal ? formatCurrency(segment.estimatedTotal) : formatCurrency(listing.basePrice * segment.nights)}
+                                </span>
+                              </p>
+                            ) : (
+                              <div className="space-y-2 text-xs text-muted-foreground">
+                                {segment.conflicts?.map((conflict, conflictIndex) => (
+                                  <div key={`${segment.id}-conflict-${conflictIndex}`} className="rounded-md bg-amber-50 px-3 py-2 text-amber-800">
+                                    {conflict.type === "booking" ? "Đã có khách" : "Chủ nhà chặn lịch"} từ{" "}
+                                    <span className="font-semibold">
+                                      {formatDisplayDate(conflict.range.startDate)} → {formatDisplayDate(conflict.range.endDate)}
+                                    </span>
+                                    {conflict.note ? ` · Ghi chú: ${conflict.note}` : ""}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {isPrimary ? (
+                            <div className="flex flex-col items-start gap-2 md:items-end">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={isCurrentRange && splitPlanApplied ? "secondary" : "outline"}
+                                onClick={() => handleApplySegmentDates(segment)}
+                                className="w-full md:w-auto"
+                              >
+                                {isCurrentRange && splitPlanApplied ? "Đang áp dụng" : "Áp dụng ngày này"}
+                              </Button>
+                              {isCurrentRange && splitPlanApplied && (
+                                <span className="text-xs text-emerald-700">Biểu mẫu đang sử dụng khoảng ngày này.</span>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {!isPrimary && (
+                          <div className="mt-4 space-y-3">
+                            {hasAlternatives ? (
+                              <div className="space-y-3">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                  Phòng tương đương còn trống cho đêm này
+                                </p>
+                                <div className="grid gap-3 md:grid-cols-2">
+                                  {segment.alternatives?.map((alternative) => {
+                                    const isSelected = selectedAlternative === alternative.id
+                                    const addressParts = [alternative.city, alternative.state, alternative.country]
+                                      .filter(Boolean)
+                                      .join(", ")
+                                    const alternativeUrl = alternative.slug
+                                      ? `/listing/${alternative.slug}`
+                                      : `/listing/${alternative.id}`
+                                    const bookingLink = `${alternativeUrl}?checkIn=${segment.startDate}&checkOut=${segment.endDate}&guests=${guests}`
+
+                                    return (
+                                      <button
+                                        key={alternative.id}
+                                        type="button"
+                                        onClick={() => handleSelectAlternative(segment.id, alternative.id)}
+                                        className={cn(
+                                          "flex h-full flex-col gap-3 rounded-lg border p-4 text-left transition",
+                                          isSelected
+                                            ? "border-primary bg-primary/10 shadow-sm"
+                                            : "border-border hover:border-primary/40 hover:bg-primary/5",
+                                        )}
+                                      >
+                                        <div className="flex items-start gap-3">
+                                          {alternative.image ? (
+                                            <img
+                                              src={alternative.image}
+                                              alt={alternative.title}
+                                              className="h-16 w-16 rounded-md object-cover"
+                                            />
+                                          ) : (
+                                            <div className="flex h-16 w-16 items-center justify-center rounded-md bg-muted text-xs text-muted-foreground">
+                                              Không ảnh
+                                            </div>
+                                          )}
+                                          <div className="flex-1 space-y-1">
+                                            <p className="text-sm font-semibold text-foreground">{alternative.title}</p>
+                                            <p className="text-xs text-muted-foreground">{addressParts}</p>
+                                            {typeof alternative.distanceKm === "number" && (
+                                              <p className="text-xs text-muted-foreground">
+                                                Cách khoảng {alternative.distanceKm} km
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div className="flex flex-col gap-1">
+                                          <span className="text-sm font-semibold text-foreground">
+                                            {formatCurrency(alternative.estimatedTotal)}
+                                          </span>
+                                          {alternative.priceDifference !== 0 && (
+                                            <span
+                                              className={cn(
+                                                "text-xs font-medium",
+                                                alternative.priceDifference > 0 ? "text-amber-600" : "text-emerald-600",
+                                              )}
+                                            >
+                                              {alternative.priceDifference > 0 ? "+" : "−"}
+                                              {formatCurrency(Math.abs(alternative.priceDifference))} so với phòng hiện tại
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-3 text-xs">
+                                          <a
+                                            href={bookingLink}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="font-medium text-primary underline hover:text-primary/80"
+                                          >
+                                            Mở trang phòng
+                                          </a>
+                                          {isSelected && <span className="text-primary">Đang chọn làm phòng tạm</span>}
+                                        </div>
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="rounded-md border border-dashed border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                                Tạm thời chưa có phòng tương đương trống cho đêm này. Vui lòng thử điều chỉnh ngày hoặc liên hệ đội hỗ trợ để được gợi ý thêm.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <Alert className="border-blue-200 bg-blue-50">
+                  <AlertDescription className="text-sm text-blue-800 space-y-1">
+                    <span>
+                      Hãy tạo đặt phòng riêng cho từng khoảng ngày vẫn còn phòng tại cơ sở này
+                      {firstPrimarySegment && (
+                        <>
+                          :
+                          <span className="font-semibold"> {formatDisplayDate(firstPrimarySegment.startDate)} → {formatDisplayDate(firstPrimarySegment.endDate)}</span>
+                        </>
+                      )}
+                      {lastPrimarySegment && lastPrimarySegment !== firstPrimarySegment && (
+                        <>
+                          {" "}và
+                          <span className="font-semibold"> {formatDisplayDate(lastPrimarySegment.startDate)} → {formatDisplayDate(lastPrimarySegment.endDate)}</span>
+                        </>
+                      )}
+                      .
+                    </span>
+                    {gapSplitSegments.length > 0 && (
+                      <span>
+                        Với đêm thiếu, chọn một phòng tạm trong danh sách rồi mở tab mới để giữ chỗ. Đội ngũ hỗ trợ sẽ ghi chú để host chuẩn bị khi bạn quay lại.
+                      </span>
+                    )}
+                  </AlertDescription>
+                </Alert>
+
+                <div className="flex flex-wrap gap-3">
+                  <Button type="button" variant="outline" onClick={handleResetSplitSuggestion}>
+                    Chỉnh lại ngày khác
+                  </Button>
+                  {gapSplitSegments.length > 0 && selectedAlternatives && Object.keys(selectedAlternatives).length > 0 ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() =>
+                        toast({
+                          title: "Đã chọn phòng tạm",
+                          description: "Bạn có thể mở phòng đã chọn ở tab mới và tiến hành giữ chỗ cho đêm thiếu.",
+                        })
+                      }
+                    >
+                      Ghi nhớ phòng tạm đã chọn
+                    </Button>
+                  ) : null}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        <GuestInfoForm
+          onInfoChange={setGuestInfo}
+          onLoginClick={authModal.openLogin}
+          titlePrefix="Bước 2 ·"
+        />
 
           <Card>
             <CardHeader>
@@ -473,6 +853,52 @@ export function BookingCheckout({
 
         <div className="space-y-4">
           <div className="sticky top-24 space-y-4">
+            {splitSuggestion && (
+              <Card className="border border-primary/40 bg-primary/5">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg text-primary">Kế hoạch split stay tạm thời</CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Tạo hai (hoặc nhiều) đặt phòng riêng biệt để giữ lịch trình liền mạch.
+                  </p>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  {splitSuggestion.segments.map((segment) => {
+                    const isPrimary = segment.type === "primary"
+                    const selectedAlternativeId = selectedAlternatives[segment.id]
+                    const selectedAlternative = segment.alternatives?.find((alt) => alt.id === selectedAlternativeId)
+
+                    return (
+                      <div
+                        key={`summary-${segment.id}`}
+                        className={cn(
+                          "rounded-md border px-3 py-2",
+                          isPrimary ? "border-emerald-200 bg-white" : "border-amber-200 bg-white",
+                        )}
+                      >
+                        <p className="font-semibold text-foreground">
+                          {formatDisplayDate(segment.startDate)} → {formatDisplayDate(segment.endDate)} · {segment.nights} đêm
+                        </p>
+                        {isPrimary ? (
+                          <p className="text-xs text-muted-foreground">
+                            Ở lại {splitSuggestion.primaryListing.title}. Ước tính: {segment.estimatedTotal ? formatCurrency(segment.estimatedTotal) : formatCurrency(listing.basePrice * segment.nights)}.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            {selectedAlternative
+                              ? `Tạm chuyển sang ${selectedAlternative.title} (${formatCurrency(selectedAlternative.estimatedTotal)})`
+                              : "Chọn một phòng tạm hoặc điều chỉnh ngày để xử lý đêm thiếu."}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                  <p className="text-xs text-muted-foreground">
+                    Sau khi hoàn tất mỗi đặt phòng, hãy cập nhật hành trình của bạn để host biết lịch di chuyển.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
             <BookingSummary
               listing={summaryListing}
               checkIn={checkIn}

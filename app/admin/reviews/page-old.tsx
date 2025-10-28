@@ -192,25 +192,6 @@ export default function AdminReviewsPage() {
                 )}
               </TabsContent>
 
-              <TabsContent value="pending" className="space-y-3">                              <CheckCircle className="h-4 w-4 mr-1" />
-                              Duyệt
-                            </Button>
-                            <Button size="sm" variant="destructive">
-                              <Trash2 className="h-4 w-4 mr-1" />
-                              Từ chối
-                            </Button>
-                          </>
-                        )}
-                        <Button size="sm" variant="outline">
-                          <Eye className="h-4 w-4 mr-1" />
-                          Chi tiết
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </TabsContent>
-
               <TabsContent value="pending" className="space-y-3">
                 {mockReviews.filter(r => r.status === "pending").map((review) => (
                   <div key={review.id} className="p-4 border rounded-lg hover:bg-muted/50 transition-colors">

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { ensureDefaultQuests } from '@/lib/quest-seed'
 
 // GET /api/quests - Get all active quests for user
 export async function GET(req: NextRequest) {
@@ -18,6 +19,9 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const category = searchParams.get('category')
     const type = searchParams.get('type')
+
+    // Ensure core quests exist before fetching
+    await ensureDefaultQuests()
 
     // Get all active quests
     const where: any = { isActive: true }

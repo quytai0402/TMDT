@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { calculateDistance } from '@/lib/helpers'
+import { getPersona } from '@/lib/personas'
 
 export async function GET(req: NextRequest) {
   try {
@@ -33,6 +34,8 @@ export async function GET(req: NextRequest) {
     // Sorting
     const sortBy = searchParams.get('sortBy') || 'createdAt'
     const sortOrder = searchParams.get('sortOrder') || 'desc'
+    const personaSlug = searchParams.get('persona')
+    const persona = personaSlug ? getPersona(personaSlug) : null
     
     // Pagination
     const page = parseInt(searchParams.get('page') || '1')
@@ -83,6 +86,79 @@ export async function GET(req: NextRequest) {
       where.instantBookable = true
     }
 
+    if (persona) {
+      if (persona.filters.allowPets !== undefined) {
+        where.allowPets = persona.filters.allowPets
+      }
+
+      if (persona.filters.propertyTypes?.length) {
+        where.propertyType = { in: persona.filters.propertyTypes }
+      }
+
+      if (persona.filters.minBedrooms) {
+        const current = typeof where.bedrooms?.gte === 'number' ? where.bedrooms.gte : 0
+        where.bedrooms = { gte: Math.max(current, persona.filters.minBedrooms) }
+      }
+
+      if (persona.filters.minGuests) {
+        const currentGuests = typeof where.maxGuests?.gte === 'number' ? where.maxGuests.gte : guests
+        where.maxGuests = { gte: Math.max(currentGuests, persona.filters.minGuests) }
+      }
+
+      if (persona.filters.verifiedAmenities?.length) {
+        where.verifiedAmenities = {
+          hasSome: persona.filters.verifiedAmenities,
+        }
+      }
+
+      if (persona.filters.hasSmartLock) {
+        where.hasSmartLock = true
+      }
+
+      if (persona.filters.requireMonthlyDiscount) {
+        where.monthlyDiscount = { gt: 0 }
+      }
+
+      if (persona.filters.requireWeeklyDiscount) {
+        where.weeklyDiscount = { gt: 0 }
+      }
+
+      if (persona.filters.minimumRating) {
+        where.averageRating = { gte: persona.filters.minimumRating }
+      }
+
+      if (persona.filters.allowEvents !== undefined) {
+        where.allowEvents = persona.filters.allowEvents
+      }
+    }
+
+    let orderings: any = [{ [sortBy]: sortOrder }]
+
+    if (persona?.filters.sortPriority === 'monthlyDiscount') {
+      orderings = [
+        { monthlyDiscount: 'desc' },
+        { weeklyDiscount: 'desc' },
+        { averageRating: 'desc' },
+        { createdAt: 'desc' },
+      ]
+    } else if (persona?.filters.sortPriority === 'rating') {
+      orderings = [
+        { averageRating: 'desc' },
+        { totalReviews: 'desc' },
+        { createdAt: 'desc' },
+      ]
+    } else if (persona?.filters.sortPriority === 'price') {
+      orderings = [
+        { basePrice: 'asc' },
+        { averageRating: 'desc' },
+      ]
+    } else if (persona?.filters.sortPriority === 'recent') {
+      orderings = [
+        { createdAt: 'desc' },
+        { averageRating: 'desc' },
+      ]
+    }
+
     // Fetch listings
     let listings = await prisma.listing.findMany({
       where,
@@ -102,9 +178,7 @@ export async function GET(req: NextRequest) {
           },
         },
       },
-      orderBy: {
-        [sortBy]: sortOrder,
-      },
+      orderBy: orderings,
       skip,
       take: limit,
     })

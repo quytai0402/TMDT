@@ -14,6 +14,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { Separator } from "@/components/ui/separator"
 import {
   Filter,
+  Search,
   MapPin,
   SlidersHorizontal,
   Star,
@@ -67,6 +68,43 @@ const sortOptions: SortOption[] = [
 const MIN_PRICE = 100_000
 const MAX_PRICE = 30_000_000
 
+const DEFAULT_PROPERTY_TYPES = [
+  "APARTMENT",
+  "VILLA",
+  "HOUSE",
+  "BUNGALOW",
+  "CABIN",
+  "CONDO",
+  "TOWNHOUSE",
+  "STUDIO",
+  "LOFT",
+  "TINY_HOME",
+]
+
+const PROPERTY_TYPE_LABELS: Record<string, string> = {
+  APARTMENT: "Apartment",
+  VILLA: "Villa",
+  HOUSE: "House",
+  BUNGALOW: "Bungalow",
+  CABIN: "Cabin",
+  CONDO: "Condo",
+  TOWNHOUSE: "Townhouse",
+  STUDIO: "Studio",
+  LOFT: "Loft",
+  TINY_HOME: "Tiny home",
+}
+
+const formatPropertyType = (value: string | undefined) => {
+  if (!value) return ""
+  const normalized = value.toUpperCase()
+  if (PROPERTY_TYPE_LABELS[normalized]) {
+    return PROPERTY_TYPE_LABELS[normalized]
+  }
+  return normalized.replace(/[_\-]+/g, " ")
+    .toLowerCase()
+    .replace(/(^|\s)\S/g, (letter) => letter.toUpperCase())
+}
+
 function parseNumber(value?: string | string[]): number | undefined {
   if (!value) return undefined
   const parsed = Array.isArray(value) ? Number(value[0]) : Number(value)
@@ -90,11 +128,23 @@ export function SearchResultsView({ initialParams }: SearchResultsViewProps) {
 
   const [query, setQuery] = useState(() => (typeof initialParams.q === 'string' ? initialParams.q : ''))
   const [city, setCity] = useState(() => (typeof initialParams.city === 'string' ? initialParams.city : ''))
-  const [guests, setGuests] = useState(() => parseNumber(initialParams.guests) ?? 2)
-  const [priceRange, setPriceRange] = useState<[number, number]>(() => [
-    parseNumber(initialParams.minPrice) ?? MIN_PRICE,
-    parseNumber(initialParams.maxPrice) ?? Math.min(MAX_PRICE, 5_000_000),
-  ])
+  const [guests, setGuests] = useState<number | null>(() => {
+    const initialGuests = parseNumber(initialParams.guests)
+    return typeof initialGuests === 'number' && Number.isFinite(initialGuests) ? initialGuests : null
+  })
+  const [priceRange, setPriceRange] = useState<[number, number]>(() => {
+    const minValue = parseNumber(initialParams.minPrice)
+    const maxValue = parseNumber(initialParams.maxPrice)
+
+    const resolvedMin = typeof minValue === 'number' && Number.isFinite(minValue) ? minValue : MIN_PRICE
+    let resolvedMax = typeof maxValue === 'number' && Number.isFinite(maxValue) ? maxValue : MAX_PRICE
+
+    if (resolvedMax < resolvedMin) {
+      resolvedMax = resolvedMin
+    }
+
+    return [resolvedMin, resolvedMax]
+  })
   const [instantBookable, setInstantBookable] = useState(initialParams.instantBookable === 'true')
   const [allowPets, setAllowPets] = useState(initialParams.allowPets === 'true')
   const [amenities, setAmenities] = useState<string[]>(() => parseList(initialParams.amenities))
@@ -106,9 +156,25 @@ export function SearchResultsView({ initialParams }: SearchResultsViewProps) {
   const [tripLength, setTripLength] = useState(() =>
     typeof initialParams.tripLength === 'string' ? initialParams.tripLength : '3-5'
   )
+  const [flexMonth, setFlexMonth] = useState<string>(() =>
+    typeof initialParams.month === 'string' ? initialParams.month : ''
+  )
+  const [flexDuration, setFlexDuration] = useState<string>(() =>
+    typeof initialParams.duration === 'string' ? initialParams.duration : ''
+  )
+  const [flexRegion, setFlexRegion] = useState<string>(() =>
+    typeof initialParams.region === 'string' ? initialParams.region : ''
+  )
   const [propertyType, setPropertyType] = useState<string | undefined>(() => {
     const raw = typeof initialParams.propertyTypes === 'string' ? initialParams.propertyTypes : undefined
     return raw && raw !== 'ALL' ? raw : undefined
+  })
+  const [propertyTypeOptions, setPropertyTypeOptions] = useState<string[]>(() => {
+    const seeded = new Set(DEFAULT_PROPERTY_TYPES)
+    if (propertyType) {
+      seeded.add(propertyType)
+    }
+    return Array.from(seeded)
   })
   const initialSortId = typeof initialParams.sort === 'string' ? initialParams.sort : 'trending'
   const [activeSort, setActiveSort] = useState<string>(
@@ -124,11 +190,26 @@ export function SearchResultsView({ initialParams }: SearchResultsViewProps) {
     [activeSort]
   )
 
+  useEffect(() => {
+    if (listings.length === 0) {
+      return
+    }
+    setPropertyTypeOptions((prev) => {
+      const merged = new Set(prev)
+      listings.forEach((listing) => {
+        if (listing.propertyType) {
+          merged.add(listing.propertyType)
+        }
+      })
+      return Array.from(merged)
+    })
+  }, [listings])
+
   const buildSearchParams = useCallback(() => {
     const params = new URLSearchParams()
     if (query) params.set('q', query)
     if (city) params.set('city', city)
-    if (guests) params.set('guests', String(guests))
+    if (guests !== null) params.set('guests', String(guests))
     if (priceRange[0] > MIN_PRICE) params.set('minPrice', String(priceRange[0]))
     if (priceRange[1] < MAX_PRICE) params.set('maxPrice', String(priceRange[1]))
     if (instantBookable) params.set('instantBookable', 'true')
@@ -139,12 +220,33 @@ export function SearchResultsView({ initialParams }: SearchResultsViewProps) {
     if (propertyType && propertyType !== 'ALL') params.set('propertyTypes', propertyType)
     if (dateFlex !== 'weekends') params.set('flexMode', dateFlex)
     if (tripLength !== '3-5') params.set('tripLength', tripLength)
+    if (flexMonth) params.set('month', flexMonth)
+    if (flexDuration) params.set('duration', flexDuration)
+    if (flexRegion) params.set('region', flexRegion)
+    if (flexMonth || flexDuration || flexRegion) params.set('flexible', 'true')
     params.set('sortBy', activeSortOption.sortBy)
     params.set('sortOrder', activeSortOption.sortOrder)
     params.set('sort', activeSortOption.id)
     params.set('limit', '24')
     return params
-  }, [query, city, guests, priceRange, instantBookable, allowPets, propertyType, activeSortOption, amenities, experiences, policies, dateFlex, tripLength])
+  }, [
+    query,
+    city,
+    guests,
+    priceRange,
+    instantBookable,
+    allowPets,
+    propertyType,
+    activeSortOption,
+    amenities,
+    experiences,
+    policies,
+    dateFlex,
+    tripLength,
+    flexMonth,
+    flexDuration,
+    flexRegion,
+  ])
 
   const fetchListings = useCallback(async () => {
     try {
@@ -204,12 +306,28 @@ export function SearchResultsView({ initialParams }: SearchResultsViewProps) {
   const handleResetFilters = () => {
     setQuery('')
     setCity('')
-    setGuests(2)
-    setPriceRange([MIN_PRICE, Math.min(MAX_PRICE, 5_000_000)])
+    setGuests(() => {
+      const initialGuests = parseNumber(initialParams.guests)
+      return typeof initialGuests === 'number' && Number.isFinite(initialGuests) ? initialGuests : null
+    })
+    setPriceRange([MIN_PRICE, MAX_PRICE])
     setInstantBookable(false)
     setAllowPets(false)
     setPropertyType(undefined)
     setActiveSort('trending')
+    setAmenities([])
+    setExperiences([])
+    setPolicies([])
+    setDateFlex('weekends')
+    setTripLength('3-5')
+    setFlexMonth('')
+    setFlexDuration('')
+    setFlexRegion('')
+    setPropertyTypeOptions((prev) => {
+      const seeded = new Set(DEFAULT_PROPERTY_TYPES)
+      prev.forEach((type) => seeded.add(type))
+      return Array.from(seeded)
+    })
   }
 
   return (
@@ -260,6 +378,18 @@ export function SearchResultsView({ initialParams }: SearchResultsViewProps) {
             <div className="lg:col-span-1 space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium flex items-center gap-2">
+                  <Search className="h-4 w-4" />
+                  Bạn muốn tìm gì?
+                </label>
+                <Input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Từ khóa, phong cách, tiện nghi..."
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium flex items-center gap-2">
                   <MapPin className="h-4 w-4" />
                   Bạn muốn ở đâu?
                 </label>
@@ -279,8 +409,24 @@ export function SearchResultsView({ initialParams }: SearchResultsViewProps) {
                   type="number"
                   min={1}
                   max={16}
-                  value={guests}
-                  onChange={(event) => setGuests(Math.max(1, Number(event.target.value)))}
+                  value={guests ?? ''}
+                  onChange={(event) => {
+                    const { value } = event.target
+
+                    if (value === '') {
+                      setGuests(null)
+                      return
+                    }
+
+                    const numericValue = Number(value)
+
+                    if (!Number.isFinite(numericValue)) {
+                      return
+                    }
+
+                    const clamped = Math.min(16, Math.max(1, Math.floor(numericValue)))
+                    setGuests(clamped)
+                  }}
                 />
               </div>
 
@@ -291,7 +437,10 @@ export function SearchResultsView({ initialParams }: SearchResultsViewProps) {
                     Khoảng giá (đ/đêm)
                   </label>
                   <Badge variant="secondary">
-                    {priceRange[0].toLocaleString('vi-VN')} - {priceRange[1].toLocaleString('vi-VN')}
+                    {priceRange[0].toLocaleString('vi-VN')} -{' '}
+                    {priceRange[1] >= MAX_PRICE
+                      ? 'Không giới hạn'
+                      : priceRange[1].toLocaleString('vi-VN')}
                   </Badge>
                 </div>
                 <Slider
@@ -341,25 +490,38 @@ export function SearchResultsView({ initialParams }: SearchResultsViewProps) {
                 ))}
               </div>
 
-              {uniquePropertyTypes.length > 0 && (
+              {propertyTypeOptions.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  <Badge
-                    variant={!propertyType ? 'default' : 'outline'}
-                    className="cursor-pointer"
+                  <button
+                    type="button"
                     onClick={() => setPropertyType(undefined)}
+                    className={`rounded-full border px-4 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+                      propertyType
+                        ? 'border-border bg-muted text-muted-foreground hover:bg-muted/80'
+                        : 'border-primary/60 bg-primary text-primary-foreground shadow'
+                    }`}
                   >
-                    Tất cả loại chỗ ở
-                  </Badge>
-                  {uniquePropertyTypes.map((type) => (
-                    <Badge
-                      key={type}
-                      variant={propertyType === type ? 'default' : 'outline'}
-                      className="cursor-pointer capitalize"
-                      onClick={() => setPropertyType(type)}
-                    >
-                      {type.replace(/_/g, ' ').toLowerCase()}
-                    </Badge>
-                  ))}
+                    Tất cả chỗ ở
+                  </button>
+                  {propertyTypeOptions
+                    .sort((a, b) => formatPropertyType(a).localeCompare(formatPropertyType(b), 'vi'))
+                    .map((type) => {
+                      const isActive = propertyType === type
+                      return (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => setPropertyType(type)}
+                          className={`rounded-full border px-4 py-1.5 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+                            isActive
+                              ? 'border-primary/60 bg-primary text-primary-foreground shadow'
+                              : 'border-border bg-white text-muted-foreground hover:border-primary/40 hover:text-foreground'
+                          }`}
+                        >
+                          {formatPropertyType(type)}
+                        </button>
+                      )
+                    })}
                 </div>
               )}
 

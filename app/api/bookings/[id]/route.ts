@@ -38,6 +38,9 @@ export async function GET(
         },
         review: true,
         payment: true,
+        conciergePlans: {
+          orderBy: { createdAt: 'desc' },
+        },
       },
     })
 

@@ -27,6 +27,7 @@ interface ExperienceCardProps {
   reviewCount: number
   tags: string[]
   featured?: boolean
+  membersOnly?: boolean
 }
 
 export function ExperienceCard({
@@ -43,7 +44,8 @@ export function ExperienceCard({
   rating,
   reviewCount,
   tags,
-  featured
+  featured,
+  membersOnly,
 }: ExperienceCardProps) {
   const [isLiked, setIsLiked] = useState(false)
 
@@ -57,11 +59,18 @@ export function ExperienceCard({
             fill
             className="object-cover group-hover:scale-110 transition-transform duration-500"
           />
-          {featured && (
-            <div className="absolute top-4 left-4">
-              <Badge className="bg-orange-600 text-white">
-                ⭐ Nổi bật
-              </Badge>
+          {(featured || membersOnly) && (
+            <div className="absolute top-4 left-4 flex flex-col gap-2">
+              {membersOnly && (
+                <Badge className="bg-purple-600 text-white shadow-md">
+                  Member Only
+                </Badge>
+              )}
+              {featured && (
+                <Badge className="bg-orange-600 text-white">
+                  ⭐ Nổi bật
+                </Badge>
+              )}
             </div>
           )}
           <div className="absolute top-4 right-4">

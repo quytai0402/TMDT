@@ -21,6 +21,7 @@ type ExperienceWithHost = {
   tags?: string[] | null
   featured: boolean
   image: string
+  isMembersOnly?: boolean
   host: {
     name: string | null
     image: string | null
@@ -35,6 +36,10 @@ const getExperiences = cache(async (): Promise<ExperienceSummary[]> => {
   const experiences = await prismaClient.experience.findMany({
     where: {
       status: "ACTIVE",
+      OR: [
+        { isMembersOnly: false },
+        { isMembersOnly: null },
+      ],
     },
     include: {
       host: {
@@ -75,6 +80,7 @@ const getExperiences = cache(async (): Promise<ExperienceSummary[]> => {
     reviewCount: experience.totalReviews,
     tags: experience.tags ?? [],
     featured: experience.featured,
+    membersOnly: experience.isMembersOnly ?? false,
   }))
 })
 

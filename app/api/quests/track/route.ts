@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
 
       // Check daily/weekly reset
       const now = new Date()
-      const lastReset = userQuest.lastResetAt
+      const lastReset = userQuest.lastResetAt ?? userQuest.updatedAt ?? userQuest.createdAt ?? new Date()
       const hoursSinceReset = (now.getTime() - lastReset.getTime()) / (1000 * 60 * 60)
 
       let shouldReset = false
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
           currentCount: newCount,
           isCompleted: isNowCompleted,
           completedAt: isNowCompleted ? now : (shouldReset ? null : userQuest.completedAt),
-          lastResetAt: shouldReset ? now : userQuest.lastResetAt
+          lastResetAt: shouldReset ? now : userQuest.lastResetAt ?? lastReset
         },
         include: {
           quest: true

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { CreditCard, Smartphone, Building2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -23,6 +23,17 @@ export function PaymentMethods({ bookingId, amount, bookingCode, disabled = fals
   const router = useRouter()
   const { toast } = useToast()
 
+  const paymentConfig: Record<
+    string,
+    { method: "VNPAY" | "MOMO" | "ZALOPAY" | "CREDIT_CARD"; gateway: "VNPAY" | "MOMO" | "ZALOPAY" | "STRIPE" | "MANUAL" }
+  > = {
+    card: { method: "CREDIT_CARD", gateway: "MANUAL" },
+    vnpay: { method: "VNPAY", gateway: "VNPAY" },
+    momo: { method: "MOMO", gateway: "MOMO" },
+    zalopay: { method: "ZALOPAY", gateway: "ZALOPAY" },
+    bank: { method: "CREDIT_CARD", gateway: "MANUAL" },
+  }
+
   const handlePayment = async () => {
     if (disabled || !bookingId) {
       toast({
@@ -32,15 +43,40 @@ export function PaymentMethods({ bookingId, amount, bookingCode, disabled = fals
       return
     }
 
+    const config = paymentConfig[paymentMethod]
+    if (!config) {
+      toast({
+        title: "Phương thức không hỗ trợ",
+        description: "Vui lòng chọn phương thức thanh toán khác.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Manual handling (bank transfer, offline card)
+    if (config.gateway === "MANUAL") {
+      const note =
+        paymentMethod === "bank"
+          ? "Thông tin chuyển khoản sẽ được gửi qua email của bạn."
+          : "Chúng tôi sẽ liên hệ để hoàn tất thanh toán thẻ ngoại tuyến."
+      toast({
+        title: "Đã ghi nhận yêu cầu",
+        description: note,
+      })
+      router.push(`/booking/success?bookingId=${bookingId}&method=${paymentMethod}`)
+      return
+    }
+
     setIsProcessing(true)
 
     try {
-      const response = await fetch("/api/payment/create", {
+      const response = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bookingId,
-          paymentMethod,
+          paymentMethod: config.method,
+          paymentGateway: config.gateway,
           amount: amount || 0,
         }),
       })

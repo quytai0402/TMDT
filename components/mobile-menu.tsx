@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Menu, X, Home, Search, Heart, User, MessageSquare, Calendar, Trophy, Crown, Settings, LogOut, LogIn } from "lucide-react"
+import { Menu, X, Home, Search, Heart, User, MessageSquare, Calendar, Trophy, Crown, Settings, LogOut, LogIn, LayoutDashboard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Separator } from "@/components/ui/separator"
@@ -23,6 +23,7 @@ export function MobileMenu() {
   const menuItems = [
     { icon: Home, label: "Trang chủ", href: "/" },
     { icon: Search, label: "Tìm kiếm", href: "/search" },
+    { icon: LayoutDashboard, label: "Chủ đề cá nhân hoá", href: "/personas" },
     { icon: Heart, label: "Yêu thích", href: "/wishlist", auth: true },
     { icon: Calendar, label: "Chuyến đi", href: "/trips", auth: true },
     { icon: MessageSquare, label: "Tin nhắn", href: "/messages", auth: true },

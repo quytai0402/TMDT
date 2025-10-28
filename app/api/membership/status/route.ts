@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { getMembershipForUser } from "@/lib/membership"
 
 const MEMBERSHIP_CONFIG = {
   BRONZE: { freeNights: 0, upgrades: 0 },
@@ -27,6 +28,21 @@ export async function GET() {
         loyaltyPoints: true,
         loyaltyTier: true,
         createdAt: true,
+        membershipStatus: true,
+        membershipStartedAt: true,
+        membershipExpiresAt: true,
+        membershipBillingCycle: true,
+        membershipFeatures: true,
+        membershipPlan: {
+          select: {
+            slug: true,
+            name: true,
+            color: true,
+            icon: true,
+            features: true,
+            exclusiveFeatures: true,
+          },
+        },
       },
     })
 
@@ -86,6 +102,8 @@ export async function GET() {
       ? Math.max(nextTier.minPoints - user.loyaltyPoints, 0)
       : null
 
+    const membership = await getMembershipForUser(user.id)
+
     return NextResponse.json({
       user: {
         id: user.id,
@@ -114,6 +132,7 @@ export async function GET() {
         totalSavings: Math.max(user.loyaltyPoints * 1000, 0),
       },
       tiers,
+      membership,
     })
   } catch (error) {
     console.error('Membership status error:', error)

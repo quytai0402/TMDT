@@ -16,7 +16,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { Skeleton } from "@/components/ui/skeleton"
+import { toast } from "sonner"
 
 interface MembershipPlan {
   id: string
@@ -115,13 +115,36 @@ export default function MembershipCheckoutPage() {
     }
 
     setIsProcessing(true)
-    
-    // Simulate payment processing
-    setTimeout(() => {
+    try {
+      const response = await fetch('/api/membership/activate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          planSlug: plan.slug,
+          billingCycle: billing,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        const message = errorData.error ?? 'Không thể kích hoạt membership. Vui lòng thử lại.'
+        setPlanError(message)
+        toast.error(message)
+        return
+      }
+
+      toast.success('Membership đã được kích hoạt thành công!')
+      router.push(`/membership/success?tier=${plan.slug}&billing=${billing}`)
+    } catch (error) {
+      console.error('Membership payment error:', error)
+      const message = 'Có lỗi xảy ra trong quá trình thanh toán. Vui lòng thử lại.'
+      setPlanError(message)
+      toast.error(message)
+    } finally {
       setIsProcessing(false)
-      // Redirect to success page
-      router.push(`/membership/success?tier=${tier}&billing=${billing}`)
-    }, 2000)
+    }
   }
 
   return (
@@ -305,7 +328,7 @@ export default function MembershipCheckoutPage() {
                     className="w-full"
                     size="lg"
                     onClick={handlePayment}
-                    disabled={!agreeToTerms || isProcessing}
+                    disabled={!agreeToTerms || isProcessing || loadingPlan || !plan}
                   >
                     {isProcessing ? (
                       "Đang xử lý..."

@@ -25,10 +25,14 @@ export interface ExperienceSummary {
   reviewCount: number
   tags: string[]
   featured?: boolean
+  membersOnly?: boolean
 }
 
 interface ExperiencesGridProps {
   initialExperiences: ExperienceSummary[]
+  title?: string
+  subtitle?: string
+  badgeLabel?: string
 }
 
 const categoryLabelMap: Record<string, string> = {
@@ -58,8 +62,12 @@ const categories = [
   { value: "NIGHTLIFE", label: "Cuộc sống về đêm" },
 ]
 
-export function ExperiencesGrid({ initialExperiences }: ExperiencesGridProps) {
+export function ExperiencesGrid({ initialExperiences, title, subtitle, badgeLabel }: ExperiencesGridProps) {
   const [activeCategory, setActiveCategory] = useState<string>("all")
+
+  const headingTitle = title ?? "Trải nghiệm địa phương"
+  const headingSubtitle = subtitle ?? "Khám phá văn hóa, ẩm thực và hoạt động độc đáo cùng người dân địa phương"
+  const headingBadge = badgeLabel ?? "Local Experiences"
 
   const normalizedExperiences = useMemo(() => {
     return initialExperiences.map((experience) => ({
@@ -70,6 +78,7 @@ export function ExperiencesGrid({ initialExperiences }: ExperiencesGridProps) {
         avatar: experience.host.avatar || "/placeholder.svg",
       },
       displayCategory: categoryLabelMap[experience.category] || experience.category,
+      membersOnly: experience.membersOnly ?? false,
     }))
   }, [initialExperiences])
 
@@ -109,11 +118,11 @@ export function ExperiencesGrid({ initialExperiences }: ExperiencesGridProps) {
       <div className="text-center space-y-3">
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary">
           <Compass className="h-4 w-4" />
-          <span className="text-sm font-medium">Local Experiences</span>
+          <span className="text-sm font-medium">{headingBadge}</span>
         </div>
-        <h1 className="text-4xl font-bold">Trải nghiệm địa phương</h1>
+        <h1 className="text-4xl font-bold">{headingTitle}</h1>
         <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-          Khám phá văn hóa, ẩm thực và hoạt động độc đáo cùng người dân địa phương
+          {headingSubtitle}
         </p>
       </div>
 
@@ -143,6 +152,7 @@ export function ExperiencesGrid({ initialExperiences }: ExperiencesGridProps) {
                   key={experience.id}
                   {...experience}
                   category={displayCategory}
+                  membersOnly={experience.membersOnly}
                 />
               ))}
             </div>

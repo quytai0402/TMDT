@@ -12,6 +12,7 @@ import { ListingsGrid } from "@/components/listings-grid"
 import { InteractiveMapPreview } from "@/components/interactive-map-preview"
 import { TestimonialsSection } from "@/components/testimonials-section"
 import { FeaturesSection } from "@/components/features-section"
+import { PersonaShowcase } from "@/components/persona-showcase"
 import { Footer } from "@/components/footer"
 
 export default function HomePage() {
@@ -28,6 +29,7 @@ export default function HomePage() {
         <FlexibleSearchGrid />
         <CuratedCollections />
         <PersonalizedDiscovery />
+        <PersonaShowcase compact />
         <ListingsGrid />
         <InteractiveMapPreview />
         <TestimonialsSection />
@@ -37,4 +39,3 @@ export default function HomePage() {
     </div>
   )
 }
-

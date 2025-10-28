@@ -48,6 +48,7 @@ type ListingSeed = {
   averageRating: number
   totalReviews: number
   totalBookings: number
+  isSecret?: boolean
 }
 
 type ExperienceSeed = {
@@ -72,6 +73,7 @@ type ExperienceSeed = {
   featured?: boolean
   averageRating: number
   totalReviews: number
+  membersOnly?: boolean
 }
 
 type ServiceSeed = {
@@ -542,6 +544,7 @@ const LOCATIONS: LocationSeed[] = [
         tags: ['Cà phê đặc sản', 'Rang xay', 'Workshop'],
         averageRating: 4.87,
         totalReviews: 74,
+        membersOnly: true,
       },
     ],
     services: [
@@ -1381,6 +1384,7 @@ const LOCATIONS: LocationSeed[] = [
         featured: true,
         averageRating: 4.97,
         totalReviews: 203,
+        membersOnly: true,
       },
       {
         title: 'Đêm chèo & nhạc sống Hồ Gươm',
@@ -2836,6 +2840,7 @@ async function seedData() {
             status: ListingStatus.ACTIVE,
             slug: `${toSlug(location.city)}-${toSlug(listingSeed.title)}`,
             featured: listingSeed.featured ?? false,
+            isSecret: listingSeed.isSecret ?? listingSeed.basePrice >= 3500000,
             instantBookable: listingSeed.instantBookable ?? false,
             allowPets: listingSeed.allowPets ?? false,
             allowSmoking: listingSeed.allowSmoking ?? false,
@@ -2883,6 +2888,7 @@ async function seedData() {
             status: ExperienceStatus.ACTIVE,
             isVerified: true,
             featured: experienceSeed.featured ?? false,
+            isMembersOnly: experienceSeed.membersOnly ?? false,
             averageRating: experienceSeed.averageRating,
             totalReviews: experienceSeed.totalReviews,
             totalBookings: Math.round(experienceSeed.totalReviews * 1.6),

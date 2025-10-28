@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { calculateNights, calculateTotalPrice, calculateDistance } from '@/lib/helpers'
+import { calculateNights, calculateServiceFee, calculateTotalPrice, calculateDistance } from '@/lib/helpers'
 import { sendBookingConfirmationEmail } from '@/lib/email'
 import { z } from 'zod'
 
@@ -49,6 +49,23 @@ const createBookingSchema = z
       .trim()
       .email({ message: 'Email không hợp lệ' })
       .optional(),
+    additionalServices: z
+      .array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          description: z.string().optional(),
+          basePrice: z.number(),
+          totalPrice: z.number(),
+          unit: z.string(),
+          quantity: z.number(),
+          quantityLabel: z.string().optional(),
+          category: z.string().optional(),
+          metadata: z.any().optional(),
+        }),
+      )
+      .optional(),
+    additionalServicesTotal: z.number().min(0).optional(),
   })
   .refine((data) => data.checkOut > data.checkIn, {
     path: ['checkOut'],
@@ -647,13 +664,40 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const normalizedAdditionalServices = (validatedData.additionalServices ?? []).map((service) => ({
+      id: service.id,
+      name: service.name,
+      description: service.description,
+      basePrice: service.basePrice,
+      totalPrice: service.totalPrice,
+      unit: service.unit,
+      quantity: service.quantity,
+      quantityLabel: service.quantityLabel,
+      category: service.category,
+      metadata: service.metadata ?? undefined,
+    }))
+
+    const computedAdditionalServicesTotal = normalizedAdditionalServices.reduce(
+      (sum, service) => sum + (service.totalPrice ?? 0),
+      0,
+    )
+
+    const additionalServicesTotal = Math.max(
+      0,
+      validatedData.additionalServicesTotal ?? computedAdditionalServicesTotal,
+    )
+
     // Calculate pricing
     const nights = calculateNights(checkInDate, checkOutDate)
-    const totalPrice = calculateTotalPrice(
-      listing.basePrice,
-      nights,
-      listing.cleaningFee
-    )
+    const accommodationSubtotal = listing.basePrice * nights
+    const cleaningFeeAmount = listing.cleaningFee ?? 0
+    const hasCustomServiceFee = typeof listing.serviceFee === 'number' && listing.serviceFee > 0
+    const baseServiceFee = hasCustomServiceFee
+      ? listing.serviceFee!
+      : calculateServiceFee(listing.basePrice, nights)
+    const additionalServiceFee = hasCustomServiceFee ? 0 : additionalServicesTotal * 0.1
+    const serviceFeeAmount = baseServiceFee + additionalServiceFee
+    const totalPrice = accommodationSubtotal + cleaningFeeAmount + serviceFeeAmount + additionalServicesTotal
 
     // Create booking
     const booking = await prisma.booking.create({
@@ -674,8 +718,10 @@ export async function POST(req: NextRequest) {
         infants: validatedData.infants || 0,
         pets: validatedData.pets || 0,
         basePrice: listing.basePrice,
-        cleaningFee: listing.cleaningFee,
-        serviceFee: totalPrice - (listing.basePrice * nights) - listing.cleaningFee,
+        cleaningFee: cleaningFeeAmount,
+        serviceFee: serviceFeeAmount,
+        additionalServices: normalizedAdditionalServices,
+        additionalServicesTotal,
         totalPrice,
         status: listing.instantBookable ? 'CONFIRMED' : 'PENDING',
         instantBook: listing.instantBookable,

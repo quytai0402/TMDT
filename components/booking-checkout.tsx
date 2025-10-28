@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSession } from "next-auth/react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -12,6 +12,18 @@ import { PaymentMethods } from "@/components/payment-methods"
 import { useToast } from "@/hooks/use-toast"
 import { useAuthModal } from "@/hooks/use-auth-modal"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { ServicesSelection, type SelectedServiceSummary } from "@/components/services-selection"
 import { cn } from "@/lib/utils"
 
 interface HostInfo {
@@ -40,6 +52,8 @@ interface BookingCheckoutProps {
   initialCheckIn?: string
   initialCheckOut?: string
   initialGuests?: number
+  initialServices?: SelectedServiceSummary[]
+  initialServicesTotal?: number
 }
 
 type StepStatus = "completed" | "current" | "upcoming"
@@ -104,6 +118,55 @@ interface SplitStaySuggestion {
   segments: SplitStaySegment[]
 }
 
+type ConciergePlanStatus = "PENDING" | "CONFIRMED" | "CANCELLED" | "COMPLETED"
+
+interface ConciergePartnerInfo {
+  id: string
+  title: string
+  location: string
+  basePrice: number
+  cleaningFee?: number | null
+  status?: string | null
+  sameHost?: boolean
+}
+
+interface ConciergePlan {
+  id: string
+  bookingId?: string | null
+  listingId: string
+  guestId?: string | null
+  status: ConciergePlanStatus
+  planDetails: {
+    segments: SplitStaySegment[]
+    selectedAlternatives: Record<string, string>
+    generatedAt?: string
+  }
+  loyaltyOffer?: string | null
+  partnerInfo?: ConciergePartnerInfo[] | null
+  hostNotes?: string | null
+  guestNotes?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+const conciergeOfferPresets: Array<{ id: string; label: string; description: string }> = [
+  {
+    id: "upgrade",
+    label: "Nâng hạng phòng miễn phí",
+    description: "Tặng nâng hạng khi khách quay lại sau đêm trống.",
+  },
+  {
+    id: "breakfast",
+    label: "Bữa sáng & tiện ích",
+    description: "Miễn phí bữa sáng và late checkout khi quay lại.",
+  },
+  {
+    id: "points",
+    label: "Gấp đôi điểm thưởng",
+    description: "Nhân đôi điểm loyalty cho toàn bộ kỳ nghỉ.",
+  },
+]
+
 const formatForInput = (date: Date) => {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, "0")
@@ -135,11 +198,57 @@ const formatDisplayDate = (value: string) => {
 
 const formatCurrency = (amount: number) => `${amount.toLocaleString("vi-VN")}₫`
 
+const conciergeOfferCopy: Record<string, string> = {
+  upgrade: "Tặng nâng hạng phòng miễn phí khi khách quay lại sau đêm bị trùng lịch.",
+  breakfast: "Miễn phí bữa sáng, đồ uống chào mừng và hỗ trợ checkout linh hoạt khi khách quay lại.",
+  points: "Nhân đôi số điểm loyalty cho toàn bộ kỳ nghỉ và cộng thêm ưu đãi quay lại.",
+}
+
+const conciergePlanStatusLabel: Record<ConciergePlanStatus, string> = {
+  PENDING: "Đang xử lý",
+  CONFIRMED: "Đã xác nhận",
+  CANCELLED: "Đã hủy",
+  COMPLETED: "Hoàn tất",
+}
+
+const buildHostNoteFromSuggestion = (suggestion: SplitStaySuggestion) => {
+  if (!suggestion) {
+    return ""
+  }
+
+  const primarySegments = suggestion.segments.filter((segment) => segment.type === "primary")
+  const gapSegments = suggestion.segments.filter((segment) => segment.type === "gap")
+
+  const requestedRange =
+    primarySegments.length > 0
+      ? `${formatDisplayDate(primarySegments[0].startDate)} → ${formatDisplayDate(
+          primarySegments[primarySegments.length - 1].endDate,
+        )}`
+      : `${formatDisplayDate(suggestion.requested.startDate)} → ${formatDisplayDate(
+          suggestion.requested.endDate,
+        )}`
+
+  const gapSummary =
+    gapSegments.length > 0
+      ? `Có ${gapSegments.length} đêm trùng lịch cần hỗ trợ (${gapSegments
+          .map((segment) => `${formatDisplayDate(segment.startDate)} → ${formatDisplayDate(segment.endDate)}`)
+          .join(", ")}).`
+      : "Không có đêm nào trùng lịch."
+
+  return [
+    `Khách mong muốn lưu trú tại ${suggestion.primaryListing.title} trong khoảng ${requestedRange}.`,
+    gapSummary,
+    "Vui lòng chuẩn bị để khách quay lại phòng ban đầu ngay sau khi hết lịch trùng.",
+  ].join(" ")
+}
+
 export function BookingCheckout({
   listing,
   initialCheckIn,
   initialCheckOut,
   initialGuests,
+  initialServices,
+  initialServicesTotal,
 }: BookingCheckoutProps) {
   const { data: session } = useSession()
   const { toast } = useToast()
@@ -150,6 +259,65 @@ export function BookingCheckout({
   const tomorrow = new Date(today)
   tomorrow.setDate(tomorrow.getDate() + 1)
   const defaultCheckOut = initialCheckOut || formatForInput(tomorrow)
+
+  const calculateServicesTotal = useCallback(
+    (services: SelectedServiceSummary[]) =>
+      services.reduce((sum, service) => sum + (service.totalPrice ?? 0), 0),
+    [],
+  )
+
+  const recalcServicesForTrip = useCallback(
+    (services: SelectedServiceSummary[], currentNights: number, currentGuests: number) => {
+      return services.map((service) => {
+        let quantity = service.quantity
+        let totalPrice = service.totalPrice
+        let quantityLabel = service.quantityLabel
+        let metadata = service.metadata ? { ...service.metadata } : undefined
+
+        switch (service.unit) {
+          case "daily": {
+            const nightsValue = Math.max(1, currentNights)
+            quantity = nightsValue
+            totalPrice = service.basePrice * nightsValue
+            quantityLabel = `${nightsValue} đêm`
+            break
+          }
+          case "person": {
+            const nightsValue = Math.max(1, currentNights)
+            const guestsValue = Math.max(1, currentGuests)
+            quantity = nightsValue * guestsValue
+            totalPrice = service.basePrice * nightsValue * guestsValue
+            quantityLabel = `${guestsValue} người × ${nightsValue} đêm`
+            break
+          }
+          case "pet": {
+            const nightsValue = Math.max(1, Math.min(metadata?.petNights ?? currentNights, currentNights))
+            const petsValue = Math.max(1, metadata?.numberOfPets ?? 1)
+            quantity = nightsValue * petsValue
+            totalPrice = service.basePrice * nightsValue * petsValue
+            quantityLabel = `${petsValue} thú cưng × ${nightsValue} đêm`
+            metadata = { ...metadata, petNights: nightsValue, numberOfPets: petsValue }
+            break
+          }
+          default: {
+            quantity = 1
+            totalPrice = service.basePrice
+            quantityLabel = service.quantityLabel ?? ""
+            break
+          }
+        }
+
+        return {
+          ...service,
+          quantity,
+          totalPrice,
+          quantityLabel,
+          metadata,
+        }
+      })
+    },
+    [],
+  )
 
   const [checkIn, setCheckIn] = useState(defaultCheckIn)
   const [checkOut, setCheckOut] = useState(defaultCheckOut)
@@ -168,6 +336,17 @@ export function BookingCheckout({
   const [splitSuggestion, setSplitSuggestion] = useState<SplitStaySuggestion | null>(null)
   const [selectedAlternatives, setSelectedAlternatives] = useState<Record<string, string>>({})
   const [splitPlanApplied, setSplitPlanApplied] = useState(false)
+  const [conciergePlan, setConciergePlan] = useState<ConciergePlan | null>(null)
+  const [conciergePlansHistory, setConciergePlansHistory] = useState<ConciergePlan[]>([])
+  const [isSubmittingConcierge, setIsSubmittingConcierge] = useState(false)
+  const [guestConciergeNotes, setGuestConciergeNotes] = useState("")
+  const [hostConciergeNotes, setHostConciergeNotes] = useState("")
+  const [selectedOffer, setSelectedOffer] = useState(conciergeOfferPresets[0]?.id ?? "upgrade")
+  const [selectedServices, setSelectedServices] = useState<SelectedServiceSummary[]>(initialServices ?? [])
+  const [servicesTotal, setServicesTotal] = useState<number>(
+    initialServicesTotal ?? calculateServicesTotal(initialServices ?? []),
+  )
+  const [showServicesModal, setShowServicesModal] = useState(false)
 
   const summaryListing = useMemo(() => {
     const locationParts = [listing.city, listing.state, listing.country].filter(Boolean)
@@ -196,8 +375,8 @@ export function BookingCheckout({
   const nightlyRate = typeof listing.basePrice === "number" ? listing.basePrice : 0
   const subtotal = nightlyRate * nights
   const cleaningFee = listing.cleaningFee ?? 0
-  const serviceFee = listing.serviceFee ?? subtotal * 0.1
-  const totalAmount = subtotal + cleaningFee + serviceFee
+  const serviceFee = listing.serviceFee ?? (subtotal + servicesTotal) * 0.1
+  const totalAmount = subtotal + cleaningFee + serviceFee + servicesTotal
   const tripInfoValid = nights > 0
   const guestInfoCompleted = Boolean(
     guestInfo.fullName.trim() &&
@@ -237,6 +416,28 @@ export function BookingCheckout({
       },
     ]
   }, [tripInfoValid, bookingCreated])
+
+  useEffect(() => {
+    if (selectedServices.length === 0) {
+      setServicesTotal(0)
+      return
+    }
+
+    if (nights <= 0) {
+      return
+    }
+
+    const recalculated = recalcServicesForTrip(selectedServices, nights, guests)
+    const currentSerialized = JSON.stringify(selectedServices)
+    const nextSerialized = JSON.stringify(recalculated)
+
+    if (currentSerialized !== nextSerialized) {
+      setSelectedServices(recalculated)
+      setServicesTotal(calculateServicesTotal(recalculated))
+    } else {
+      setServicesTotal(calculateServicesTotal(recalculated))
+    }
+  }, [nights, guests, selectedServices, recalcServicesForTrip, calculateServicesTotal])
 
   const handleCheckInChange = (value: string) => {
     setSplitSuggestion(null)
@@ -288,6 +489,79 @@ export function BookingCheckout({
     setSplitPlanApplied(false)
   }
 
+  const handleServicesSelectionChange = (total: number, services: SelectedServiceSummary[]) => {
+    setSelectedServices(services)
+    setServicesTotal(total)
+  }
+
+  const handleSubmitConciergePlan = async () => {
+    if (!splitSuggestion) {
+      toast({
+        title: "Chưa có kế hoạch split stay",
+        description: "Vui lòng chọn lại ngày và phương án thay thế để concierge có thể xử lý.",
+      })
+      return
+    }
+
+    setIsSubmittingConcierge(true)
+
+    try {
+      const response = await fetch("/api/concierge/plans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bookingId: bookingId ?? undefined,
+          listingId: listing.id,
+          loyaltyOffer: conciergeOfferCopy[selectedOffer] ?? conciergeOfferCopy.upgrade,
+          guestNotes: guestConciergeNotes.trim() || undefined,
+          hostNotes: hostConciergeNotes.trim() || undefined,
+          segments: splitSuggestion.segments,
+          selectedAlternatives,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Không thể gửi yêu cầu concierge.")
+      }
+
+      const createdPlan = data.plan as ConciergePlan
+      setConciergePlan(createdPlan)
+      setConciergePlansHistory((prev) => {
+        const plans = [createdPlan, ...prev.filter((plan) => plan.id !== createdPlan.id)]
+        return plans.slice(0, 5)
+      })
+
+      toast({
+        title: "Đã gửi yêu cầu concierge",
+        description:
+          "Đội concierge sẽ giữ chỗ tạm thời và thông báo tới host về kế hoạch di chuyển của bạn.",
+      })
+
+      setTimeout(() => {
+        splitSuggestionSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+      }, 200)
+    } catch (error: any) {
+      console.error("Concierge plan submit error:", error)
+      toast({
+        title: "Không thể gửi concierge",
+        description: error.message || "Vui lòng thử lại sau.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSubmittingConcierge(false)
+    }
+  }
+
+  const handleRefreshConciergePlans = () => {
+    void fetchConciergePlans()
+    toast({
+      title: "Đã làm mới concierge plan",
+      description: "Thông tin kế hoạch mới nhất đã được cập nhật.",
+    })
+  }
+
   const primarySplitSegments = useMemo(
     () => splitSuggestion?.segments.filter((segment) => segment.type === "primary") ?? [],
     [splitSuggestion],
@@ -300,6 +574,36 @@ export function BookingCheckout({
   const lastPrimarySegment =
     primarySplitSegments.length > 1 ? primarySplitSegments[primarySplitSegments.length - 1] : null
 
+  useEffect(() => {
+    if (splitSuggestion) {
+      setHostConciergeNotes(buildHostNoteFromSuggestion(splitSuggestion))
+    } else {
+      setHostConciergeNotes("")
+      setGuestConciergeNotes("")
+      setSelectedOffer(conciergeOfferPresets[0]?.id ?? "upgrade")
+    }
+  }, [splitSuggestion])
+
+  const fetchConciergePlans = useCallback(async () => {
+    try {
+      const params = bookingId ? `bookingId=${bookingId}` : `listingId=${listing.id}`
+      const response = await fetch(`/api/concierge/plans?${params}`, { cache: "no-store" })
+      if (!response.ok) {
+        throw new Error("Không thể tải concierge plan")
+      }
+      const data = await response.json()
+      const plans = (data?.plans as ConciergePlan[]) || []
+      setConciergePlansHistory(plans)
+      setConciergePlan(plans[0] ?? null)
+    } catch (error) {
+      console.warn("Không thể tải concierge plan:", error)
+    }
+  }, [listing.id, bookingId])
+
+  useEffect(() => {
+    fetchConciergePlans()
+  }, [fetchConciergePlans])
+
   const canCreateBooking = tripInfoValid && guestInfoCompleted
   const confirmButtonLabel = isSubmitting
     ? "Đang tạo đặt phòng..."
@@ -308,6 +612,12 @@ export function BookingCheckout({
       : splitPlanApplied
         ? "Tạo đặt phòng cho khoảng đã chọn"
         : "Xác nhận & tạo đơn đặt phòng"
+
+  const conciergeSubmitLabel = isSubmittingConcierge
+    ? "Đang gửi concierge..."
+    : conciergePlan
+      ? "Cập nhật concierge"
+      : "Nhờ concierge giữ phòng"
 
   const handleCreateBooking = async () => {
     if (!checkIn || !checkOut || nights <= 0) {
@@ -355,6 +665,8 @@ export function BookingCheckout({
           guestName: guestInfo.fullName.trim(),
           guestPhone: guestInfo.phone.trim(),
           guestEmail: guestInfo.email.trim(),
+          additionalServices: selectedServices,
+          additionalServicesTotal: servicesTotal,
         }),
       })
 
@@ -544,6 +856,51 @@ export function BookingCheckout({
                   </AlertDescription>
                 </Alert>
               )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle className="text-xl">Bước 1.1 · Dịch vụ bổ sung</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Concierge sẽ chuẩn bị các dịch vụ bạn chọn trước khi check-in.
+              </p>
+            </div>
+            <Button type="button" variant="outline" onClick={() => setShowServicesModal(true)}>
+              Chọn dịch vụ
+              {selectedServices.length > 0 && <span className="ml-2 text-primary">({selectedServices.length})</span>}
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {selectedServices.length > 0 ? (
+              <div className="space-y-3">
+                {selectedServices.map((service) => (
+                  <div
+                    key={service.id}
+                    className="flex items-center justify-between rounded-lg border border-border bg-muted/20 px-3 py-2"
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-foreground">{service.name}</span>
+                      {service.quantityLabel && (
+                        <span className="text-xs text-muted-foreground">{service.quantityLabel}</span>
+                      )}
+                    </div>
+                    <span className="text-sm font-semibold text-foreground">
+                      {service.totalPrice.toLocaleString("vi-VN")}₫
+                    </span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between border-t border-border pt-3 text-sm font-semibold">
+                  <span className="text-muted-foreground">Tổng dịch vụ</span>
+                  <span className="text-primary">{servicesTotal.toLocaleString("vi-VN")}₫</span>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                Chưa có dịch vụ nào được thêm. Nhấn "Chọn dịch vụ" để bổ sung tiện ích cho chuyến đi.
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -737,6 +1094,115 @@ export function BookingCheckout({
                   })}
                 </div>
 
+                <div className="rounded-lg border border-primary/30 bg-white/90 p-4 shadow-inner space-y-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-primary">Nhờ concierge giữ chỗ tạm & ưu đãi quay lại</p>
+                    <p className="text-xs text-muted-foreground">
+                      Concierge sẽ liên hệ host và đối tác để ghép lịch liền mạch, đồng thời ghi chú hành trình giúp bạn quay lại thuận tiện.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold uppercase text-muted-foreground">
+                      Ưu đãi dành cho khách khi quay lại
+                    </Label>
+                    <RadioGroup
+                      value={selectedOffer}
+                      onValueChange={setSelectedOffer}
+                      className="grid gap-2 md:grid-cols-3"
+                    >
+                      {conciergeOfferPresets.map((offer) => (
+                        <label
+                          key={offer.id}
+                          className={cn(
+                            "flex cursor-pointer items-start gap-2 rounded-lg border p-3 transition",
+                            selectedOffer === offer.id
+                              ? "border-primary bg-primary/10 shadow-sm"
+                              : "border-border hover:border-primary/50 hover:bg-primary/5",
+                          )}
+                        >
+                          <RadioGroupItem value={offer.id} className="mt-1" />
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">{offer.label}</p>
+                            <p className="text-xs text-muted-foreground">{offer.description}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </RadioGroup>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="conciergeGuestNotes" className="text-xs font-semibold uppercase text-muted-foreground">
+                        Ghi chú thêm cho concierge (tùy chọn)
+                      </Label>
+                      <Textarea
+                        id="conciergeGuestNotes"
+                        placeholder="Ví dụ: gia đình có trẻ nhỏ, cần xe đưa đón giữa hai cơ sở..."
+                        value={guestConciergeNotes}
+                        onChange={(event) => setGuestConciergeNotes(event.target.value)}
+                        rows={4}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="conciergeHostNotes" className="text-xs font-semibold uppercase text-muted-foreground">
+                          Thông tin gửi host chuẩn bị
+                        </Label>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="text-xs"
+                          onClick={() => splitSuggestion && setHostConciergeNotes(buildHostNoteFromSuggestion(splitSuggestion))}
+                        >
+                          Tạo lại ghi chú
+                        </Button>
+                      </div>
+                      <Textarea
+                        id="conciergeHostNotes"
+                        value={hostConciergeNotes}
+                        onChange={(event) => setHostConciergeNotes(event.target.value)}
+                        rows={4}
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Concierge sẽ chuyển thẳng ghi chú này cho host để chuẩn bị lúc bạn quay lại.
+                      </p>
+                    </div>
+                  </div>
+
+                  {conciergePlan && (
+                    <div className="rounded-md border border-dashed border-primary/30 bg-primary/5 px-3 py-3">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-primary">Concierge đã ghi nhận kế hoạch</p>
+                          {conciergePlan.hostNotes && (
+                            <p className="text-xs text-muted-foreground">
+                              Host note: <span className="text-foreground">{conciergePlan.hostNotes}</span>
+                            </p>
+                          )}
+                          {conciergePlan.loyaltyOffer && (
+                            <p className="text-xs text-muted-foreground">
+                              Ưu đãi: <span className="text-foreground">{conciergePlan.loyaltyOffer}</span>
+                            </p>
+                          )}
+                          {conciergePlan.partnerInfo?.length ? (
+                            <p className="text-xs text-muted-foreground">
+                              Đối tác dự phòng:{" "}
+                              {conciergePlan.partnerInfo
+                                .map((partner) => `${partner.title}${partner.sameHost ? " (cùng chuỗi)" : ""}`)
+                                .join(", ")}
+                            </p>
+                          ) : null}
+                        </div>
+                        <Badge variant="outline" className="w-fit border-primary/40 text-primary">
+                          {conciergePlanStatusLabel[conciergePlan.status]}
+                        </Badge>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <Alert className="border-blue-200 bg-blue-50">
                   <AlertDescription className="text-sm text-blue-800 space-y-1">
                     <span>
@@ -764,6 +1230,17 @@ export function BookingCheckout({
                 </Alert>
 
                 <div className="flex flex-wrap gap-3">
+                  <Button
+                    type="button"
+                    className="bg-primary text-white hover:bg-primary-hover"
+                    onClick={handleSubmitConciergePlan}
+                    disabled={isSubmittingConcierge}
+                  >
+                    {conciergeSubmitLabel}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={handleRefreshConciergePlans}>
+                    Làm mới concierge plan
+                  </Button>
                   <Button type="button" variant="outline" onClick={handleResetSplitSuggestion}>
                     Chỉnh lại ngày khác
                   </Button>
@@ -860,6 +1337,13 @@ export function BookingCheckout({
                   <p className="text-xs text-muted-foreground">
                     Tạo hai (hoặc nhiều) đặt phòng riêng biệt để giữ lịch trình liền mạch.
                   </p>
+                  {conciergePlan && (
+                    <div className="pt-2">
+                      <Badge variant="outline" className="border-primary/40 text-primary">
+                        Concierge: {conciergePlanStatusLabel[conciergePlan.status]}
+                      </Badge>
+                    </div>
+                  )}
                 </CardHeader>
                 <CardContent className="space-y-3 text-sm">
                   {splitSuggestion.segments.map((segment) => {
@@ -892,6 +1376,11 @@ export function BookingCheckout({
                       </div>
                     )
                   })}
+                  {conciergePlan?.loyaltyOffer && (
+                    <div className="rounded-md border border-dashed border-primary/30 bg-white/90 px-3 py-2 text-xs text-muted-foreground">
+                      Ưu đãi concierge: <span className="text-foreground">{conciergePlan.loyaltyOffer}</span>
+                    </div>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     Sau khi hoàn tất mỗi đặt phòng, hãy cập nhật hành trình của bạn để host biết lịch di chuyển.
                   </p>
@@ -904,6 +1393,8 @@ export function BookingCheckout({
               checkIn={checkIn}
               checkOut={checkOut}
               guests={guests}
+              additionalServices={selectedServices}
+              additionalServicesTotal={servicesTotal}
             />
             <Card>
               <CardHeader>
@@ -918,6 +1409,12 @@ export function BookingCheckout({
                   <span>Phí dọn dẹp</span>
                   <span>{cleaningFee.toLocaleString("vi-VN")}₫</span>
                 </div>
+                {servicesTotal > 0 && (
+                  <div className="flex justify-between">
+                    <span>Dịch vụ bổ sung</span>
+                    <span>{servicesTotal.toLocaleString("vi-VN")}₫</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span>Phí dịch vụ</span>
                   <span>{serviceFee.toLocaleString("vi-VN")}₫</span>
@@ -931,6 +1428,35 @@ export function BookingCheckout({
           </div>
         </div>
       </div>
+
+      <Dialog open={showServicesModal} onOpenChange={setShowServicesModal}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Chọn dịch vụ bổ sung</DialogTitle>
+            <DialogDescription>
+              Các dịch vụ sẽ được cộng thêm vào tổng chi phí và concierge sẽ chuẩn bị trước khi bạn đến.
+            </DialogDescription>
+          </DialogHeader>
+
+          <ServicesSelection
+            nights={nights}
+            guests={guests}
+            value={selectedServices}
+            onServicesChange={handleServicesSelectionChange}
+          />
+
+          <DialogFooter>
+            <div className="flex w-full items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Tổng dịch vụ: <span className="font-semibold text-primary">{servicesTotal.toLocaleString("vi-VN")}₫</span>
+              </p>
+              <Button type="button" onClick={() => setShowServicesModal(false)}>
+                Hoàn tất
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

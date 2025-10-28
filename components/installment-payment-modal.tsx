@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -34,7 +34,7 @@ interface InstallmentPaymentModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   totalAmount: number
-  bookingDate: Date
+  bookingDate?: Date
 }
 
 export function InstallmentPaymentModal({ 
@@ -44,6 +44,10 @@ export function InstallmentPaymentModal({
   bookingDate
 }: InstallmentPaymentModalProps) {
   const [selectedPlan, setSelectedPlan] = useState<string>("")
+  const bookingDateSafe = useMemo(
+    () => (bookingDate instanceof Date && !Number.isNaN(bookingDate.getTime()) ? bookingDate : new Date()),
+    [bookingDate],
+  )
 
   const calculateInstallment = (months: number, interestRate: number) => {
     const monthlyRate = interestRate / 100 / 12
@@ -100,7 +104,7 @@ export function InstallmentPaymentModal({
     if (!selectedPlanDetails) return []
     
     const schedule = []
-    const startDate = new Date(bookingDate)
+    const startDate = new Date(bookingDateSafe)
     
     for (let i = 0; i < selectedPlanDetails.months; i++) {
       const paymentDate = new Date(startDate)
@@ -148,7 +152,7 @@ export function InstallmentPaymentModal({
                 </p>
                 <Badge variant="secondary" className="mt-2">
                   <Calendar className="h-3 w-3 mr-1" />
-                  Check-in: {bookingDate.toLocaleDateString('vi-VN')}
+                  Check-in: {bookingDateSafe.toLocaleDateString('vi-VN')}
                 </Badge>
               </div>
             </CardContent>

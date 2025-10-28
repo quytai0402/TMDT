@@ -1,4 +1,4 @@
-import { Calendar, DoorOpen, KeySquare, MapPin, MessageCircle, Navigation, Users } from "lucide-react"
+import { Calendar, DoorOpen, KeySquare, MapPin, MessageCircle, Navigation, Users, CheckCircle2, Sparkles, Gift, ClipboardCheck } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -36,17 +36,33 @@ interface TripHubProps {
       name: string
       password: string
     }
+    services?: Array<{
+      id: string
+      name: string
+      quantityLabel?: string
+      totalPrice: number
+    }>
+    servicesTotal?: number
     arrivalGuide: Array<{
       title: string
       description: string
       icon: "map" | "door" | "key"
     }>
     houseRules: string[]
-    concierge: Array<{
+    conciergePlans?: Array<{
       id: string
+      status: string
+      loyaltyOffer?: string | null
+      hostNotes?: string | null
+      guestNotes?: string | null
+      createdAt: string
+      partnerInfo?: Array<{ title?: string; location?: string; sameHost?: boolean }>
+    }>
+    packingChecklist?: string[]
+    upsellExperiences?: Array<{
       title: string
       description: string
-      estimatedPrice: string
+      cta?: string
     }>
     messagesUrl: string
     directionsUrl: string
@@ -214,6 +230,129 @@ export function TripHub({ trip }: TripHubProps) {
         </div>
       </section>
 
+      {(trip.services?.length || trip.conciergePlans?.length) && (
+        <section className="grid gap-6 lg:grid-cols-3">
+          {trip.services?.length ? (
+            <Card className="rounded-3xl border border-primary/20 bg-white/90 lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg text-primary">
+                  <Sparkles className="h-5 w-5" /> Dịch vụ bạn đã đặt trước
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {trip.services.map((service) => (
+                  <div key={service.id} className="flex items-center justify-between rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+                    <div>
+                      <p className="font-semibold text-primary-600">{service.name}</p>
+                      {service.quantityLabel && <p className="text-xs text-muted-foreground">{service.quantityLabel}</p>}
+                    </div>
+                    <p className="text-sm font-semibold text-primary">{service.totalPrice.toLocaleString("vi-VN")}₫</p>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between border-t border-primary/20 pt-3 text-sm font-semibold text-primary">
+                  <span>Tổng dịch vụ</span>
+                  <span>{(trip.servicesTotal || 0).toLocaleString("vi-VN")}₫</span>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {trip.conciergePlans?.length ? (
+            <Card className="rounded-3xl border border-emerald-200 bg-emerald-50/60">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg text-emerald-700">
+                  <Gift className="h-5 w-5" /> Kế hoạch concierge
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {trip.conciergePlans.slice(0, 2).map((plan) => (
+                  <div key={plan.id} className="rounded-2xl border border-emerald-200 bg-white/80 p-4">
+                    <div className="flex items-center justify-between">
+                      <Badge variant="outline" className="border-emerald-300 bg-emerald-100 text-emerald-700">
+                        {plan.status === "CONFIRMED"
+                          ? "Đã xác nhận"
+                          : plan.status === "PENDING"
+                            ? "Đang xử lý"
+                            : plan.status === "COMPLETED"
+                              ? "Hoàn tất"
+                              : "Đã hủy"}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(plan.createdAt).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })}
+                      </span>
+                    </div>
+                    {plan.loyaltyOffer && (
+                      <p className="mt-2 text-sm text-emerald-800 font-semibold">Ưu đãi: {plan.loyaltyOffer}</p>
+                    )}
+                    {plan.hostNotes && <p className="mt-2 text-sm text-slate-600">Host note: {plan.hostNotes}</p>}
+                    {plan.partnerInfo && plan.partnerInfo.length > 0 && (
+                      <ul className="mt-3 space-y-1 text-xs text-slate-600">
+                        {plan.partnerInfo.map((partner, idx) => (
+                          <li key={idx} className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                            {partner.title}
+                            {partner.location ? ` • ${partner.location}` : ""}
+                            {partner.sameHost ? " (cùng chuỗi)" : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+                <p className="text-xs text-muted-foreground">
+                  Concierge sẽ gửi cập nhật khi có thay đổi lịch trình hoặc ưu đãi mới.
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
+        </section>
+      )}
+
+      {(trip.packingChecklist?.length || trip.upsellExperiences?.length) && (
+        <section className="grid gap-6 lg:grid-cols-3">
+          {trip.packingChecklist?.length ? (
+            <Card className="rounded-3xl border border-slate-100 bg-white/90 lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg text-slate-900">
+                  <ClipboardCheck className="h-5 w-5" /> Checklist trước chuyến đi
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {trip.packingChecklist.map((item, idx) => (
+                  <div key={`${item}-${idx}`} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                    <CheckCircle2 className="h-4 w-4 text-primary mt-0.5" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {trip.upsellExperiences?.length ? (
+            <Card className="rounded-3xl border border-purple-200 bg-purple-50/70">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg text-purple-700">
+                  <Sparkles className="h-5 w-5" /> Gợi ý mở rộng trải nghiệm
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {trip.upsellExperiences.map((offer) => (
+                  <div key={offer.title} className="rounded-2xl border border-purple-200 bg-white/90 p-4 text-sm text-slate-700">
+                    <p className="font-semibold text-slate-900">{offer.title}</p>
+                    <p className="mt-1 text-xs text-slate-600">{offer.description}</p>
+                    {offer.cta && (
+                      <Button variant="link" size="sm" className="px-0 text-purple-600" asChild>
+                        <Link href={offer.cta}>Khám phá thêm</Link>
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
+        </section>
+      )}
+
       <section className="grid gap-6 lg:grid-cols-[2fr,1fr]">
         <Card className="rounded-3xl border border-slate-100 bg-white/80">
           <CardHeader>
@@ -233,18 +372,21 @@ export function TripHub({ trip }: TripHubProps) {
 
         <Card className="rounded-3xl border border-slate-100 bg-white/80">
           <CardHeader>
-            <CardTitle className="text-lg text-slate-900">Dịch vụ gia tăng</CardTitle>
+            <CardTitle className="text-lg text-slate-900">Concierge 24/7</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm text-slate-600">
-            {trip.concierge.map((service) => (
-              <div key={service.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                <p className="text-base font-semibold text-slate-900">{service.title}</p>
-                <p className="mt-1">{service.description}</p>
-                <p className="mt-2 text-xs font-semibold text-primary">Ước tính: {service.estimatedPrice}</p>
-              </div>
-            ))}
-            <Button variant="outline" className="w-full rounded-xl">
-              Yêu cầu dịch vụ khác
+          <CardContent className="space-y-3 text-sm text-slate-600">
+            <p>
+              Đội concierge sẽ hỗ trợ bạn đặt xe, nhà hàng, tour trải nghiệm và xử lý mọi yêu cầu đặc biệt trong suốt kỳ nghỉ.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {['Nhà hàng gần đây', 'Đặt tour trong ngày', 'Spa & wellness', 'Thuê xe riêng'].map((action) => (
+                <Badge key={action} variant="outline" className="rounded-full border-primary/30 bg-primary/5 text-primary">
+                  {action}
+                </Badge>
+              ))}
+            </div>
+            <Button className="w-full rounded-xl" asChild>
+              <Link href="/concierge">Chat với concierge</Link>
             </Button>
           </CardContent>
         </Card>

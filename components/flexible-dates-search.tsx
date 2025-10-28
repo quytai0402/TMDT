@@ -12,6 +12,7 @@ export function FlexibleDatesSearch() {
   const [selectedMonth, setSelectedMonth] = useState<string>('')
   const [selectedDuration, setSelectedDuration] = useState<string>('')
   const [selectedRegion, setSelectedRegion] = useState<string>('')
+  const [activeFlex, setActiveFlex] = useState<'month' | 'duration' | 'region' | null>(null)
 
   const months = [
     { id: 'jan', name: 'Tháng 1', avgPrice: 850000, discount: 15 },
@@ -38,10 +39,29 @@ export function FlexibleDatesSearch() {
 
   const handleSearch = () => {
     const params = new URLSearchParams()
-    if (selectedMonth) params.append('month', selectedMonth)
-    if (selectedDuration) params.append('duration', selectedDuration)
-    if (selectedRegion) params.append('region', selectedRegion)
-    params.append('flexible', 'true')
+
+    if (selectedMonth) {
+      params.set('month', selectedMonth)
+    }
+
+    if (selectedDuration) {
+      params.set('duration', selectedDuration)
+      params.set('tripLength', selectedDuration)
+    }
+
+    if (selectedRegion) {
+      params.set('region', selectedRegion)
+    }
+
+    const focus = activeFlex
+      ?? (selectedMonth ? 'month' : selectedDuration ? 'duration' : selectedRegion ? 'region' : null)
+
+    if (focus) {
+      params.set('flexMode', focus)
+    }
+
+    params.set('flexible', 'true')
+
     router.push(`/search?${params.toString()}`)
   }
 
@@ -82,7 +102,10 @@ export function FlexibleDatesSearch() {
                   {months.map((month) => (
                     <button
                       key={month.id}
-                      onClick={() => setSelectedMonth(month.id)}
+                      onClick={() => {
+                        setSelectedMonth(month.id)
+                        setActiveFlex('month')
+                      }}
                       className={`p-4 rounded-xl border-2 transition-all text-left hover:border-primary hover:shadow-md ${
                         selectedMonth === month.id
                           ? 'border-primary bg-primary/5'
@@ -109,7 +132,10 @@ export function FlexibleDatesSearch() {
                   {durations.map((duration) => (
                     <button
                       key={duration.id}
-                      onClick={() => setSelectedDuration(duration.id)}
+                      onClick={() => {
+                        setSelectedDuration(duration.id)
+                        setActiveFlex('duration')
+                      }}
                       className={`p-6 rounded-xl border-2 transition-all text-center hover:border-primary hover:shadow-md ${
                         selectedDuration === duration.id
                           ? 'border-primary bg-primary/5'
@@ -136,7 +162,10 @@ export function FlexibleDatesSearch() {
                   {regions.map((region) => (
                     <button
                       key={region.id}
-                      onClick={() => setSelectedRegion(region.id)}
+                      onClick={() => {
+                        setSelectedRegion(region.id)
+                        setActiveFlex('region')
+                      }}
                       className={`p-5 rounded-xl border-2 transition-all text-left hover:border-primary hover:shadow-md ${
                         selectedRegion === region.id
                           ? 'border-primary bg-primary/5'

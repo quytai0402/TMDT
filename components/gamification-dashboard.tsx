@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
 
@@ -82,18 +82,7 @@ export function GamificationDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/login?redirect=/rewards")
-      return
-    }
-
-    if (status === "authenticated") {
-      void fetchLoyaltyData()
-    }
-  }, [status, router])
-
-  const fetchLoyaltyData = async () => {
+  const fetchLoyaltyData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -175,7 +164,40 @@ export function GamificationDashboard() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [toast])
+
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/login?redirect=/rewards")
+      return
+    }
+
+    if (status === "authenticated") {
+      void fetchLoyaltyData()
+    }
+  }, [status, router, fetchLoyaltyData])
+
+  const progressPercent = useMemo(() => {
+    if (!data) {
+      return 0
+    }
+    if (data.currentTier.pointsToNext === null) {
+      return 100
+    }
+    if (typeof data.user.progressToNextTier === "number") {
+      return Math.round(data.user.progressToNextTier * 100)
+    }
+    const span = (data.currentTier.maxPoints ?? 0) - data.currentTier.minPoints
+    if (span <= 0) return 100
+    return Math.min(100, Math.max(0, ((data.user.points - data.currentTier.minPoints) / span) * 100))
+  }, [data])
+
+  const nextTierConfig = useMemo(() => {
+    if (!data || !data.currentTier.nextTier) {
+      return null
+    }
+    return data.allTiers.find((tier) => tier.name === data.currentTier.nextTier) ?? null
+  }, [data])
 
   if (status === "loading" || loading) {
     return (
@@ -197,22 +219,6 @@ export function GamificationDashboard() {
       </Card>
     )
   }
-
-  const progressPercent = useMemo(() => {
-    if (data.currentTier.pointsToNext === null) {
-      return 100
-    }
-    if (typeof data.user.progressToNextTier === "number") {
-      return Math.round(data.user.progressToNextTier * 100)
-    }
-    const span = (data.currentTier.maxPoints ?? 0) - data.currentTier.minPoints
-    if (span <= 0) return 100
-    return Math.min(100, Math.max(0, ((data.user.points - data.currentTier.minPoints) / span) * 100))
-  }, [data.currentTier.maxPoints, data.currentTier.minPoints, data.currentTier.pointsToNext, data.user.points, data.user.progressToNextTier])
-
-  const nextTierConfig = data.currentTier.nextTier
-    ? data.allTiers.find((tier) => tier.name === data.currentTier.nextTier)
-    : null
 
   return (
     <div className="space-y-6">

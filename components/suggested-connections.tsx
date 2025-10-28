@@ -4,63 +4,114 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { UserPlus, UserCheck } from "lucide-react"
-import { useState } from "react"
+import { Separator } from "@/components/ui/separator"
+import { UserPlus, UserCheck, Sparkles } from "lucide-react"
 import Link from "next/link"
+import { useEffect, useMemo, useState } from "react"
+import { useToast } from "@/components/ui/use-toast"
 
-interface SuggestedUser {
+type Suggestion = {
   id: string
   name: string
   avatar: string
+  verified: boolean
   role: "guest" | "host"
-  bio: string
-  mutualFriends?: number
-  verified?: boolean
+  headline: string
+  stats: {
+    listings: number
+    completedTrips: number
+    followers: number
+  }
+  loyaltyTier?: string | null
+  mutualConnections: number
+  isFollowing: boolean
 }
 
-const suggestedUsers: SuggestedUser[] = [
-  {
-    id: "1",
-    name: "Nguyễn Minh Anh",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200",
-    role: "host",
-    bio: "Chủ homestay tại Đà Lạt • Travel lover",
-    mutualFriends: 12,
-    verified: true
-  },
-  {
-    id: "2",
-    name: "Trần Văn Thành",
-    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200",
-    role: "guest",
-    bio: "Digital nomad • 15 countries visited",
-    mutualFriends: 8
-  },
-  {
-    id: "3",
-    name: "Lê Thị Hương",
-    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200",
-    role: "host",
-    bio: "Villa owner in Nha Trang • Luxury stays",
-    mutualFriends: 5,
-    verified: true
-  }
-]
-
 export function SuggestedConnections() {
-  const [following, setFollowing] = useState<Set<string>>(new Set())
+  const { toast } = useToast()
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
+  const [loading, setLoading] = useState(true)
+  const [updatingId, setUpdatingId] = useState<string | null>(null)
 
-  const handleFollow = (userId: string) => {
-    setFollowing(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(userId)) {
-        newSet.delete(userId)
-      } else {
-        newSet.add(userId)
+  useEffect(() => {
+    let ignore = false
+
+    async function loadSuggestions() {
+      try {
+        setLoading(true)
+        const res = await fetch("/api/community/suggestions", { cache: "no-store" })
+        if (!res.ok) {
+          throw new Error("Failed to load suggestions")
+        }
+        const data = await res.json()
+        if (!ignore) {
+          setSuggestions(data.suggestions ?? [])
+        }
+      } catch (error) {
+        console.error(error)
+        if (!ignore) {
+          toast({
+            variant: "destructive",
+            title: "Không tải được gợi ý",
+            description: "Vui lòng thử lại sau.",
+          })
+        }
+      } finally {
+        if (!ignore) {
+          setLoading(false)
+        }
       }
-      return newSet
-    })
+    }
+
+    loadSuggestions()
+
+    return () => {
+      ignore = true
+    }
+  }, [toast])
+
+  const handleFollowToggle = async (userId: string, isFollowing: boolean) => {
+    try {
+      setUpdatingId(userId)
+      const response = await fetch("/api/community/follow", {
+        method: isFollowing ? "DELETE" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ targetUserId: userId }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to update follow status")
+      }
+
+      setSuggestions((prev) =>
+        prev.map((item) =>
+          item.id === userId
+            ? {
+                ...item,
+                isFollowing: !isFollowing,
+                stats: {
+                  ...item.stats,
+                  followers: Math.max(0, item.stats.followers + (isFollowing ? -1 : 1)),
+                },
+              }
+            : item
+        )
+      )
+    } catch (error) {
+      console.error(error)
+      toast({
+        variant: "destructive",
+        title: "Không thể cập nhật theo dõi",
+        description: "Vui lòng thử lại.",
+      })
+    } finally {
+      setUpdatingId(null)
+    }
   }
+
+  const emptyState = useMemo(() => suggestions.length === 0 && !loading, [suggestions.length, loading])
 
   return (
     <Card>
@@ -68,7 +119,29 @@ export function SuggestedConnections() {
         <CardTitle className="text-lg">Gợi ý kết nối</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {suggestedUsers.map((user) => (
+        {loading && (
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="flex items-start gap-3 animate-pulse">
+                <div className="h-12 w-12 rounded-full bg-muted" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 w-1/3 rounded bg-muted" />
+                  <div className="h-3 w-2/3 rounded bg-muted" />
+                  <div className="h-7 w-24 rounded-full bg-muted" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!loading && emptyState && (
+          <div className="flex flex-col items-center justify-center gap-2 py-8 text-center text-sm text-muted-foreground">
+            <Sparkles className="h-5 w-5" />
+            <p>Hiện bạn đã kết nối với hầu hết thành viên nổi bật. Hãy khám phá thêm trong cộng đồng!</p>
+          </div>
+        )}
+
+        {!loading && !emptyState && suggestions.map((user) => (
           <div key={user.id} className="flex items-start gap-3">
             <Link href={`/profile/${user.id}`}>
               <Avatar className="h-12 w-12 cursor-pointer hover:opacity-80 transition-opacity">
@@ -90,20 +163,27 @@ export function SuggestedConnections() {
                 )}
               </div>
               <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
-                {user.bio}
+                {user.headline}
               </p>
-              {user.mutualFriends && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  {user.mutualFriends} bạn chung
-                </p>
-              )}
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                <span>{user.stats.completedTrips} chuyến đi</span>
+                <Separator orientation="vertical" className="h-3" />
+                <span>{user.stats.listings} homestay</span>
+                {user.mutualConnections > 0 && (
+                  <>
+                    <Separator orientation="vertical" className="h-3" />
+                    <span>{user.mutualConnections} kết nối chung</span>
+                  </>
+                )}
+              </div>
               <Button
                 size="sm"
-                variant={following.has(user.id) ? "outline" : "default"}
+                variant={user.isFollowing ? "outline" : "default"}
                 className="mt-2 h-7 text-xs"
-                onClick={() => handleFollow(user.id)}
+                onClick={() => handleFollowToggle(user.id, user.isFollowing)}
+                disabled={updatingId === user.id}
               >
-                {following.has(user.id) ? (
+                {user.isFollowing ? (
                   <>
                     <UserCheck className="h-3 w-3 mr-1" />
                     Đang theo dõi
@@ -119,9 +199,11 @@ export function SuggestedConnections() {
           </div>
         ))}
 
-        <Button variant="ghost" size="sm" className="w-full">
-          Xem thêm
-        </Button>
+        {!loading && suggestions.length > 0 && (
+          <Button variant="ghost" size="sm" className="w-full">
+            Xem thêm
+          </Button>
+        )}
       </CardContent>
     </Card>
   )

@@ -45,6 +45,19 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
   const initialCheckOut = extractParam(query?.checkOut)
   const initialGuestsParam = extractParam(query?.guests)
   const initialGuests = initialGuestsParam ? Math.max(1, Number(initialGuestsParam) || 1) : undefined
+  const servicesParam = extractParam(query?.services)
+  const servicesTotalParam = extractParam(query?.servicesTotal)
+
+  let initialServices
+  if (servicesParam) {
+    try {
+      initialServices = JSON.parse(decodeURIComponent(servicesParam))
+    } catch (error) {
+      console.warn("Failed to parse services from URL:", error)
+    }
+  }
+
+  const initialServicesTotal = servicesTotalParam ? Number(servicesTotalParam) || undefined : undefined
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -63,6 +76,8 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
             initialCheckIn={initialCheckIn}
             initialCheckOut={initialCheckOut}
             initialGuests={initialGuests}
+            initialServices={initialServices}
+            initialServicesTotal={initialServicesTotal}
           />
         </div>
       </main>

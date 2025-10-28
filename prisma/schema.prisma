@@ -33,9 +33,15 @@ model User {
   // Loyalty Program
   loyaltyPoints     Int       @default(0)
   loyaltyTier       LoyaltyTier @default(BRONZE)
-  referralCode      String?   @unique
+  referralCode      String?
   referredBy        String?   @db.ObjectId
-  
+  membershipPlanId        String?   @db.ObjectId
+  membershipStatus        MembershipStatus @default(INACTIVE)
+  membershipStartedAt     DateTime?
+  membershipExpiresAt     DateTime?
+  membershipFeatures      String[]  @default([])
+  membershipBillingCycle  MembershipBillingCycle?
+
   // Timestamps
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
@@ -68,8 +74,15 @@ model User {
   experienceBookings ExperienceBooking[]
   experienceReviews ExperienceReview[] @relation("ExperienceReviewsWritten")
   userQuests        UserQuest[]
+  conciergePlansHosted   ConciergePlan[] @relation("HostConciergePlans")
+  conciergePlansAsGuest  ConciergePlan[] @relation("GuestConciergePlans")
+  conciergePlansAssigned ConciergePlan[] @relation("AgentConciergePlans")
+  membershipPlan   MembershipPlan? @relation(fields: [membershipPlanId], references: [id], onDelete: SetNull)
+  following        UserFollow[] @relation("UserFollowing")
+  followers        UserFollow[] @relation("UserFollowers")
   
   @@map("users")
+  @@index([referralCode], map: "users_referralCode_idx")
 }
 
 model Account {
@@ -141,11 +154,25 @@ model Quest {
   completions     UserQuest[]
   badge           RewardBadge? @relation(fields: [rewardBadgeId], references: [id], onDelete: SetNull)
   rewardTransactions RewardTransaction[] @relation("QuestRewardTransactions")
-  
+
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
-  
+
   @@map("quests")
+}
+
+model UserFollow {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  followerId   String   @db.ObjectId
+  followingId  String   @db.ObjectId
+  createdAt    DateTime @default(now())
+
+  follower     User     @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following    User     @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
+  @@map("user_follows")
 }
 
 model UserQuest {
@@ -239,6 +266,8 @@ model MembershipPlan {
   displayOrder      Int      @default(0)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  members          User[]
 
   @@map("membership_plans")
   @@index([displayOrder])
@@ -489,7 +518,8 @@ model Listing {
   featured            Boolean  @default(false)
   featuredUntil       DateTime?
   views               Int      @default(0)
-  
+  isSecret            Boolean  @default(false)
+
   // Stats
   averageRating       Float    @default(0)
   totalReviews        Int      @default(0)
@@ -509,6 +539,7 @@ model Listing {
   pricingRules        PricingRule[]
   neighborhoodGuide   NeighborhoodGuide?
   posts               Post[]
+  conciergePlans      ConciergePlan[]
   
   @@map("listings")
 }
@@ -617,6 +648,8 @@ model Booking {
   cleaningFee       Float    @default(0)
   serviceFee        Float    @default(0)
   discount          Float    @default(0)
+  additionalServices Json?
+  additionalServicesTotal Float @default(0)
   totalPrice        Float
   currency          String   @default("VND")
   
@@ -651,9 +684,39 @@ model Booking {
   review            Review?
   messages          Message[]
   serviceBookings   ServiceBooking[]
+  conciergePlans    ConciergePlan[]
 
   @@map("bookings")
   @@index([contactPhoneNormalized])
+}
+
+model ConciergePlan {
+  id               String              @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId        String?             @db.ObjectId
+  listingId        String              @db.ObjectId
+  guestId          String?             @db.ObjectId
+  hostId           String              @db.ObjectId
+  conciergeAgentId String?             @db.ObjectId
+  status           ConciergePlanStatus @default(PENDING)
+  planDetails      Json
+  loyaltyOffer     String?
+  partnerInfo      Json?
+  hostNotes        String?
+  guestNotes       String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  booking          Booking?            @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  listing          Listing             @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  guest            User?               @relation("GuestConciergePlans", fields: [guestId], references: [id], onDelete: SetNull)
+  host             User                @relation("HostConciergePlans", fields: [hostId], references: [id], onDelete: Cascade)
+  conciergeAgent   User?               @relation("AgentConciergePlans", fields: [conciergeAgentId], references: [id], onDelete: SetNull)
+
+  @@map("concierge_plans")
+  @@index([bookingId])
+  @@index([listingId])
+  @@index([guestId])
+  @@index([hostId])
 }
 
 // ============================================
@@ -1013,6 +1076,18 @@ enum LoyaltyTier {
   DIAMOND
 }
 
+enum MembershipStatus {
+  INACTIVE
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum MembershipBillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
 enum TokenType {
   EMAIL_VERIFICATION
   PASSWORD_RESET
@@ -1060,6 +1135,7 @@ enum RewardSource {
   ADMIN
   REDEMPTION
   MANUAL
+  MEMBERSHIP
 }
 
 enum RewardTransactionType {
@@ -1166,6 +1242,13 @@ enum BookingStatus {
 enum BookingGuestType {
   REGISTERED
   WALK_IN
+}
+
+enum ConciergePlanStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
 }
 
 enum PaymentStatus {
@@ -1529,7 +1612,8 @@ model Experience {
   status          ExperienceStatus @default(DRAFT)
   isVerified      Boolean  @default(false)
   featured        Boolean  @default(false)
-  
+  isMembersOnly   Boolean  @default(false)
+
   // Stats
   averageRating   Float    @default(0)
   totalReviews    Int      @default(0)

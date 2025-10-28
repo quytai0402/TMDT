@@ -8,7 +8,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { User, Phone, Mail, MessageSquare, Gift, AlertCircle, Star } from "lucide-react"
+import { Progress } from "@/components/ui/progress"
+import { User, Phone, Mail, MessageSquare, Gift, AlertCircle, Star, Crown, ArrowUpRight } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 
@@ -36,8 +37,17 @@ export function GuestInfoForm({ onInfoChange, onLoginClick, titlePrefix }: Guest
   const [phoneHistory, setPhoneHistory] = useState<{
     totalBookings: number
     totalSpent: number
-    memberTier?: string
-    discount?: number
+    memberTier: string
+    discount: number
+    perks: string[]
+    progress: number
+    nextTier: {
+      name: string
+      bookingsToUnlock: number
+      spendToUnlock: number
+      discount: number
+      perks: string[]
+    } | null
   } | null>(null)
 
   // Auto-fill if user is logged in
@@ -63,7 +73,23 @@ export function GuestInfoForm({ onInfoChange, onLoginClick, titlePrefix }: Guest
         }
 
         const data = await response.json()
-        setPhoneHistory(data)
+        setPhoneHistory({
+          totalBookings: data.totalBookings ?? 0,
+          totalSpent: data.totalSpent ?? 0,
+          memberTier: data.memberTier ?? 'Bronze',
+          discount: data.discount ?? 0,
+          perks: Array.isArray(data.perks) ? data.perks : [],
+          progress: typeof data.progress === 'number' ? data.progress : 0,
+          nextTier: data.nextTier
+            ? {
+                name: data.nextTier.name ?? 'Silver',
+                bookingsToUnlock: Math.max(0, data.nextTier.bookingsToUnlock ?? 0),
+                spendToUnlock: Math.max(0, data.nextTier.spendToUnlock ?? 0),
+                discount: data.nextTier.discount ?? 0,
+                perks: Array.isArray(data.nextTier.perks) ? data.nextTier.perks : [],
+              }
+            : null,
+        })
       } catch (error) {
         console.error('Error checking phone history:', error)
         setPhoneHistory(null)
@@ -92,6 +118,12 @@ export function GuestInfoForm({ onInfoChange, onLoginClick, titlePrefix }: Guest
   }
 
   const headingPrefix = titlePrefix ? titlePrefix.trim() : ""
+
+  const SparkleBullet = () => (
+    <span className="mt-1 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-600 shadow-sm">
+      <Star className="h-3 w-3" />
+    </span>
+  )
 
   return (
     <Card className="p-6">
@@ -167,31 +199,59 @@ export function GuestInfoForm({ onInfoChange, onLoginClick, titlePrefix }: Guest
 
         {/* Phone History Alert */}
         {phoneHistory && (
-          <Alert className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-purple-200">
-            <Star className="w-4 h-4 text-purple-600" />
-            <AlertDescription className="space-y-2">
-              <p className="font-semibold text-purple-900 dark:text-purple-100">
-                Chào mừng khách hàng {phoneHistory.memberTier}! 🎉
-              </p>
-              <div className="text-sm text-purple-700 dark:text-purple-300 space-y-1">
-                <div className="flex items-center justify-between">
-                  <span>Số lần đặt phòng:</span>
-                  <span className="font-medium">{phoneHistory.totalBookings} lần</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Tổng chi tiêu:</span>
-                  <span className="font-medium">{formatPrice(phoneHistory.totalSpent)}₫</span>
-                </div>
-                {phoneHistory.discount && (
-                  <div className="flex items-center justify-between">
-                    <span>Ưu đãi của bạn:</span>
-                    <Badge className="bg-green-600">
-                      <Gift className="w-3 h-3 mr-1" />
-                      Giảm {phoneHistory.discount}%
-                    </Badge>
+          <Alert className="bg-gradient-to-r from-purple-50 via-rose-50 to-orange-50 dark:from-purple-900/20 dark:via-rose-900/20 dark:to-orange-900/20 border-purple-200">
+            <AlertDescription className="space-y-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-purple-600">
+                    <Star className="h-4 w-4" />
+                    Khách hàng {phoneHistory.memberTier}
                   </div>
+                  <p className="mt-1 text-sm text-purple-700 dark:text-purple-200">
+                    Bạn đã đặt <strong>{phoneHistory.totalBookings} lần</strong>, chi tiêu tổng cộng{' '}
+                    <strong>{formatPrice(phoneHistory.totalSpent)}₫</strong> với LuxeStay.
+                  </p>
+                  <p className="text-xs text-purple-500 dark:text-purple-300">
+                    Chương trình tích điểm hoàn toàn miễn phí, áp dụng cho mọi lượt đặt phòng.
+                  </p>
+                </div>
+                <Badge className="bg-white/80 text-purple-700 hover:bg-white">
+                  <Gift className="mr-1 h-3 w-3" />
+                  Ưu đãi hiện tại: {phoneHistory.discount}%
+                </Badge>
+              </div>
+
+              <div className="rounded-xl bg-white/80 p-4 shadow-sm dark:bg-white/10">
+                <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-purple-700">
+                  <span>{phoneHistory.memberTier}</span>
+                  <span>{phoneHistory.nextTier ? phoneHistory.nextTier.name : 'Hạng tối đa'}</span>
+                </div>
+                <Progress value={Math.round(Math.min(1, phoneHistory.progress ?? 0) * 100)} className="mt-2 h-2" />
+                {phoneHistory.nextTier ? (
+                  <p className="mt-2 flex items-center gap-2 text-sm text-purple-700 dark:text-purple-200">
+                    <ArrowUpRight className="h-4 w-4" />
+                    Còn <strong>{phoneHistory.nextTier.bookingsToUnlock}</strong> lần đặt hoặc{' '}
+                    <strong>{formatPrice(phoneHistory.nextTier.spendToUnlock)}₫</strong> để lên hạng{' '}
+                    {phoneHistory.nextTier.name} (+{phoneHistory.nextTier.discount}% ưu đãi).
+                  </p>
+                ) : (
+                  <p className="mt-2 flex items-center gap-2 text-sm text-purple-700 dark:text-purple-200">
+                    <Crown className="h-4 w-4" />
+                    Bạn đang ở hạng cao nhất – tiếp tục đặt để nhận quà bất ngờ dành riêng cho Platinum!
+                  </p>
                 )}
               </div>
+
+              {phoneHistory.perks.length > 0 && (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {phoneHistory.perks.map((perk) => (
+                    <div key={perk} className="flex items-start gap-2 text-sm text-purple-700 dark:text-purple-200">
+                      <SparkleBullet />
+                      <span>{perk}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </AlertDescription>
           </Alert>
         )}

@@ -23,6 +23,8 @@ import { NearbyPlaces } from "@/components/nearby-places"
 import { AIReviewAnalysis } from "@/components/ai-review-analysis"
 import { ListingViewTracker } from "@/components/listing-view-tracker"
 import { ShareButton } from "@/components/share-button"
+import { ListingLoyaltyPerks } from "@/components/listing-loyalty-perks"
+import { ListingTrustPanel } from "@/components/listing-trust-panel"
 import { prisma } from "@/lib/prisma"
 import { notFound } from "next/navigation"
 import { getServerSession } from "next-auth"
@@ -206,6 +208,16 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                 description={listing.description}
               />
 
+              <ListingTrustPanel
+                hostName={listing.host.name || 'Host'}
+                hostVerified={listing.host.isVerified}
+                isSuperHost={listing.host.isSuperHost}
+                verifiedAmenities={listing.verifiedAmenities}
+                hasSmartLock={listing.hasSmartLock}
+                wifiName={listing.wifiName}
+                wifiPassword={listing.wifiPassword}
+              />
+
               <AmenitiesSection 
                 amenities={[
                   {
@@ -259,13 +271,18 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
 
             {/* Right Column - Booking Widget */}
             <div className="lg:col-span-1">
-              <div className="sticky top-24">
+              <div className="sticky top-24 space-y-6">
                 <BookingWidget 
                   listingId={listing.id}
                   price={listing.basePrice} 
                   rating={listing.averageRating} 
                   reviews={listing.reviews.length}
                   instantBookable={listing.instantBookable}
+                />
+                <ListingLoyaltyPerks
+                  listingId={listing.id}
+                  hostName={listing.host.name || 'Host'}
+                  isSuperHost={listing.host.isSuperHost}
                 />
               </div>
             </div>

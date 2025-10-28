@@ -16,6 +16,30 @@ export function SocialFeed() {
     fetchPosts()
   }, [])
 
+  useEffect(() => {
+    const handlePostCreated = (event: Event) => {
+      const customEvent = event as CustomEvent<any>
+      const newPost = customEvent.detail
+      if (!newPost) return
+      setPosts((prev) => {
+        if (prev.some((post) => post.id === newPost.id)) {
+          return prev
+        }
+        return [newPost, ...prev]
+      })
+    }
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("community:post-created", handlePostCreated as EventListener)
+    }
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("community:post-created", handlePostCreated as EventListener)
+      }
+    }
+  }, [])
+
   async function fetchPosts(nextCursor?: string | null) {
     try {
       setLoadingMore(true)

@@ -18,6 +18,7 @@ interface ListingCardProps {
   guests?: number
   bedrooms?: number
   featured?: boolean
+  isSecret?: boolean
 }
 
 export function ListingCard({
@@ -32,6 +33,7 @@ export function ListingCard({
   guests = 4,
   bedrooms = 2,
   featured = false,
+  isSecret = false,
 }: ListingCardProps) {
   const [isFavorite, setIsFavorite] = useState(false)
 
@@ -46,13 +48,18 @@ export function ListingCard({
             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
             onError={(e) => {
               const target = e.target as HTMLImageElement
-              target.src = `https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&h=400&fit=crop&auto=format`
-            }}
-          />
-          {featured && <Badge className="absolute top-3 left-3 bg-accent text-white font-semibold">Nổi bật</Badge>}
-          <Button
-            size="icon"
-            variant="ghost"
+            target.src = `https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600&h=400&fit=crop&auto=format`
+          }}
+        />
+          {(isSecret || featured) && (
+            <div className="absolute top-3 left-3 flex flex-col gap-2">
+              {isSecret && <Badge className="bg-purple-600 text-white font-semibold shadow-lg">Secret</Badge>}
+              {featured && <Badge className="bg-accent text-white font-semibold">Nổi bật</Badge>}
+            </div>
+          )}
+        <Button
+          size="icon"
+          variant="ghost"
             className={`absolute top-3 right-3 h-9 w-9 rounded-full backdrop-blur-sm transition-all ${
               isFavorite ? "bg-white text-red-500 hover:bg-white" : "bg-white/90 hover:bg-white hover:scale-110"
             }`}

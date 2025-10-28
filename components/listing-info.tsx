@@ -1,5 +1,6 @@
-import { Users, Bed, Bath, Home } from "lucide-react"
+import { Users, Bed, Bath, Home, ShieldCheck } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 
 interface ListingInfoProps {
   host: {
@@ -22,7 +23,14 @@ export function ListingInfo({ host, details, description }: ListingInfoProps) {
       {/* Host Info */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Chủ nhà: {host.name}</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-foreground">Chủ nhà: {host.name}</h2>
+            {host.verified && (
+              <Badge variant="outline" className="flex items-center gap-1 border-emerald-200 bg-emerald-50 text-emerald-700">
+                <ShieldCheck className="h-3.5 w-3.5" /> Đã xác thực
+              </Badge>
+            )}
+          </div>
           <div className="flex items-center space-x-4 mt-2 text-sm text-muted-foreground">
             <span className="flex items-center space-x-1">
               <Users className="h-4 w-4" />

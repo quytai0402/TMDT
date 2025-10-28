@@ -3,6 +3,7 @@
 import { Calendar, Users, Star } from "lucide-react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import type { SelectedServiceSummary } from "@/components/services-selection"
 
 interface BookingSummaryProps {
   listing: {
@@ -23,9 +24,18 @@ interface BookingSummaryProps {
   checkIn?: string
   checkOut?: string
   guests?: number
+  additionalServices?: SelectedServiceSummary[]
+  additionalServicesTotal?: number
 }
 
-export function BookingSummary({ listing, checkIn: propCheckIn, checkOut: propCheckOut, guests: propGuests }: BookingSummaryProps) {
+export function BookingSummary({
+  listing,
+  checkIn: propCheckIn,
+  checkOut: propCheckOut,
+  guests: propGuests,
+  additionalServices,
+  additionalServicesTotal,
+}: BookingSummaryProps) {
   const fallbackCheckIn = () => {
     const today = new Date()
     return today.toISOString().split("T")[0]
@@ -49,10 +59,12 @@ export function BookingSummary({ listing, checkIn: propCheckIn, checkOut: propCh
 
   const nights = calculateNights()
   const nightlyRate = Number.isFinite(listing.price) ? listing.price : 0
+  const selectedServices = additionalServices ?? []
+  const servicesTotal = additionalServicesTotal ?? selectedServices.reduce((sum, service) => sum + (service.totalPrice ?? 0), 0)
   const subtotal = nightlyRate * nights
   const cleaningFee = listing.cleaningFee ?? 0
-  const serviceFee = listing.serviceFee ?? subtotal * 0.1
-  const total = subtotal + serviceFee + cleaningFee
+  const serviceFee = listing.serviceFee ?? (subtotal + servicesTotal) * 0.1
+  const total = subtotal + serviceFee + cleaningFee + servicesTotal
 
   return (
     <Card className="shadow-lg">
@@ -119,6 +131,24 @@ export function BookingSummary({ listing, checkIn: propCheckIn, checkOut: propCh
             </span>
             <span className="text-foreground">{subtotal.toLocaleString("vi-VN")}₫</span>
           </div>
+
+          {selectedServices.length > 0 && (
+            <div className="space-y-2">
+              {selectedServices.map((service) => (
+                <div key={service.id} className="flex justify-between text-sm text-muted-foreground">
+                  <span>
+                    {service.name}
+                    {service.quantityLabel ? ` · ${service.quantityLabel}` : ""}
+                  </span>
+                  <span className="text-foreground">{service.totalPrice.toLocaleString("vi-VN")}₫</span>
+                </div>
+              ))}
+              <div className="flex justify-between text-sm font-semibold text-primary">
+                <span>Tổng dịch vụ bổ sung</span>
+                <span>{servicesTotal.toLocaleString("vi-VN")}₫</span>
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Phí dịch vụ</span>

@@ -64,6 +64,53 @@ export default function TripDetailPage() {
   }
 
   // Transform API data to TripHub format
+  const services =
+    Array.isArray(trip.additionalServices) && trip.additionalServices.length > 0
+      ? trip.additionalServices.map((service: any) => ({
+          id: service.id,
+          name: service.name,
+          quantityLabel: service.quantityLabel,
+          totalPrice: Number(service.totalPrice) || 0,
+        }))
+      : []
+
+  const conciergePlans = Array.isArray(trip.conciergePlans)
+    ? trip.conciergePlans.map((plan: any) => ({
+        id: plan.id,
+        status: plan.status,
+        loyaltyOffer: plan.loyaltyOffer,
+        hostNotes: plan.hostNotes,
+        guestNotes: plan.guestNotes,
+        createdAt: plan.createdAt,
+        partnerInfo: plan.partnerInfo ?? [],
+      }))
+    : []
+
+  const packingChecklist = [
+    "Kiểm tra lại giấy tờ cá nhân và thông tin đặt phòng.",
+    "Chuẩn bị tiền mặt hoặc thẻ cho chi phí phát sinh.",
+    "Tải ứng dụng LuxeStay để nhận thông báo check-in.",
+    ...(services.some((service) => service.id === "airport-pickup")
+      ? ["Xác nhận giờ đón sân bay với concierge."]
+      : []),
+    ...(services.some((service) => service.id === "pet-stay")
+      ? ["Mang sổ tiêm chủng và đồ dùng cần thiết cho thú cưng."]
+      : []),
+  ]
+
+  const upsellExperiences = [
+    {
+      title: "Gợi ý trải nghiệm địa phương",
+      description: "Lên lịch city tour, lớp nấu ăn hoặc tour ẩm thực đêm với concierge.",
+      cta: "/experiences",
+    },
+    {
+      title: "Nâng cấp đặc quyền",
+      description: "Đổi điểm thưởng để nhận nâng hạng phòng, dịch vụ spa và quà chào mừng.",
+      cta: "/rewards/catalog",
+    },
+  ]
+
   const tripData = {
     id: trip.id,
     bookingCode: trip.id.slice(-8).toUpperCase(),
@@ -123,7 +170,11 @@ export default function TripDetailPage() {
       "Tôn trọng hàng xóm",
       `Check-out trước ${trip.listing.checkOutTime || '11:00'}`,
     ],
-    concierge: [],
+    services,
+    servicesTotal: Number(trip.additionalServicesTotal) || services.reduce((sum: number, service) => sum + service.totalPrice, 0),
+    conciergePlans,
+    packingChecklist,
+    upsellExperiences,
     messagesUrl: `/messages`,
     directionsUrl: `https://maps.google.com/?q=${trip.listing.latitude},${trip.listing.longitude}`,
   }

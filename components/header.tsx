@@ -77,6 +77,11 @@ export function Header() {
               </DropdownMenuContent>
             </DropdownMenu>
 
+            <Link href="/personas" className="px-2.5 py-1.5 text-sm font-medium text-gray-700 hover:text-primary hover:bg-primary/5 rounded-lg transition-all duration-200 flex items-center gap-1">
+              <LayoutDashboard className="h-3.5 w-3.5" />
+              Chủ đề
+            </Link>
+
             <Link href="/experiences" className="px-2.5 py-1.5 text-sm font-medium text-gray-700 hover:text-primary hover:bg-primary/5 rounded-lg transition-all duration-200 flex items-center gap-1">
               <Compass className="h-3.5 w-3.5" />
               Trải nghiệm

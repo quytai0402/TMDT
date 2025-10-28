@@ -40,13 +40,18 @@ export async function trackQuestProgress(
   metadata?: Record<string, any>
 ) {
   try {
+    const baseUrl =
+      process.env.NEXTAUTH_URL ??
+      process.env.NEXT_PUBLIC_APP_URL ??
+      'http://localhost:3000'
     if (typeof window === 'undefined') {
       // Server-side: use fetch with internal API
-      const response = await fetch(`${process.env.NEXTAUTH_URL}/api/quests/track`, {
+      const response = await fetch(`${baseUrl}/api/quests/track`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({
           trigger,
           metadata
@@ -66,6 +71,7 @@ export async function trackQuestProgress(
         headers: {
           'Content-Type': 'application/json'
         },
+        credentials: 'include',
         body: JSON.stringify({
           trigger,
           metadata

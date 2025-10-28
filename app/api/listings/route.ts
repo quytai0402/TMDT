@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { generateSlug } from '@/lib/helpers'
+import { getMembershipForUser } from '@/lib/membership'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
@@ -100,6 +101,7 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const skip = (page - 1) * limit
     const category = searchParams.get('category')
+    const secretOnly = searchParams.get('secretOnly') === 'true'
     const session = await getServerSession(authOptions)
 
     // If requesting specific host's listings (including "me")
@@ -128,6 +130,20 @@ export async function GET(req: NextRequest) {
 
     // Public listings - return active listings with pagination
     const { where: categoryWhere, orderBy } = buildCategoryQuery(category)
+    if (secretOnly) {
+      if (!session?.user?.id) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      const membership = await getMembershipForUser(session.user.id)
+      const isAdmin = session.user.role === 'ADMIN'
+
+      if (!membership?.isActive && !isAdmin) {
+        return NextResponse.json({ error: 'Membership required' }, { status: 403 })
+      }
+      categoryWhere.isSecret = true
+    } else {
+      categoryWhere.isSecret = false
+    }
 
     const listings = await prisma.listing.findMany({
       where: categoryWhere,

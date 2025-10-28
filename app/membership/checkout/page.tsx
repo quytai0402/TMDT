@@ -10,13 +10,25 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Crown, Sparkles, Zap, CreditCard, Building, Wallet, Check, ArrowLeft, Shield, Lock } from "lucide-react"
+import { Crown, Sparkles, Zap, CreditCard, Building, Wallet, Check, ArrowLeft, Shield, Lock, Loader2 } from "lucide-react"
 import { useSearchParams, useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import { useSession } from "next-auth/react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { createVietQRUrl, formatTransferReference, getBankTransferInfo } from "@/lib/payments"
 
 interface MembershipPlan {
   id: string
@@ -46,6 +58,9 @@ export default function MembershipCheckoutPage() {
   const router = useRouter()
   const tier = searchParams.get("tier") || "gold"
   const billing = searchParams.get("billing") || "annually"
+  const { status, data: session } = useSession()
+  const callbackUrl = `/membership/checkout?tier=${tier}&billing=${billing}`
+  const loginUrl = `/login?callbackUrl=${encodeURIComponent(callbackUrl)}`
   
   const [paymentMethod, setPaymentMethod] = useState("credit_card")
   const [agreeToTerms, setAgreeToTerms] = useState(false)
@@ -53,6 +68,7 @@ export default function MembershipCheckoutPage() {
   const [plan, setPlan] = useState<MembershipPlan | null>(null)
   const [loadingPlan, setLoadingPlan] = useState(true)
   const [planError, setPlanError] = useState<string | null>(null)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -96,6 +112,18 @@ export default function MembershipCheckoutPage() {
   const IconComponent = iconComponents[iconKey] ?? Crown
   const gradient = plan?.color ?? 'from-yellow-400 to-yellow-600'
   const planName = plan?.name ?? tier.toUpperCase()
+  const bankInfo = getBankTransferInfo()
+  const membershipReference = useMemo(() => {
+    const userSuffix = session?.user?.id ? session.user.id.slice(-4).toUpperCase() : "GUEST"
+    const billingSuffix = billing === "monthly" ? "M" : "Y"
+    const base = `${plan?.slug ?? tier}-${billingSuffix}-${userSuffix}`
+    return formatTransferReference("MEMBERSHIP", base)
+  }, [billing, plan?.slug, session?.user?.id, tier])
+
+  const membershipQrUrl = useMemo(() => {
+    if (!price) return null
+    return createVietQRUrl(price, membershipReference)
+  }, [price, membershipReference])
 
   const formatPrice = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -104,7 +132,12 @@ export default function MembershipCheckoutPage() {
     }).format(amount)
   }
 
-  const handlePayment = async () => {
+  const handlePayment = () => {
+    if (status !== "authenticated") {
+      toast.error("Vui lòng đăng nhập để hoàn tất thanh toán membership.")
+      router.push(loginUrl)
+      return
+    }
     if (!agreeToTerms) {
       alert("Vui lòng đồng ý với điều khoản và điều kiện")
       return
@@ -113,9 +146,21 @@ export default function MembershipCheckoutPage() {
       setPlanError('Vui lòng chọn lại gói membership trước khi thanh toán.')
       return
     }
+    setPlanError(null)
+    setShowConfirmDialog(true)
+  }
 
+  const confirmMembershipPurchase = async () => {
+    if (status !== "authenticated") {
+      router.push(loginUrl)
+      return
+    }
+    if (!plan) return
+    setShowConfirmDialog(false)
     setIsProcessing(true)
     try {
+      await new Promise((resolve) => setTimeout(resolve, 900))
+
       const response = await fetch('/api/membership/activate', {
         method: 'POST',
         headers: {
@@ -151,24 +196,52 @@ export default function MembershipCheckoutPage() {
     <div className="min-h-screen flex flex-col">
       <Header />
       <main className="flex-1 bg-muted/30">
-        <div className="container mx-auto px-4 py-12">
-          {/* Back Button */}
-          <Link href="/membership">
-            <Button variant="ghost" className="mb-6">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Quay lại
-            </Button>
-          </Link>
+        {status === "loading" && (
+          <div className="flex h-full items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        )}
 
-          <div className="grid lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
-            {/* Payment Form */}
-            <div className="lg:col-span-2 space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-2xl">Thông tin thanh toán</CardTitle>
-                  <CardDescription>Chọn phương thức thanh toán phù hợp với bạn</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
+        {status === "unauthenticated" && (
+          <div className="container mx-auto px-4 py-12 max-w-2xl">
+            <Card className="border border-dashed border-primary/30 bg-muted/20">
+              <CardHeader>
+                <CardTitle className="text-2xl">Đăng nhập để mua membership</CardTitle>
+                <CardDescription>
+                  Bạn cần đăng nhập để tiếp tục mua gói LuxeStay Membership và kích hoạt đặc quyền hội viên.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Button onClick={() => router.push(loginUrl)} className="w-full">
+                  Đăng nhập ngay
+                </Button>
+                <Button asChild variant="outline" className="w-full">
+                  <Link href="/membership">Xem quyền lợi membership</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {status === "authenticated" && (
+          <div className="container mx-auto px-4 py-12">
+            {/* Back Button */}
+            <Link href="/membership">
+              <Button variant="ghost" className="mb-6">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Quay lại
+              </Button>
+            </Link>
+
+            <div className="grid lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
+              {/* Payment Form */}
+              <div className="lg:col-span-2 space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-2xl">Thông tin thanh toán</CardTitle>
+                    <CardDescription>Chọn phương thức thanh toán phù hợp với bạn</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
                   {/* Payment Method Selection */}
                   <div className="space-y-4">
                     <Label className="text-base font-semibold">Phương thức thanh toán</Label>
@@ -249,28 +322,49 @@ export default function MembershipCheckoutPage() {
 
                   {/* Bank Transfer Instructions */}
                   {paymentMethod === "bank_transfer" && (
-                    <div className="space-y-3 p-4 bg-muted/30 rounded-lg">
-                      <p className="text-sm font-medium">Thông tin chuyển khoản:</p>
+                    <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
                       <div className="space-y-2 text-sm">
+                        <p className="text-sm font-medium">Thông tin chuyển khoản:</p>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Ngân hàng:</span>
-                          <span className="font-medium">Vietcombank</span>
+                          <span className="font-medium">{bankInfo.bankName}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Số tài khoản:</span>
-                          <span className="font-medium">1234567890</span>
+                          <span className="font-medium">{bankInfo.accountNumber}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Chủ tài khoản:</span>
-                          <span className="font-medium">HOMESTAY BOOKING</span>
+                          <span className="font-medium uppercase">{bankInfo.accountName}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Nội dung:</span>
-                          <span className="font-medium">MEMBERSHIP {tier.toUpperCase()}</span>
+                          <span className="font-medium">{membershipReference}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Số tiền:</span>
+                          <span className="font-medium">
+                            {new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(price)}
+                          </span>
                         </div>
                       </div>
+
+                      {membershipQrUrl && (
+                        <div className="flex flex-col md:flex-row md:items-center gap-3">
+                          <img
+                            src={membershipQrUrl}
+                            alt="VietQR chuyển khoản membership"
+                            className="h-40 w-40 rounded-lg border bg-white p-2"
+                          />
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            Quét mã VietQR để điền sẵn thông tin chuyển khoản. Vui lòng kiểm tra kỹ nội dung{" "}
+                            <span className="font-semibold text-foreground">{membershipReference}</span> trước khi xác nhận.
+                          </p>
+                        </div>
+                      )}
+
                       <p className="text-xs text-muted-foreground">
-                        * Membership sẽ được kích hoạt trong vòng 24h sau khi nhận được thanh toán
+                        * Membership sẽ được kích hoạt trong vòng 24 giờ sau khi LuxeStay nhận được chuyển khoản hợp lệ.
                       </p>
                     </div>
                   )}
@@ -455,13 +549,51 @@ export default function MembershipCheckoutPage() {
                     <Lock className="h-4 w-4 text-muted-foreground" />
                     <span className="text-xs text-muted-foreground">Thanh toán an toàn & bảo mật</span>
                   </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </main>
       <Footer />
+      {status === "authenticated" && (
+        <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Xác nhận thanh toán membership</AlertDialogTitle>
+              <AlertDialogDescription>
+                LuxeStay đang giữ chỗ gói {plan?.name}. Vui lòng xác nhận bạn đã hoàn tất thanh toán{" "}
+                {billing === "monthly" ? "tháng đầu tiên" : "trọn gói 12 tháng"} để kích hoạt đặc quyền.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-3 rounded-md border bg-muted/20 p-4 text-sm">
+              <div className="flex items-center justify-between">
+                <span>Gói</span>
+                <span className="font-medium text-foreground">{plan?.name}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Kỳ thanh toán</span>
+                <span className="font-medium text-foreground">
+                  {billing === "monthly" ? "Hàng tháng" : "Hàng năm"}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Số tiền</span>
+                <span className="font-semibold text-primary">
+                  {formatPrice(billing === "monthly" ? plan?.monthlyPrice ?? 0 : plan?.annualPrice ?? 0)}
+                </span>
+              </div>
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isProcessing}>Hủy</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmMembershipPurchase} disabled={isProcessing}>
+                Tôi đã thanh toán
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   )
 }

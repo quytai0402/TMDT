@@ -19,6 +19,7 @@ interface Listing {
   guests: number
   bedrooms: number
   featured?: boolean
+  isSecret?: boolean
 }
 
 export function ListingsGrid() {
@@ -57,6 +58,7 @@ export function ListingsGrid() {
             guests: listing.maxGuests,
             bedrooms: listing.bedrooms,
             featured: listing.featured || false,
+            isSecret: Boolean(listing.isSecret),
           }))
           
           setListings(formattedListings)

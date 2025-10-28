@@ -9,6 +9,7 @@ import {
   MembershipStatus,
   RewardSource,
   RewardTransactionType,
+  Prisma,
 } from "@prisma/client"
 
 export async function POST(req: NextRequest) {
@@ -21,6 +22,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const planSlug: string | undefined = body?.planSlug
     const billingCycle: string | undefined = body?.billingCycle
+    const paymentMethod: string | undefined = body?.paymentMethod
 
     if (!planSlug) {
       return NextResponse.json({ error: "Missing membership plan" }, { status: 400 })
@@ -34,8 +36,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Membership plan not found" }, { status: 404 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+    const userWhere: Prisma.UserWhereInput[] = []
+    if (session.user.id) {
+      userWhere.push({ id: session.user.id })
+    }
+    if (session.user.email) {
+      userWhere.push({ email: session.user.email })
+    }
+
+    if (userWhere.length === 0) {
+      return NextResponse.json({ error: "Unable to resolve current user" }, { status: 401 })
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { OR: userWhere },
       select: {
         id: true,
         loyaltyPoints: true,
@@ -91,6 +105,7 @@ export async function POST(req: NextRequest) {
         metadata: {
           planSlug: plan.slug,
           billingCycle: cycle,
+          paymentMethod: paymentMethod ?? "unspecified",
         },
       },
     })

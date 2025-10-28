@@ -34,6 +34,8 @@ export default function MessagesPage() {
   const { data: session, status } = useSession()
   const searchParams = useSearchParams()
   const conversationIdParam = searchParams.get('conversation')
+  const participantParam = searchParams.get('participant')
+  const listingParam = searchParams.get('listing')
   const { toast } = useToast()
 
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -42,6 +44,7 @@ export default function MessagesPage() {
   )
   const [loading, setLoading] = useState(true)
   const [showSidebar, setShowSidebar] = useState(true)
+  const [isEnsuringConversation, setIsEnsuringConversation] = useState(false)
 
   // Fetch conversations
   useEffect(() => {
@@ -49,6 +52,48 @@ export default function MessagesPage() {
       fetchConversations()
     }
   }, [status])
+
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    if (!participantParam || isEnsuringConversation) return
+
+    const ensureConversation = async () => {
+      try {
+        setIsEnsuringConversation(true)
+        const response = await fetch('/api/conversations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            participantId: participantParam,
+            listingId: listingParam ?? undefined,
+          }),
+        })
+
+        const data = await response.json()
+        if (!response.ok) {
+          throw new Error(data.error || 'Không thể mở cuộc trò chuyện')
+        }
+
+        const conversationId = data.conversation?.id
+        if (conversationId) {
+          setSelectedConversationId(conversationId)
+          await fetchConversations()
+        }
+      } catch (error) {
+        console.error('ensureConversation error:', error)
+        toast({
+          variant: 'destructive',
+          title: 'Không thể bắt đầu trò chuyện',
+          description: 'Vui lòng thử lại sau.',
+        })
+      } finally {
+        setIsEnsuringConversation(false)
+      }
+    }
+
+    ensureConversation()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, participantParam, listingParam])
 
   const fetchConversations = async () => {
     try {

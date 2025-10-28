@@ -5,7 +5,24 @@ import { Footer } from "@/components/footer"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Crown, Sparkles, Zap, CheckCircle, Calendar, Gift, Map, ShieldCheck } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
+import {
+  Crown,
+  Sparkles,
+  Zap,
+  CheckCircle,
+  Calendar,
+  Gift,
+  Map,
+  ShieldCheck,
+  Utensils,
+  Car,
+  Ticket,
+  Stars,
+  Medal,
+  ConciergeBell
+} from "lucide-react"
 import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
@@ -51,6 +68,68 @@ const iconComponents: Record<string, React.ComponentType<{ className?: string }>
   zap: Zap,
 }
 
+const normalizeFeatureKey = (value: string) =>
+  value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .trim()
+
+type FeatureDetail = {
+  title: string
+  description?: string
+  icon: LucideIcon
+  exclusive?: boolean
+}
+
+const FEATURE_DETAILS: Record<string, FeatureDetail> = {
+  [normalizeFeatureKey("Truy cập bộ sưu tập Secret Collection")]: {
+    title: "Secret Collection",
+    description: "Danh mục homestay bí mật chỉ mở cho hội viên Gold & Diamond với ưu đãi riêng.",
+    icon: Sparkles,
+    exclusive: true,
+  },
+  [normalizeFeatureKey("Tham gia workshop & city tour dành riêng cho member")]: {
+    title: "Workshop & City Tour",
+    description: "Đặt chỗ trước cho workshop, city tour bản địa và sự kiện networking giới hạn người tham gia.",
+    icon: Stars,
+    exclusive: true,
+  },
+  [normalizeFeatureKey("Trải nghiệm private chef 1 lần/năm")]: {
+    title: "Private Chef 1 lần/năm",
+    description: "Đặt bữa tối riêng với đầu bếp tại homestay, thực đơn thiết kế riêng cho Diamond member.",
+    icon: Utensils,
+    exclusive: true,
+  },
+  [normalizeFeatureKey("Airport transfer 2 chiều/năm")]: {
+    title: "Airport Transfer 2 chiều",
+    description: "Xe sang đưa đón sân bay khứ hồi cho 2 lượt mỗi năm, đặt qua concierge.",
+    icon: Car,
+    exclusive: true,
+  },
+  [normalizeFeatureKey("Vé mời sự kiện VIP & retreat member")]: {
+    title: "VIP Events & Retreat",
+    description: "Thư mời tham gia retreat, dạ tiệc và sự kiện kết nối dành riêng cho Diamond member.",
+    icon: Ticket,
+    exclusive: true,
+  },
+  [normalizeFeatureKey("Concierge riêng 24/7")]: {
+    title: "Concierge riêng 24/7",
+    description: "Chuyên viên concierge theo sát lịch trình, xử lý mọi yêu cầu khẩn trong chuyến đi.",
+    icon: ConciergeBell,
+  },
+  [normalizeFeatureKey("Premium welcome gift với đặc sản địa phương")]: {
+    title: "Premium Welcome Gift",
+    description: "Hộp quà đặc sản địa phương chuẩn bị sẵn tại phòng trước khi bạn đến.",
+    icon: Gift,
+  },
+  [normalizeFeatureKey("Tích luỹ điểm x3")]: {
+    title: "Điểm thưởng x3",
+    description: "Nhân ba điểm thưởng cho mọi booking và trải nghiệm, giúp thăng hạng nhanh hơn.",
+    icon: Medal,
+  },
+}
+
 export default function MembershipSuccessPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -72,6 +151,7 @@ export default function MembershipSuccessPage() {
         const response = await fetch("/api/membership/status", {
           signal: controller.signal,
           cache: "no-store",
+          credentials: "include",
         })
         if (controller.signal.aborted) return
 
@@ -82,7 +162,17 @@ export default function MembershipSuccessPage() {
         }
 
         if (!response.ok) {
-          throw new Error("Failed to fetch membership status")
+          const errorData = await response.json().catch(() => null)
+          const baseMessage =
+            (errorData && (errorData.error || errorData.message)) ||
+            "Không thể tải trạng thái membership lúc này. Vui lòng thử lại sau."
+          const message =
+            response.status === 401
+              ? "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại để xem quyền lợi membership."
+              : baseMessage
+          setMembership(null)
+          setMembershipError(message)
+          return
         }
 
         const data: MembershipStatusResponse = await response.json()
@@ -165,23 +255,19 @@ export default function MembershipSuccessPage() {
   const iconKey = plan?.icon?.toLowerCase() ?? "crown"
   const IconComponent = iconComponents[iconKey] ?? Crown
   const gradient = plan?.color ?? "from-yellow-400 to-yellow-600"
-  const billingLabel = membership?.billingCycle
-    ? membership.billingCycle === "MONTHLY"
-      ? "Hàng tháng"
-      : "Hàng năm"
-    : billing === "monthly"
-      ? "Hàng tháng"
-      : "Hàng năm"
+  const resolvedBillingCycle = membership?.billingCycle ?? (billing === "monthly" ? "MONTHLY" : "ANNUAL")
+  const billingLabel = resolvedBillingCycle === "MONTHLY" ? "Hàng tháng" : "Hàng năm"
   const startedAt = membership?.startedAt ? new Date(membership.startedAt) : null
   const expiresAt = membership?.expiresAt ? new Date(membership.expiresAt) : null
-  const isActiveMember = membership?.isActive ?? false
+  const isActiveMember = membership?.isActive ?? true
   const statusLabelMap: Record<MembershipStatusValue, string> = {
     ACTIVE: "Đang hoạt động",
     EXPIRED: "Đã hết hạn",
     CANCELLED: "Đã hủy",
     INACTIVE: "Chưa kích hoạt",
   }
-  const statusLabel = membership ? statusLabelMap[membership.status] ?? membership.status : "Đang xử lý"
+  const resolvedStatus = membership?.status ?? "ACTIVE"
+  const statusLabel = statusLabelMap[resolvedStatus] ?? "Đang hoạt động"
   const errorMessage = membershipError ?? planError
 
   const combinedFeatures = useMemo(() => {
@@ -270,8 +356,8 @@ export default function MembershipSuccessPage() {
                   <p className="text-sm text-red-600 max-w-xl mx-auto">{errorMessage}</p>
                 ) : (
                   <p className="text-muted-foreground max-w-xl mx-auto">
-                    Membership của bạn đã được kích hoạt thành công. Bạn có thể bắt đầu tận hưởng đầy đủ đặc quyền
-                    và ưu đãi ngay bây giờ!
+                    Membership của bạn đã được kích hoạt thành công. Quyền lợi sẽ áp dụng ngay cho booking, Secret
+                    Collection và trải nghiệm dành riêng cho hội viên.
                   </p>
                 )}
               </CardContent>
@@ -314,9 +400,9 @@ export default function MembershipSuccessPage() {
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground text-center">
-                  {isActiveMember
+                {isActiveMember
                     ? "Quyền lợi member đang được áp dụng tự động trên booking, Secret Collection và trải nghiệm dành riêng cho bạn."
-                    : "Chúng tôi đang kích hoạt membership của bạn. Vui lòng tải lại trang sau ít phút để cập nhật."}
+                    : "Membership của bạn chưa hoạt động. Vui lòng kiểm tra lại thanh toán hoặc liên hệ concierge để được hỗ trợ."}
                 </p>
               </CardContent>
             </Card>
@@ -337,21 +423,35 @@ export default function MembershipSuccessPage() {
                   </p>
                 ) : (
                   <div className="space-y-4">
-                    {combinedFeatures.map((feature) => (
-                      <div key={feature} className="flex items-start gap-3">
-                        <div className="mt-1 rounded-full bg-primary/10 text-primary p-1">
-                          <CheckCircle className="h-4 w-4" />
+                    {combinedFeatures.map((feature) => {
+                      const normalizedKey = normalizeFeatureKey(feature)
+                      const detail = FEATURE_DETAILS[normalizedKey]
+                      const Icon = detail?.icon ?? CheckCircle
+                      const isExclusive = Boolean(detail?.exclusive) || exclusiveFeatureSet.has(feature)
+
+                      return (
+                        <div key={feature} className="flex items-start gap-3">
+                          <div className="mt-1 rounded-full bg-primary/10 text-primary p-2">
+                            <Icon className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-foreground">
+                              {detail?.title ?? feature}
+                            </p>
+                            {detail?.description && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {detail.description}
+                              </p>
+                            )}
+                            {isExclusive && (
+                              <Badge variant="secondary" className="mt-2">
+                                Member độc quyền
+                              </Badge>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium">{feature}</p>
-                          {exclusiveFeatureSet.has(feature) && (
-                            <Badge variant="secondary" className="mt-1">
-                              Member độc quyền
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </CardContent>

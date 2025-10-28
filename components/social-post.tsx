@@ -71,6 +71,7 @@ export function SocialPost({
   const [isBookmarked, setIsBookmarked] = useState(initialIsBookmarked)
   const [showComments, setShowComments] = useState(false)
   const [isLiking, setIsLiking] = useState(false)
+  const [commentCount, setCommentCount] = useState<number>(comments)
 
   const handleLike = async () => {
     if (isLiking) return
@@ -89,6 +90,13 @@ export function SocialPost({
         body: JSON.stringify({ action: wasLiked ? 'unlike' : 'like' })
       })
       
+      if (response.status === 401) {
+        setIsLiked(wasLiked)
+        setLikes(wasLiked ? likes : likes - 1)
+        window.location.href = `/login?callbackUrl=%2Fcommunity`
+        return
+      }
+
       if (!response.ok) {
         // Revert on error
         setIsLiked(wasLiked)
@@ -254,7 +262,7 @@ export function SocialPost({
               {likes} lượt thích
             </span>
             <span className="hover:underline cursor-pointer">
-              {comments} bình luận
+              {commentCount} bình luận
             </span>
           </div>
           <span className="hover:underline cursor-pointer">
@@ -299,7 +307,10 @@ export function SocialPost({
         {/* Comment Section */}
         {showComments && (
           <div className="w-full">
-            <CommentSection postId={id} />
+            <CommentSection
+              postId={id}
+              onCommentAdded={() => setCommentCount((prev) => prev + 1)}
+            />
           </div>
         )}
       </CardFooter>

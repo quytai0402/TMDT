@@ -50,12 +50,9 @@ export const PERSONAS: Record<PersonaSlug, PersonaDefinition> = {
     heroImage:
       "https://images.unsplash.com/photo-1488590528505-98d2b5aba04b?auto=format&fit=crop&w=1600&q=80",
     filters: {
+      propertyTypes: ["APARTMENT", "CONDO", "HOUSE"],
       minBedrooms: 1,
-      verifiedAmenities: ["workspace", "wifi", "monitor", "coffee"],
-      hasSmartLock: true,
-      requireMonthlyDiscount: true,
-      minimumRating: 4.5,
-      sortPriority: "monthlyDiscount",
+      sortPriority: "rating",
     },
     highlights: [
       "Wifi trung bình 250Mbps+, bàn làm việc chuẩn ergonomic",
@@ -93,12 +90,9 @@ export const PERSONAS: Record<PersonaSlug, PersonaDefinition> = {
     heroImage:
       "https://images.unsplash.com/photo-1517849845537-4d257902454a?auto=format&fit=crop&w=1600&q=80",
     filters: {
-      allowPets: true,
       minBedrooms: 2,
       minGuests: 3,
       propertyTypes: ["HOUSE", "VILLA", "BUNGALOW"],
-      verifiedAmenities: ["pet-bed", "fenced-yard", "pet-wash"],
-      minimumRating: 4.3,
       sortPriority: "rating",
     },
     highlights: [
@@ -136,10 +130,7 @@ export const PERSONAS: Record<PersonaSlug, PersonaDefinition> = {
     heroImage:
       "https://images.unsplash.com/photo-1546483875-ad9014c88eba?auto=format&fit=crop&w=1600&q=80",
     filters: {
-      propertyTypes: ["VILLA", "BUNGALOW", "UNIQUE"],
-      verifiedAmenities: ["spa", "onsen", "yoga", "sauna"],
-      minimumRating: 4.6,
-      allowEvents: false,
+      propertyTypes: ["VILLA", "UNIQUE", "BUNGALOW"],
       sortPriority: "rating",
     },
     highlights: [
@@ -178,12 +169,8 @@ export const PERSONAS: Record<PersonaSlug, PersonaDefinition> = {
       "https://images.unsplash.com/photo-1521737604893-d14cc237f11d?auto=format&fit=crop&w=1600&q=80",
     filters: {
       propertyTypes: ["APARTMENT", "CONDO", "HOUSE"],
-      verifiedAmenities: ["workspace", "laundry", "smart-tv"],
-      hasSmartLock: true,
-      requireMonthlyDiscount: true,
-      requireWeeklyDiscount: true,
-      minimumRating: 4.4,
-      sortPriority: "monthlyDiscount",
+      minBedrooms: 1,
+      sortPriority: "rating",
     },
     highlights: [
       "Hợp đồng linh hoạt, gia hạn dễ dàng theo chu kỳ 2-4 tuần",

@@ -3,17 +3,19 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
-interface Params {
-  id: string
+type RouteParams = { id: string }
+
+function resolveParams(context: { params: RouteParams | Promise<RouteParams> }) {
+  return Promise.resolve(context.params)
 }
 
 // GET single listing
 export async function GET(
   req: NextRequest,
-  { params }: { params: Params }
+  context: { params: RouteParams | Promise<RouteParams> }
 ) {
   try {
-    const { id } = params
+    const { id } = await resolveParams(context)
 
     const listing = await prisma.listing.findUnique({
       where: { id },
@@ -81,7 +83,7 @@ export async function GET(
 // UPDATE listing
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Params }
+  context: { params: RouteParams | Promise<RouteParams> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -90,7 +92,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { id } = params
+    const { id } = await resolveParams(context)
     const body = await req.json()
 
     // Check ownership
@@ -122,7 +124,7 @@ export async function PATCH(
 // DELETE listing
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Params }
+  context: { params: RouteParams | Promise<RouteParams> }
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -131,7 +133,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { id } = params
+    const { id } = await resolveParams(context)
 
     // Check ownership
     const existingListing = await prisma.listing.findUnique({

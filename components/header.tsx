@@ -22,6 +22,7 @@ import { useAuthModal } from "@/hooks/use-auth-modal"
 import { NotificationCenter } from "@/components/notification-center"
 import { MobileMenu } from "@/components/mobile-menu"
 import { UserRewardsBadge } from "@/components/user-rewards-badge"
+import { canAccessAdmin, canManageListings, isGuest, resolveRoleLabel } from "@/lib/rbac"
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -177,7 +178,9 @@ export function Header() {
                             </>
                           )}
                         </p>
-                        <p className="text-xs text-muted-foreground">{session.user.email}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {resolveRoleLabel(session.user.role)} • {session.user.email}
+                        </p>
                       </div>
                     </div>
                   </DropdownMenuLabel>
@@ -197,7 +200,7 @@ export function Header() {
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                   
-                  {session.user.role === "GUEST" && (
+                  {isGuest(session.user.role) && (
                     <>
                       <DropdownMenuSeparator />
                       <DropdownMenuGroup>
@@ -218,7 +221,7 @@ export function Header() {
                   )}
                   
                   <DropdownMenuSeparator />
-                  {session.user.role === "HOST" || session.user.role === "ADMIN" ? (
+                  {canManageListings(session.user.role) ? (
                     <>
                       <DropdownMenuGroup>
                         <DropdownMenuLabel className="text-xs text-muted-foreground font-semibold">Host Tools</DropdownMenuLabel>
@@ -238,7 +241,7 @@ export function Header() {
                       <DropdownMenuSeparator />
                     </>
                   ) : null}
-                  {session.user.role === "ADMIN" ? (
+                  {canAccessAdmin(session.user.role) ? (
                     <>
                       <DropdownMenuGroup>
                         <DropdownMenuItem onClick={() => router.push('/admin/dashboard')} className="font-medium">

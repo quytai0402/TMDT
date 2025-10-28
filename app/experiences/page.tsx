@@ -1,91 +1,12 @@
-import { cache } from "react"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
-import { ExperiencesGrid, type ExperienceSummary } from "@/components/experiences-grid"
-import { prisma } from "@/lib/prisma"
+import { ExperiencesGrid } from "@/components/experiences-grid"
+import { getExperienceSummaries } from "@/lib/experiences"
 
 export const revalidate = 1800
 
-type ExperienceWithHost = {
-  id: string
-  title: string
-  description: string
-  category: string
-  city: string
-  state: string | null
-  duration: string
-  groupSize: string
-  price: number
-  averageRating: number
-  totalReviews: number
-  tags?: string[] | null
-  featured: boolean
-  image: string
-  isMembersOnly?: boolean
-  host: {
-    name: string | null
-    image: string | null
-    isVerified: boolean | null
-    isSuperHost: boolean | null
-  } | null
-}
-
-const prismaClient = prisma as any
-
-const getExperiences = cache(async (): Promise<ExperienceSummary[]> => {
-  const experiences = await prismaClient.experience.findMany({
-    where: {
-      status: "ACTIVE",
-      OR: [
-        { isMembersOnly: false },
-        { isMembersOnly: null },
-      ],
-    },
-    include: {
-      host: {
-        select: {
-          name: true,
-          image: true,
-          isVerified: true,
-          isSuperHost: true,
-        },
-      },
-    },
-    orderBy: [
-      { featured: "desc" },
-      { averageRating: "desc" },
-      { createdAt: "desc" },
-    ],
-  })
-
-  return (experiences as ExperienceWithHost[]).map((experience: ExperienceWithHost) => ({
-    id: experience.id,
-    title: experience.title,
-    description: experience.description,
-    image: experience.image,
-    host: {
-      name: experience.host?.name ?? "Host",
-      avatar: experience.host?.image ?? undefined,
-      verified: Boolean(experience.host?.isVerified || experience.host?.isSuperHost),
-    },
-    category: experience.category,
-    location: experience.state
-      ? `${experience.city}, ${experience.state}`
-      : experience.city,
-    city: experience.city,
-    duration: experience.duration,
-    groupSize: experience.groupSize,
-    price: experience.price,
-    rating: experience.averageRating,
-    reviewCount: experience.totalReviews,
-    tags: experience.tags ?? [],
-    featured: experience.featured,
-    membersOnly: experience.isMembersOnly ?? false,
-  }))
-})
-
 export default async function ExperiencesPage() {
-  const experiences = await getExperiences()
+  const experiences = await getExperienceSummaries({ membersOnly: false })
 
   return (
     <div className="min-h-screen flex flex-col">

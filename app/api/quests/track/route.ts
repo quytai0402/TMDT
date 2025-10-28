@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { RewardSource, RewardTransactionType } from '@prisma/client'
 
 // POST /api/quests/track - Track quest progress based on trigger
 export async function POST(req: NextRequest) {
@@ -54,118 +55,139 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Find matching active quests
-    const quests = await (prisma as any).quest.findMany({
+    const quests = await prisma.quest.findMany({
       where: {
-        type: {
-          in: questTypes
-        },
-        isActive: true
-      }
+        type: { in: questTypes },
+        isActive: true,
+      },
     })
 
-    const results = []
+    const results: Array<{
+      questId: string
+      questTitle: string
+      currentCount: number
+      targetCount: number
+      isCompleted: boolean
+      progress: number
+      pointsEarned: number
+    }> = []
 
     for (const quest of quests) {
-      // Get or create user quest
-      let userQuest = await (prisma as any).userQuest.findUnique({
+      let userQuest = await prisma.userQuest.findUnique({
         where: {
           userId_questId: {
             userId: session.user.id,
-            questId: quest.id
-          }
-        }
+            questId: quest.id,
+          },
+        },
       })
 
       if (!userQuest) {
-        userQuest = await (prisma as any).userQuest.create({
+        userQuest = await prisma.userQuest.create({
           data: {
             userId: session.user.id,
             questId: quest.id,
             currentCount: 0,
-            isCompleted: false
-          }
+            isCompleted: false,
+            lastResetAt: new Date(),
+          },
         })
       }
 
-      // Skip if already completed (for one-time quests)
-      if (userQuest.isCompleted && !quest.isDaily && !quest.isWeekly) {
-        continue
-      }
-
-      // Check daily/weekly reset
       const now = new Date()
-      const lastReset = userQuest.lastResetAt ?? userQuest.updatedAt ?? userQuest.createdAt ?? new Date()
-      const hoursSinceReset = (now.getTime() - lastReset.getTime()) / (1000 * 60 * 60)
+      const isRepeating = quest.isDaily || quest.isWeekly
+      const lastResetReference = userQuest.lastResetAt ?? userQuest.updatedAt ?? userQuest.createdAt ?? now
+      const hoursSinceReset = (now.getTime() - lastResetReference.getTime()) / (1000 * 60 * 60)
+      const shouldReset = quest.isDaily ? hoursSinceReset >= 24 : quest.isWeekly ? hoursSinceReset >= 168 : false
 
-      let shouldReset = false
-      if (quest.isDaily && hoursSinceReset >= 24) {
-        shouldReset = true
-      } else if (quest.isWeekly && hoursSinceReset >= 168) {
-        shouldReset = true
+      if (!shouldReset && userQuest.isCompleted) {
+        if (!isRepeating) {
+          results.push({
+            questId: quest.id,
+            questTitle: quest.title,
+            currentCount: userQuest.currentCount,
+            targetCount: quest.targetCount,
+            isCompleted: true,
+            progress: 100,
+            pointsEarned: 0,
+          })
+          continue
+        }
+
+        if (isRepeating) {
+          results.push({
+            questId: quest.id,
+            questTitle: quest.title,
+            currentCount: userQuest.currentCount,
+            targetCount: quest.targetCount,
+            isCompleted: true,
+            progress: 100,
+            pointsEarned: 0,
+          })
+          continue
+        }
       }
 
-      // Skip if daily/weekly and already completed today/this week
-      if ((quest.isDaily || quest.isWeekly) && userQuest.isCompleted && !shouldReset) {
-        continue
-      }
+      const baseCount = shouldReset ? 0 : userQuest.currentCount
+      const newCount = baseCount + 1
+      const justCompleted = newCount >= quest.targetCount && (!userQuest.isCompleted || shouldReset)
+      const isCompleted = justCompleted || (!shouldReset && userQuest.isCompleted)
+      const updatedLastResetAt = shouldReset ? now : userQuest.lastResetAt ?? now
+      const completedAt = justCompleted ? now : shouldReset ? null : isCompleted ? userQuest.completedAt : null
 
-      // Update progress
-      const newCount = shouldReset ? 1 : userQuest.currentCount + 1
-      const isNowCompleted = newCount >= quest.targetCount
-
-      userQuest = await (prisma as any).userQuest.update({
+      userQuest = await prisma.userQuest.update({
         where: { id: userQuest.id },
         data: {
           currentCount: newCount,
-          isCompleted: isNowCompleted,
-          completedAt: isNowCompleted ? now : (shouldReset ? null : userQuest.completedAt),
-          lastResetAt: shouldReset ? now : userQuest.lastResetAt ?? lastReset
+          isCompleted,
+          completedAt,
+          lastResetAt: updatedLastResetAt,
         },
         include: {
-          quest: true
-        }
+          quest: true,
+        },
       })
 
-      // Award points if just completed
-      if (isNowCompleted && (shouldReset || !userQuest.completedAt)) {
-        // Create reward transaction
-        await (prisma as any).rewardTransaction.create({
+      let pointsEarned = 0
+
+      if (justCompleted) {
+        const updatedUser = await prisma.user.update({
+          where: { id: session.user.id },
+          data: {
+            loyaltyPoints: {
+              increment: quest.rewardPoints,
+            },
+          },
+          select: {
+            loyaltyPoints: true,
+          },
+        })
+
+        await prisma.rewardTransaction.create({
           data: {
             userId: session.user.id,
             questId: quest.id,
-            transactionType: 'EARN',
-            source: 'QUEST',
+            transactionType: RewardTransactionType.CREDIT,
+            source: RewardSource.QUEST,
             points: quest.rewardPoints,
-            balanceAfter: 0, // Will be updated
+            balanceAfter: updatedUser.loyaltyPoints,
             description: `Hoàn thành nhiệm vụ: ${quest.title}`,
             metadata: {
               ...metadata,
               questId: quest.id,
               questTitle: quest.title,
-              trigger
-            }
-          }
+              trigger,
+            },
+          },
         })
 
-        // Update user points
-        await prisma.user.update({
-          where: { id: session.user.id },
-          data: {
-            loyaltyPoints: {
-              increment: quest.rewardPoints
-            }
-          }
-        })
-
-        // Award badge if specified
         if (quest.rewardBadgeId) {
-          await (prisma as any).userBadge.upsert({
+          await prisma.userBadge.upsert({
             where: {
               userId_badgeId: {
                 userId: session.user.id,
-                badgeId: quest.rewardBadgeId
-              }
+                badgeId: quest.rewardBadgeId,
+              },
             },
             update: {},
             create: {
@@ -173,13 +195,16 @@ export async function POST(req: NextRequest) {
               badgeId: quest.rewardBadgeId,
               source: 'QUEST',
               metadata: {
+                ...metadata,
                 questId: quest.id,
                 questTitle: quest.title,
-                trigger
-              }
-            }
+                trigger,
+              },
+            },
           })
         }
+
+        pointsEarned = quest.rewardPoints
       }
 
       results.push({
@@ -187,16 +212,16 @@ export async function POST(req: NextRequest) {
         questTitle: quest.title,
         currentCount: newCount,
         targetCount: quest.targetCount,
-        isCompleted: isNowCompleted,
+        isCompleted,
         progress: Math.min(100, (newCount / quest.targetCount) * 100),
-        pointsEarned: isNowCompleted ? quest.rewardPoints : 0
+        pointsEarned,
       })
     }
 
     return NextResponse.json({
       message: 'Quest progress tracked',
       updated: results,
-      completedCount: results.filter(r => r.isCompleted).length
+      completedCount: results.filter((r) => r.pointsEarned > 0).length,
     })
   } catch (error) {
     console.error('Error tracking quest progress:', error)

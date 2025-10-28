@@ -91,9 +91,9 @@ export function RewardsOverview({ compact = false }: RewardsOverviewProps) {
           <div>
             <CardTitle className="text-lg flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-purple-500" />
-              Rewards Program
+              Chương trình Rewards
             </CardTitle>
-            <CardDescription>Track your points and benefits</CardDescription>
+            <CardDescription>Theo dõi điểm thưởng và quyền lợi của bạn</CardDescription>
           </div>
           <Badge 
             variant="outline" 
@@ -110,7 +110,7 @@ export function RewardsOverview({ compact = false }: RewardsOverviewProps) {
             <span className="text-3xl font-bold text-primary">
               {data.currentPoints.toLocaleString()}
             </span>
-            <span className="text-muted-foreground">points</span>
+            <span className="text-muted-foreground">điểm</span>
           </div>
           
           {data.nextTier && (
@@ -136,7 +136,7 @@ export function RewardsOverview({ compact = false }: RewardsOverviewProps) {
             <p className="text-sm font-semibold">
               {currentTier?.pointsMultiplier || 1}x
             </p>
-            <p className="text-xs text-muted-foreground">Multiplier</p>
+            <p className="text-xs text-muted-foreground">Hệ số nhân</p>
           </div>
           <div className="text-center p-3 bg-muted/50 rounded-lg">
             <div className="flex items-center justify-center mb-1">
@@ -145,7 +145,7 @@ export function RewardsOverview({ compact = false }: RewardsOverviewProps) {
             <p className="text-sm font-semibold">
               {currentTier?.benefits?.length || 0}
             </p>
-            <p className="text-xs text-muted-foreground">Benefits</p>
+            <p className="text-xs text-muted-foreground">Quyền lợi</p>
           </div>
         </div>
 
@@ -156,14 +156,14 @@ export function RewardsOverview({ compact = false }: RewardsOverviewProps) {
             size="sm"
             onClick={() => router.push("/rewards")}
           >
-            View Details
+            Xem chi tiết
           </Button>
           <Button 
             size="sm"
             onClick={() => router.push("/rewards/catalog")}
           >
             <Gift className="h-4 w-4 mr-1" />
-            Redeem
+            Đổi quà
           </Button>
         </div>
       </CardContent>

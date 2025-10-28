@@ -4,6 +4,9 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
 const SUGGESTION_LIMIT = 6
+const FALLBACK_LIMIT = 6
+
+const HOST_ROLES = ["HOST", "ADMIN"] as const
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,14 +25,15 @@ export async function GET(request: NextRequest) {
     if (currentUserId) excludeIds.add(currentUserId)
     baseFollowing.forEach((item) => excludeIds.add(item.followingId))
 
-    const suggestionCandidates = await prisma.user.findMany({
-      where: excludeIds.size
-        ? {
-            id: {
-              notIn: Array.from(excludeIds),
-            },
-          }
-        : {},
+    let suggestionCandidates = await prisma.user.findMany({
+      where: {
+        ...(excludeIds.size && {
+          id: {
+            notIn: Array.from(excludeIds),
+          },
+        }),
+        role: { in: ["HOST", "GUEST"] },
+      },
       orderBy: [
         { loyaltyPoints: "desc" },
         { createdAt: "desc" },
@@ -64,10 +68,46 @@ export async function GET(request: NextRequest) {
     })
 
     if (suggestionCandidates.length === 0) {
+      suggestionCandidates = await prisma.user.findMany({
+        where: {
+          role: { in: ["HOST", "GUEST"] },
+        },
+        orderBy: [{ createdAt: "desc" }],
+        take: FALLBACK_LIMIT,
+        select: {
+          id: true,
+          name: true,
+          image: true,
+          role: true,
+          bio: true,
+          isVerified: true,
+          isSuperHost: true,
+          loyaltyTier: true,
+          loyaltyPoints: true,
+          languages: true,
+          hostProfile: {
+            select: {
+              city: true,
+              province: true,
+              tagline: true,
+            },
+          },
+          _count: {
+            select: {
+              listings: true,
+              bookingsAsGuest: true,
+              followers: true,
+            },
+          },
+        },
+      })
+    }
+
+    if (suggestionCandidates.length === 0) {
       return NextResponse.json({ suggestions: [] })
     }
 
-    const completedBookings = await Promise.all(
+    const completedBookingsResults = await Promise.allSettled(
       suggestionCandidates.map((user) =>
         prisma.booking.count({
           where: {
@@ -78,8 +118,12 @@ export async function GET(request: NextRequest) {
       )
     )
 
+    const completedBookings = completedBookingsResults.map((result) =>
+      result.status === "fulfilled" ? result.value : 0
+    )
+
     const mutualConnectionsCounts = currentUserId && followingIds.size
-      ? await Promise.all(
+      ? await Promise.allSettled(
           suggestionCandidates.map((user) =>
             prisma.userFollow.count({
               where: {
@@ -89,12 +133,16 @@ export async function GET(request: NextRequest) {
             })
           )
         )
-      : suggestionCandidates.map(() => 0)
+      : suggestionCandidates.map(() => ({ status: "fulfilled", value: 0 } as const))
+
+    const mutualCountsResolved = mutualConnectionsCounts.map((result) =>
+      result.status === "fulfilled" ? result.value : 0
+    )
 
     const suggestions = suggestionCandidates.map((user, index) => {
       const hostCity = user.hostProfile?.city
       const hostTagline = user.hostProfile?.tagline
-      const isHost = user.role === "HOST" || user.isSuperHost
+      const isHost = HOST_ROLES.includes(user.role as typeof HOST_ROLES[number]) || user.isSuperHost
       const language = user.languages?.[0]
 
       const headline = isHost
@@ -120,7 +168,7 @@ export async function GET(request: NextRequest) {
         headline,
         stats,
         loyaltyTier: user.loyaltyTier,
-        mutualConnections: mutualConnectionsCounts[index] ?? 0,
+        mutualConnections: mutualCountsResolved[index] ?? 0,
         isFollowing: false,
       }
     })

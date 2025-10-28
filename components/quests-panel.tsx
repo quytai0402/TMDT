@@ -14,7 +14,6 @@ import {
   Flame,
   Check,
   Lock,
-  Loader2,
   CheckCircle2,
   Heart as HeartIcon,
   Sparkles,
@@ -23,7 +22,8 @@ import {
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
-import { trackQuestProgress, type QuestTrigger } from '@/lib/quests'
+import Link from 'next/link'
+import { trackQuestProgress } from '@/lib/quests'
 
 interface Quest {
   id: string
@@ -56,16 +56,6 @@ interface QuestData {
   completed: number
 }
 
-const QUEST_TRIGGER_MAP: Record<string, QuestTrigger> = {
-  BOOKING: 'BOOKING_CREATED',
-  REVIEW: 'REVIEW_CREATED',
-  EXPLORATION: 'WISHLIST_ADDED',
-  DAILY_CHECK_IN: 'DAILY_CHECK_IN',
-  REFERRAL: 'REFERRAL_COMPLETED',
-  PROFILE_COMPLETION: 'PROFILE_COMPLETED',
-  SOCIAL: 'POST_CREATED',
-}
-
 const questIconMap: Record<string, JSX.Element> = {
   CheckCircle2: <CheckCircle2 className="h-5 w-5 text-emerald-600" />, 
   Calendar: <Calendar className="h-5 w-5 text-sky-600" />,
@@ -77,20 +67,30 @@ const questIconMap: Record<string, JSX.Element> = {
   Trophy: <Trophy className="h-5 w-5 text-primary" />,
 }
 
-const questActionLabelMap: Record<string, string> = {
-  BOOKING: 'Đánh dấu đã đặt',
-  REVIEW: 'Đánh dấu đã review',
-  EXPLORATION: 'Đánh dấu wishlist',
-  REFERRAL: 'Đánh dấu đã giới thiệu',
-  SOCIAL: 'Đánh dấu đã chia sẻ',
-  PROFILE_COMPLETION: 'Đánh dấu hoàn tất hồ sơ',
+const questInstructionMap: Record<string, string> = {
+  BOOKING: 'Hệ thống sẽ tự động ghi nhận sau khi bạn hoàn tất một booking hợp lệ.',
+  REVIEW: 'Viết review cho chuyến đi đã hoàn thành để nhận thưởng.',
+  EXPLORATION: 'Thêm homestay vào wishlist để tăng tiến độ nhiệm vụ.',
+  DAILY_CHECK_IN: 'Check-in mỗi ngày tại trang Rewards để giữ streak.',
+  REFERRAL: 'Mời bạn bè và đảm bảo họ hoàn tất booking để được tính.',
+  PROFILE_COMPLETION: 'Cập nhật đầy đủ thông tin hồ sơ, ảnh đại diện và liên hệ.',
+  SOCIAL: 'Chia sẻ bài viết hoặc tham gia hoạt động tại cộng đồng LuxeStay.',
+}
+
+const questActionLinks: Partial<Record<string, { href: string; label: string }>> = {
+  BOOKING: { href: '/', label: 'Khám phá & đặt chỗ' },
+  REVIEW: { href: '/trips', label: 'Viết review chuyến đi' },
+  EXPLORATION: { href: '/wishlist', label: 'Mở wishlist' },
+  DAILY_CHECK_IN: { href: '/rewards', label: 'Check-in ngay' },
+  PROFILE_COMPLETION: { href: '/profile', label: 'Cập nhật hồ sơ' },
+  SOCIAL: { href: '/community', label: 'Đi tới cộng đồng' },
+  REFERRAL: { href: '/rewards', label: 'Mời bạn bè' },
 }
 
 export function QuestsPanel() {
   const [questData, setQuestData] = useState<QuestData | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('daily')
-  const [completingId, setCompletingId] = useState<string | null>(null)
   const [autoDailyTriggered, setAutoDailyTriggered] = useState(false)
 
   const loadQuests = useCallback(async (options?: { skipAuto?: boolean }) => {
@@ -139,38 +139,6 @@ export function QuestsPanel() {
   useEffect(() => {
     void loadQuests()
   }, [loadQuests])
-
-  const handleQuestAction = async (quest: Quest) => {
-    const trigger = QUEST_TRIGGER_MAP[quest.type]
-
-    if (!trigger) {
-      toast('Nhiệm vụ này cần thực hiện trực tiếp trong trải nghiệm tương ứng.')
-      return
-    }
-
-    try {
-      setCompletingId(quest.id)
-      if (trigger === 'DAILY_CHECK_IN') {
-        setAutoDailyTriggered(true)
-      }
-      const result = await trackQuestProgress(trigger, { questId: quest.id })
-
-      if (!result) {
-        toast.error('Chưa thể ghi nhận nhiệm vụ. Thử lại nhé!')
-        return
-      }
-
-      toast.success('Đã ghi nhận nhiệm vụ!', {
-        description: quest.title,
-      })
-      await loadQuests({ skipAuto: true })
-    } catch (error) {
-      console.error('Failed to track quest progression', error)
-      toast.error('Không thể hoàn thành nhiệm vụ. Thử lại sau nhé!')
-    } finally {
-      setCompletingId(null)
-    }
-  }
 
   if (loading) {
     return (
@@ -251,22 +219,22 @@ export function QuestsPanel() {
         </TabsList>
 
         <TabsContent value="daily" className="mt-6 space-y-4">
-          <QuestList quests={grouped.daily} onComplete={handleQuestAction} completingId={completingId} />
+          <QuestList quests={grouped.daily} />
         </TabsContent>
 
         <TabsContent value="weekly" className="mt-6 space-y-4">
-          <QuestList quests={grouped.weekly} onComplete={handleQuestAction} completingId={completingId} />
+          <QuestList quests={grouped.weekly} />
         </TabsContent>
 
         <TabsContent value="oneTime" className="mt-6 space-y-4">
-          <QuestList quests={grouped.oneTime} onComplete={handleQuestAction} completingId={completingId} />
+          <QuestList quests={grouped.oneTime} />
         </TabsContent>
       </Tabs>
     </div>
   )
 }
 
-function QuestList({ quests, onComplete, completingId }: { quests: Quest[], onComplete: (quest: Quest) => void, completingId: string | null }) {
+function QuestList({ quests }: { quests: Quest[] }) {
   if (quests.length === 0) {
     return (
       <Card className="p-8">
@@ -288,7 +256,7 @@ function QuestList({ quests, onComplete, completingId }: { quests: Quest[], onCo
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
           >
-            <QuestCard quest={quest} onComplete={onComplete} completingId={completingId} />
+            <QuestCard quest={quest} />
           </motion.div>
         ))}
       </AnimatePresence>
@@ -296,12 +264,12 @@ function QuestList({ quests, onComplete, completingId }: { quests: Quest[], onCo
   )
 }
 
-function QuestCard({ quest, onComplete, completingId }: { quest: Quest, onComplete: (quest: Quest) => void, completingId: string | null }) {
+function QuestCard({ quest }: { quest: Quest }) {
   const progressPercentage = quest.progress
-  const isCompleting = completingId === quest.id
-  const canManualComplete = !quest.isCompleted
   const iconNode = quest.icon ? questIconMap[quest.icon] : undefined
   const iconBackground = quest.color ? `${quest.color}20` : 'rgba(37, 99, 235, 0.1)'
+  const instruction = questInstructionMap[quest.type] ?? 'Hệ thống sẽ tự động ghi nhận tiến độ của nhiệm vụ này.'
+  const actionLink = questActionLinks[quest.type]
 
   return (
     <Card className={`p-5 ${quest.isCompleted ? 'border-green-500 bg-green-50 dark:bg-green-950/20' : ''}`}>
@@ -362,24 +330,14 @@ function QuestCard({ quest, onComplete, completingId }: { quest: Quest, onComple
             Đã hoàn thành
           </Badge>
         ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!canManualComplete || isCompleting}
-            onClick={() => onComplete(quest)}
-            className="h-8 text-xs"
-          >
-            {isCompleting ? (
-              <>
-                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                Đang ghi nhận...
-              </>
-            ) : quest.type === 'DAILY_CHECK_IN' ? (
-              'Check-in ngay'
-            ) : (
-              questActionLabelMap[quest.type as keyof typeof questActionLabelMap] ?? 'Ghi nhận tiến độ'
-            )}
-          </Button>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 w-full">
+            <p className="text-xs text-muted-foreground flex-1">{instruction}</p>
+            {actionLink ? (
+              <Button size="sm" variant="outline" className="h-8 text-xs" asChild>
+                <Link href={actionLink.href}>{actionLink.label}</Link>
+              </Button>
+            ) : null}
+          </div>
         )}
       </div>
     </Card>

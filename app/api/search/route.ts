@@ -2,14 +2,80 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { calculateDistance } from '@/lib/helpers'
 import { getPersona } from '@/lib/personas'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { getMembershipForUser } from '@/lib/membership'
+import { DESTINATIONS } from '@/data/destinations'
+
+const REGION_ALIASES: Record<string, string> = {
+  north: 'north',
+  mienbac: 'north',
+  'mien-bac': 'north',
+  central: 'central',
+  mientrung: 'central',
+  'mien-trung': 'central',
+  south: 'south',
+  miennam: 'south',
+  'mien-nam': 'south',
+  highlands: 'highlands',
+  taynguyen: 'highlands',
+  'tay-nguyen': 'highlands',
+  islands: 'islands',
+  haiquan: 'islands',
+}
+
+const REGION_MAP = DESTINATIONS.reduce<Record<string, Set<string>>>((acc, destination) => {
+  const region = destination.region
+  if (!acc[region]) {
+    acc[region] = new Set()
+  }
+  destination.stays.forEach((stay) => {
+    if (stay.city) {
+      acc[region].add(stay.city)
+    }
+  })
+  // fallback to the destination name if no stay is defined
+  if (!destination.stays.length) {
+    acc[region].add(destination.name)
+  }
+  return acc
+}, {})
+
+const DESTINATION_LOOKUP = DESTINATIONS.map((destination) => {
+  const normalizedName = normalizeRegionInput(destination.name) ?? destination.name.toLowerCase()
+  const normalizedKeywords = destination.keywords
+    .map((keyword) => normalizeRegionInput(keyword))
+    .filter((value): value is string => Boolean(value))
+  const cities = Array.from(new Set(destination.stays.map((stay) => stay.city)))
+  if (!cities.length) {
+    cities.push(destination.name)
+  }
+  return {
+    slug: destination.slug,
+    normalizedName,
+    normalizedKeywords,
+    cities,
+  }
+})
+
+function normalizeRegionInput(value: string | null): string | null {
+  if (!value) return null
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/\s+/g, '')
+    .replace(/-/g, '')
+}
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     
-    // Basic filters
-    const query = searchParams.get('q') || ''
+    const rawQuery = searchParams.get('q') || ''
+    const query = rawQuery.trim()
     const city = searchParams.get('city')
+    const regionParam = normalizeRegionInput(searchParams.get('region'))
     const checkIn = searchParams.get('checkIn')
     const checkOut = searchParams.get('checkOut')
     const guests = parseInt(searchParams.get('guests') || '1')
@@ -36,6 +102,19 @@ export async function GET(req: NextRequest) {
     const sortOrder = searchParams.get('sortOrder') || 'desc'
     const personaSlug = searchParams.get('persona')
     const persona = personaSlug ? getPersona(personaSlug) : null
+    const secretOnly = searchParams.get('secretOnly') === 'true'
+
+    if (secretOnly) {
+      const session = await getServerSession(authOptions)
+      if (!session?.user?.id) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+      const membership = await getMembershipForUser(session.user.id)
+      const isAdmin = session.user.role === 'ADMIN'
+      if (!membership?.isActive && !isAdmin) {
+        return NextResponse.json({ error: 'Membership required' }, { status: 403 })
+      }
+    }
     
     // Pagination
     const page = parseInt(searchParams.get('page') || '1')
@@ -48,6 +127,18 @@ export async function GET(req: NextRequest) {
       maxGuests: { gte: guests },
     }
 
+    where.isSecret = secretOnly ? true : false
+
+    const normalizedQuery = normalizeRegionInput(query)
+    const matchedDestination = DESTINATION_LOOKUP.find((item) => {
+      if (!normalizedQuery) return false
+      if (normalizeRegionInput(item.slug) === normalizedQuery) return true
+      if (normalizeRegionInput(item.normalizedName) === normalizedQuery) return true
+      return item.normalizedKeywords.some(
+        (keyword) => normalizeRegionInput(keyword) === normalizedQuery
+      )
+    })
+
     if (query) {
       where.OR = [
         { title: { contains: query, mode: 'insensitive' } },
@@ -59,6 +150,34 @@ export async function GET(req: NextRequest) {
 
     if (city) {
       where.city = { contains: city, mode: 'insensitive' }
+    } else if (matchedDestination && matchedDestination.cities.length > 0) {
+      where.city = {
+        in: matchedDestination.cities,
+        mode: 'insensitive',
+      }
+    } else if (regionParam) {
+      const normalizedRegion = REGION_ALIASES[regionParam] ?? regionParam
+      const regionCities = REGION_MAP[normalizedRegion]
+      if (regionCities && regionCities.size > 0) {
+        where.city = {
+          in: Array.from(regionCities),
+          mode: 'insensitive',
+        }
+      }
+    } else if (normalizedQuery && REGION_ALIASES[normalizedQuery]) {
+      const alias = REGION_ALIASES[normalizedQuery]
+      const regionCities = REGION_MAP[alias]
+      if (regionCities && regionCities.size > 0) {
+        where.city = {
+          in: Array.from(regionCities),
+          mode: 'insensitive',
+        }
+      }
+    } else if (normalizedQuery && REGION_MAP[normalizedQuery]) {
+      where.city = {
+        in: Array.from(REGION_MAP[normalizedQuery]),
+        mode: 'insensitive',
+      }
     }
 
     if (propertyTypes && propertyTypes.length > 0) {

@@ -8,6 +8,7 @@
     "lint": "next lint",
     "start": "next start",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:destinations": "tsx prisma/seed-destinations.ts",
     "db:reset": "scripts/reset-and-seed.sh"
   },
   "dependencies": {

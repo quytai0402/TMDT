@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -53,6 +54,22 @@ interface MembershipStatusResponse {
     maxPoints: number | null
     benefits: string[]
   }>
+  membership: {
+    status: string
+    isActive: boolean
+    startedAt: string | null
+    expiresAt: string | null
+    billingCycle: string | null
+    features: string[]
+    plan: {
+      slug: string
+      name: string
+      color: string | null
+      icon: string | null
+      features: string[]
+      exclusiveFeatures: string[]
+    } | null
+  } | null
 }
 
 const benefitIconMap: Array<{ keyword: string; icon: React.ReactNode }> = [
@@ -117,6 +134,7 @@ export function MembershipDashboard() {
   }, [])
 
   const currentTier = status?.currentTier
+  const membership = status?.membership
   const userPoints = status?.user.loyaltyPoints ?? 0
   const minPoints = currentTier?.minPoints ?? 0
   const maxPoints = currentTier?.maxPoints ?? null
@@ -159,6 +177,22 @@ export function MembershipDashboard() {
   const activeBenefits = currentTier.benefits
   const nextTier = status.tiers.find((tier) => tier.name === nextTierName)
 
+  const membershipPlan = membership?.plan
+  const membershipStatus = membership?.status ?? 'INACTIVE'
+  const billingCycleLabel = membership?.billingCycle === 'MONTHLY' ? 'Hàng tháng' : membership?.billingCycle === 'ANNUAL' ? 'Hàng năm' : null
+  const membershipFeatures = membership
+    ? Array.from(
+        new Set([
+          ...(membershipPlan?.features ?? []),
+          ...(membershipPlan?.exclusiveFeatures ?? []),
+          ...(membership.features ?? []),
+        ])
+      )
+    : []
+  const exclusiveFeatureSet = new Set(membershipPlan?.exclusiveFeatures ?? [])
+  const membershipStart = membership?.startedAt ? new Date(membership.startedAt) : null
+  const membershipExpiry = membership?.expiresAt ? new Date(membership.expiresAt) : null
+
   return (
     <div className="space-y-6">
       <Card className="bg-gradient-to-br from-primary/10 to-purple-500/10 border-primary/20">
@@ -195,9 +229,91 @@ export function MembershipDashboard() {
               </div>
               <Button>Gia hạn ngay</Button>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+      </div>
+    </CardContent>
+  </Card>
+
+      {membership ? (
+        <Card className="border-primary/20 bg-white/80">
+          <CardHeader className="pb-3 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="space-y-1">
+              <CardTitle className="text-xl">{membershipPlan?.name ?? 'Membership của bạn'}</CardTitle>
+              <CardDescription>
+                {membershipPlan?.name
+                  ? 'Đặc quyền được kích hoạt tự động cho mọi đặt phòng đủ điều kiện.'
+                  : 'Quyền lợi membership sẽ hiển thị tại đây khi bạn đăng ký.'}
+              </CardDescription>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Badge variant={membership.isActive ? 'default' : 'outline'}>{membershipStatus}</Badge>
+                {billingCycleLabel && <Badge variant="secondary">{billingCycleLabel}</Badge>}
+                {membershipStart && (
+                  <span className="text-xs text-muted-foreground">
+                    Bắt đầu: {membershipStart.toLocaleDateString('vi-VN')}
+                  </span>
+                )}
+                {membershipExpiry && (
+                  <span className="text-xs text-muted-foreground">
+                    Hết hạn: {membershipExpiry.toLocaleDateString('vi-VN')}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" asChild>
+                <Link href="/collections/secret">Secret Collection</Link>
+              </Button>
+              <Button asChild>
+                <Link href="/experiences/members">Workshop riêng</Link>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {membershipFeatures.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Chưa có quyền lợi nào được ghi nhận. Liên hệ concierge nếu bạn nghĩ đây là lỗi.
+              </p>
+            ) : (
+              <div className="grid md:grid-cols-2 gap-3">
+                {membershipFeatures.map((feature) => (
+                  <div
+                    key={feature}
+                    className="flex items-start gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-3 py-2 text-sm"
+                  >
+                    <span className="mt-0.5 rounded-full bg-primary/10 p-1 text-primary">
+                      <CheckCircle2 className="h-4 w-4" />
+                    </span>
+                    <div className="space-y-1">
+                      <span className="font-medium text-primary-800">{feature}</span>
+                      {exclusiveFeatureSet.has(feature) && (
+                        <Badge variant="outline" className="text-xs border-primary/40 text-primary">
+                          Độc quyền member
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-dashed border-primary/30">
+          <CardContent className="py-8 text-center space-y-3">
+            <Crown className="h-8 w-8 mx-auto text-primary" />
+            <p className="text-muted-foreground">
+              Trở thành hội viên LuxeStay để mở khóa Secret Collection, workshop riêng và concierge 24/7.
+            </p>
+            <div className="flex gap-2 justify-center">
+              <Button asChild>
+                <Link href="/membership">Nâng cấp membership</Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href="/membership/checkout?tier=gold&billing=annually">Gói Gold</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid md:grid-cols-4 gap-4">
         <Card>

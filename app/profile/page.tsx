@@ -10,6 +10,7 @@ import { Camera, Loader2 } from "lucide-react"
 import { useSession } from "next-auth/react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { MembershipDashboard } from "@/components/membership-dashboard"
 
 interface UserProfile {
   id: string
@@ -132,6 +133,8 @@ export default function ProfilePage() {
                 </div>
               </CardContent>
             </Card>
+
+            <MembershipDashboard />
 
             <ProfileForm profile={profile} onUpdate={fetchProfile} />
           </div>

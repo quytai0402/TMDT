@@ -653,6 +653,7 @@ export function BookingCheckout({
       const response = await fetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           listingId: listing.id,
           checkIn: toISODate(checkIn),
@@ -673,6 +674,15 @@ export function BookingCheckout({
       const data = await response.json()
 
       if (!response.ok) {
+        if (response.status === 401) {
+          toast({
+            title: "Cần đăng nhập",
+            description: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại để tiếp tục đặt phòng.",
+            variant: "destructive",
+          })
+          return
+        }
+
         if (response.status === 409 && data?.splitSuggestion) {
           setBookingId(null)
           setBookingCode(null)
@@ -729,7 +739,9 @@ export function BookingCheckout({
       setBookingCode(booking.id?.slice(-8).toUpperCase?.() || null)
 
       // Award loyalty points & quests for logged-in users (async)
-      if (session?.user) {
+      const isRegisteredGuest = Boolean(booking.guestId)
+
+      if (session?.user && isRegisteredGuest) {
         import("@/lib/rewards").then(({ awardBookingPoints }) => {
           awardBookingPoints(booking.id, false).catch((err) =>
             console.error("Failed to award booking points:", err),

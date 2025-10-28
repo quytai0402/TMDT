@@ -32,6 +32,7 @@ export function SuggestedConnections() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [loading, setLoading] = useState(true)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
+  const [requiresAuth, setRequiresAuth] = useState(false)
 
   useEffect(() => {
     let ignore = false
@@ -40,11 +41,19 @@ export function SuggestedConnections() {
       try {
         setLoading(true)
         const res = await fetch("/api/community/suggestions", { cache: "no-store" })
+        if (res.status === 401) {
+          if (!ignore) {
+            setRequiresAuth(true)
+            setSuggestions([])
+          }
+          return
+        }
         if (!res.ok) {
           throw new Error("Failed to load suggestions")
         }
         const data = await res.json()
         if (!ignore) {
+          setRequiresAuth(false)
           setSuggestions(data.suggestions ?? [])
         }
       } catch (error) {
@@ -119,6 +128,17 @@ export function SuggestedConnections() {
         <CardTitle className="text-lg">Gợi ý kết nối</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {requiresAuth && (
+          <div className="rounded-md border border-dashed border-primary/40 bg-muted/30 p-4 text-sm text-muted-foreground">
+            <p>Đăng nhập để xem gợi ý kết nối từ cộng đồng.</p>
+            <Button asChild variant="outline" size="sm" className="mt-3">
+              <Link href="/login?callbackUrl=%2Fcommunity">
+                Đăng nhập
+              </Link>
+            </Button>
+          </div>
+        )}
+
         {loading && (
           <div className="space-y-3">
             {Array.from({ length: 3 }).map((_, index) => (

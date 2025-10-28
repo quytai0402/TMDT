@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { CreditCard, Smartphone, Building2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useToast } from "@/hooks/use-toast"
+import { createVietQRUrl, formatTransferReference, getBankTransferInfo } from "@/lib/payments"
 
 interface PaymentMethodsProps {
   bookingId?: string
@@ -22,6 +23,17 @@ export function PaymentMethods({ bookingId, amount, bookingCode, disabled = fals
   const [isProcessing, setIsProcessing] = useState(false)
   const router = useRouter()
   const { toast } = useToast()
+  const bankInfo = getBankTransferInfo()
+
+  const transferReference = useMemo(() => {
+    if (!bookingCode && !bookingId) return formatTransferReference("BOOKING", "LUXESTAY")
+    return formatTransferReference("BOOKING", bookingCode ?? bookingId ?? "")
+  }, [bookingCode, bookingId])
+
+  const qrUrl = useMemo(() => {
+    if (!amount || amount <= 0) return null
+    return createVietQRUrl(amount, transferReference)
+  }, [amount, transferReference])
 
   const paymentConfig: Record<
     string,
@@ -57,7 +69,7 @@ export function PaymentMethods({ bookingId, amount, bookingCode, disabled = fals
     if (config.gateway === "MANUAL") {
       const note =
         paymentMethod === "bank"
-          ? "Thông tin chuyển khoản sẽ được gửi qua email của bạn."
+          ? `Vui lòng chuyển khoản với nội dung ${transferReference}. Thông tin chi tiết đã hiển thị trong phần hướng dẫn.`
           : "Chúng tôi sẽ liên hệ để hoàn tất thanh toán thẻ ngoại tuyến."
       toast({
         title: "Đã ghi nhận yêu cầu",
@@ -194,8 +206,47 @@ export function PaymentMethods({ bookingId, amount, bookingCode, disabled = fals
                 <span className="font-semibold">Chuyển khoản ngân hàng</span>
               </Label>
               {paymentMethod === "bank" && (
-                <div className="mt-4 p-4 bg-muted rounded-lg">
-                  <p className="text-sm text-muted-foreground mb-2">Thông tin chuyển khoản sẽ được gửi qua email</p>
+                <div className="mt-4 p-4 bg-muted rounded-lg space-y-3">
+                  <div className="text-sm font-medium">Thông tin chuyển khoản:</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground">Ngân hàng:</span>
+                      <span className="font-medium text-right">{bankInfo.bankName}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground">Số tài khoản:</span>
+                      <span className="font-medium text-right">{bankInfo.accountNumber}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground">Chủ tài khoản:</span>
+                      <span className="font-medium text-right uppercase">{bankInfo.accountName}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground">Nội dung:</span>
+                      <span className="font-medium text-right">{transferReference}</span>
+                    </div>
+                    {amount && amount > 0 && (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-muted-foreground">Số tiền:</span>
+                        <span className="font-medium text-right">
+                          {amount.toLocaleString("vi-VN")}₫
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {qrUrl && (
+                    <div className="flex flex-col md:flex-row md:items-center gap-3">
+                      <img
+                        src={qrUrl}
+                        alt="Mã VietQR chuyển khoản đặt phòng"
+                        className="h-36 w-36 rounded-lg border border-border bg-white p-2"
+                      />
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Quét mã VietQR để điền sẵn thông tin chuyển khoản. Vui lòng kiểm tra nội dung{" "}
+                        <span className="font-semibold text-foreground">{transferReference}</span> trước khi xác nhận.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

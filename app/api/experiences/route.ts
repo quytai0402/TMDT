@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
+import { getMembershipForUser } from "@/lib/membership"
 
 // GET /api/experiences - Fetch experiences with filters
 export async function GET(request: NextRequest) {
@@ -11,6 +14,22 @@ export async function GET(request: NextRequest) {
     const maxPrice = searchParams.get("maxPrice")
     const limit = parseInt(searchParams.get("limit") || "20")
     const featured = searchParams.get("featured") === "true"
+    const membersOnlyParam = searchParams.get("membersOnly")
+
+    let membersOnly: boolean | null = null
+    if (membersOnlyParam === "true") membersOnly = true
+    if (membersOnlyParam === "false") membersOnly = false
+
+    if (membersOnly === true) {
+      const session = await getServerSession(authOptions)
+      if (!session?.user?.id) {
+        return NextResponse.json({ error: "Membership required" }, { status: 401 })
+      }
+      const membership = await getMembershipForUser(session.user.id)
+      if (!membership?.isActive) {
+        return NextResponse.json({ error: "Membership required" }, { status: 403 })
+      }
+    }
 
     const where: any = {
       status: "ACTIVE",
@@ -32,6 +51,12 @@ export async function GET(request: NextRequest) {
 
     if (featured) {
       where.featured = true
+    }
+
+    if (membersOnly === true) {
+      where.isMembersOnly = true
+    } else {
+      where.isMembersOnly = false
     }
 
     const experiences = await prisma.experience.findMany({
@@ -77,6 +102,7 @@ export async function GET(request: NextRequest) {
       reviewCount: exp.totalReviews,
       tags: exp.tags,
       featured: exp.featured,
+      membersOnly: exp.isMembersOnly ?? false,
     }))
 
     return NextResponse.json({

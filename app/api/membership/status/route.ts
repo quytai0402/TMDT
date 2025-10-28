@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { getMembershipForUser } from "@/lib/membership"
+import { Prisma } from "@prisma/client"
 
 const MEMBERSHIP_CONFIG = {
   BRONZE: { freeNights: 0, upgrades: 0 },
@@ -15,12 +16,24 @@ const MEMBERSHIP_CONFIG = {
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
-    if (!session?.user?.id) {
+    if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
+    const userWhere: Prisma.UserWhereInput[] = []
+    if (session.user.id) {
+      userWhere.push({ id: session.user.id })
+    }
+    if (session.user.email) {
+      userWhere.push({ email: session.user.email })
+    }
+
+    if (userWhere.length === 0) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { OR: userWhere },
       select: {
         id: true,
         name: true,

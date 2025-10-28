@@ -4,29 +4,7 @@ import { useMemo, useState } from "react"
 import { ExperienceCard } from "@/components/experience-card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Compass } from "lucide-react"
-
-export interface ExperienceSummary {
-  id: string
-  title: string
-  description: string
-  image: string
-  host: {
-    name: string
-    avatar?: string | null
-    verified?: boolean
-  }
-  category: string
-  location: string
-  city: string
-  duration: string
-  groupSize: string
-  price: number
-  rating: number
-  reviewCount: number
-  tags: string[]
-  featured?: boolean
-  membersOnly?: boolean
-}
+import type { ExperienceSummary } from "@/lib/experiences"
 
 interface ExperiencesGridProps {
   initialExperiences: ExperienceSummary[]

@@ -175,7 +175,9 @@ export default function TripDetailPage() {
     conciergePlans,
     packingChecklist,
     upsellExperiences,
-    messagesUrl: `/messages`,
+    messagesUrl: trip.host?.id
+      ? `/messages?participant=${trip.host.id}&listing=${trip.listing.id}`
+      : `/messages`,
     directionsUrl: `https://maps.google.com/?q=${trip.listing.latitude},${trip.listing.longitude}`,
   }
 

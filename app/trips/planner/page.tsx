@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -23,16 +23,39 @@ import { TripInspirationBoard } from "@/components/trip-inspiration-board"
 import { TripPackingList } from "@/components/trip-packing-list"
 import { TripBudgetTracker } from "@/components/trip-budget-tracker"
 import { SharedTripPlanning } from "@/components/shared-trip-planning"
+import { DESTINATIONS } from "@/data/destinations"
 
 export default function TripPlanningHubPage() {
-  const [tripInfo] = useState({
-    name: "Chuyến đi miền Trung 2025",
-    startDate: "15/10/2025",
-    endDate: "22/10/2025",
-    destinations: ["Đà Lạt", "Nha Trang"],
-    members: 4,
-    status: "planning" as "planning" | "upcoming" | "ongoing" | "completed",
+  const selectedDestinations = useMemo(() => DESTINATIONS.slice(0, 3), [])
+  const [tripInfo] = useState(() => {
+    const start = new Date()
+    const end = new Date(start)
+    end.setDate(start.getDate() + selectedDestinations.length * 3)
+
+    return {
+      name: `Hành trình khám phá ${selectedDestinations.map((d) => d.name).slice(0, 2).join(" & ")}`,
+      startDate: start.toLocaleDateString("vi-VN"),
+      endDate: end.toLocaleDateString("vi-VN"),
+      destinations: selectedDestinations.map((destination) => destination.name),
+      members: 4,
+      status: "planning" as "planning" | "upcoming" | "ongoing" | "completed",
+    }
   })
+
+  const quickStats = useMemo(() => {
+    const totalActivities = selectedDestinations.reduce((sum, destination) => sum + destination.experiences.length, 0)
+    const totalIdeas = selectedDestinations.reduce((sum, destination) => sum + destination.mustTry.length, 0)
+    const estimatedBudget = selectedDestinations.reduce((sum, destination) => sum + destination.avgPrice * 3, 0)
+    const readinessRatio = Math.min(1, totalIdeas / (selectedDestinations.length * 6 || 1))
+
+    return {
+      activities: totalActivities,
+      ideas: totalIdeas,
+      budget: estimatedBudget,
+      readiness: Math.round(readinessRatio * 100),
+      heroImage: selectedDestinations[0]?.heroImage ?? "https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=1200",
+    }
+  }, [selectedDestinations])
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
@@ -41,7 +64,7 @@ export default function TripPlanningHubPage() {
         <div className="relative mb-8 rounded-2xl overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-r from-primary/90 to-blue-600/90 z-10" />
           <img
-            src="https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=1200"
+            src={quickStats.heroImage}
             alt="Trip planning"
             className="w-full h-64 object-cover"
           />
@@ -96,7 +119,7 @@ export default function TripPlanningHubPage() {
                 <Calendar className="w-6 h-6 text-blue-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">8</p>
+                <p className="text-2xl font-bold">{quickStats.activities}</p>
                 <p className="text-sm text-muted-foreground">Hoạt động</p>
               </div>
             </div>
@@ -108,7 +131,7 @@ export default function TripPlanningHubPage() {
                 <Heart className="w-6 h-6 text-purple-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">12</p>
+                <p className="text-2xl font-bold">{quickStats.ideas}</p>
                 <p className="text-sm text-muted-foreground">Ý tưởng</p>
               </div>
             </div>
@@ -120,7 +143,13 @@ export default function TripPlanningHubPage() {
                 <DollarSign className="w-6 h-6 text-green-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">12.8M</p>
+                <p className="text-2xl font-bold">
+                  {quickStats.budget.toLocaleString("vi-VN", {
+                    style: "currency",
+                    currency: "VND",
+                    maximumFractionDigits: 0,
+                  })}
+                </p>
                 <p className="text-sm text-muted-foreground">Ngân sách</p>
               </div>
             </div>
@@ -132,7 +161,7 @@ export default function TripPlanningHubPage() {
                 <Backpack className="w-6 h-6 text-orange-600" />
               </div>
               <div>
-                <p className="text-2xl font-bold">75%</p>
+                <p className="text-2xl font-bold">{quickStats.readiness}%</p>
                 <p className="text-sm text-muted-foreground">Đã chuẩn bị</p>
               </div>
             </div>

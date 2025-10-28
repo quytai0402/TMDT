@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -25,9 +25,10 @@ interface Comment {
 
 interface CommentSectionProps {
   postId: string
+  onCommentAdded?: (comment: Comment) => void
 }
 
-export function CommentSection({ postId }: CommentSectionProps) {
+export function CommentSection({ postId, onCommentAdded }: CommentSectionProps) {
   const { data: session } = useSession()
   const router = useRouter()
   const [comments, setComments] = useState<Comment[]>([])
@@ -35,11 +36,7 @@ export function CommentSection({ postId }: CommentSectionProps) {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
 
-  useEffect(() => {
-    fetchComments()
-  }, [postId])
-
-  async function fetchComments() {
+  const fetchComments = useCallback(async () => {
     try {
       const res = await fetch(`/api/community/posts/${postId}/comments`)
       const data = await res.json()
@@ -49,7 +46,11 @@ export function CommentSection({ postId }: CommentSectionProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [postId])
+
+  useEffect(() => {
+    void fetchComments()
+  }, [fetchComments])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -73,6 +74,7 @@ export function CommentSection({ postId }: CommentSectionProps) {
         const data = await res.json()
         setComments([data.comment, ...comments])
         setNewComment("")
+        onCommentAdded?.(data.comment)
       }
     } catch (error) {
       console.error("Error posting comment:", error)

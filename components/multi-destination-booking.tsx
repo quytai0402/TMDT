@@ -1,117 +1,165 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { 
-  MapPin, 
-  Plus, 
+import {
+  MapPin,
+  Plus,
   Calendar as CalendarIcon,
   Home,
   Users,
   Trash2,
   ArrowRight,
-  DollarSign
+  DollarSign,
 } from "lucide-react"
 import { format } from "date-fns"
 import { vi } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import Link from "next/link"
+import { DESTINATIONS } from "@/data/destinations"
 
-interface Destination {
+type ListingPreview = {
   id: string
-  location: string
+  title: string
+  image: string
+  price: number
+  rating: number
+}
+
+type TripStop = {
+  id: string
+  destinationSlug: string
   checkIn?: Date
   checkOut?: Date
-  listing?: {
-    id: string
-    title: string
-    image: string
-    price: number
-    rating: number
-  }
   guests: number
+  listing?: ListingPreview
+}
+
+const DEFAULT_RATING = 4.8
+
+const addDays = (date: Date, days: number) => {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
+const buildListingPreview = (slug: string): ListingPreview | undefined => {
+  const destination = DESTINATIONS.find((item) => item.slug === slug)
+  if (!destination) return undefined
+  const stay = destination.stays[0]
+  if (!stay) {
+    return {
+      id: slug,
+      title: destination.name,
+      image: destination.heroImage,
+      price: destination.avgPrice,
+      rating: DEFAULT_RATING,
+    }
+  }
+
+  return {
+    id: stay.slug,
+    title: stay.title,
+    image: stay.images[0] ?? destination.heroImage,
+    price: stay.pricePerNight,
+    rating: DEFAULT_RATING,
+  }
+}
+
+const buildInitialStops = (): TripStop[] => {
+  const baseDate = addDays(new Date(), 21)
+  return DESTINATIONS.slice(0, 2).map((destination, index) => {
+    const checkIn = addDays(baseDate, index * 4)
+    const checkOut = addDays(checkIn, 3)
+    return {
+      id: `${destination.slug}-${index}`,
+      destinationSlug: destination.slug,
+      checkIn,
+      checkOut,
+      guests: 2,
+      listing: buildListingPreview(destination.slug),
+    }
+  })
 }
 
 export function MultiDestinationBooking() {
-  const [destinations, setDestinations] = useState<Destination[]>([
-    {
-      id: "1",
-      location: "Đà Lạt",
-      checkIn: new Date(2025, 9, 15),
-      checkOut: new Date(2025, 9, 18),
-      guests: 2,
-      listing: {
-        id: "1",
-        title: "Villa Đà Lạt View Đẹp",
-        image: "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?w=400",
-        price: 2500000,
-        rating: 4.9,
-      }
-    },
-    {
-      id: "2",
-      location: "Nha Trang",
-      checkIn: new Date(2025, 9, 18),
-      checkOut: new Date(2025, 9, 22),
-      guests: 2,
-      listing: {
-        id: "2",
-        title: "Căn hộ view biển Nha Trang",
-        image: "https://images.unsplash.com/photo-1571896349842-33c89424de2d?w=400",
-        price: 1800000,
-        rating: 4.8,
-      }
-    },
-  ])
+  const destinationOptions = useMemo(
+    () =>
+      DESTINATIONS.map((destination) => ({
+        slug: destination.slug,
+        name: destination.name,
+        heroImage: destination.heroImage,
+        avgPrice: destination.avgPrice,
+      })),
+    []
+  )
+
+  const destinationMap = useMemo(
+    () => new Map(destinationOptions.map((item) => [item.slug, item])),
+    [destinationOptions]
+  )
+
+  const [destinations, setDestinations] = useState<TripStop[]>(buildInitialStops)
 
   const addDestination = () => {
-    const lastDestination = destinations[destinations.length - 1]
-    const newDestination: Destination = {
-      id: Date.now().toString(),
-      location: "",
-      checkIn: lastDestination?.checkOut,
-      guests: lastDestination?.guests || 2,
+    const lastStop = destinations[destinations.length - 1]
+    const fallback = destinationOptions[destinations.length % destinationOptions.length]
+    const newStop: TripStop = {
+      id: `${fallback.slug}-${Date.now()}`,
+      destinationSlug: fallback.slug,
+      checkIn: lastStop?.checkOut ? addDays(lastStop.checkOut, 1) : undefined,
+      checkOut: lastStop?.checkOut ? addDays(lastStop.checkOut, 3) : undefined,
+      guests: lastStop?.guests ?? 2,
+      listing: buildListingPreview(fallback.slug),
     }
-    setDestinations([...destinations, newDestination])
+    setDestinations((prev) => [...prev, newStop])
   }
 
   const removeDestination = (id: string) => {
-    if (destinations.length > 1) {
-      setDestinations(destinations.filter(dest => dest.id !== id))
-    }
+    setDestinations((prev) => prev.filter((stop) => stop.id !== id))
   }
 
-  const totalCost = destinations.reduce((sum, dest) => {
-    if (dest.listing && dest.checkIn && dest.checkOut) {
-      const nights = Math.ceil(
-        (dest.checkOut.getTime() - dest.checkIn.getTime()) / (1000 * 60 * 60 * 24)
-      )
-      return sum + dest.listing.price * nights
+  const totalCost = destinations.reduce((sum, stop) => {
+    if (!stop.listing || !stop.checkIn || !stop.checkOut) {
+      return sum
     }
-    return sum
+    const nights = Math.max(
+      1,
+      Math.ceil((stop.checkOut.getTime() - stop.checkIn.getTime()) / (1000 * 60 * 60 * 24))
+    )
+    return sum + stop.listing.price * nights
   }, 0)
 
-  const totalNights = destinations.reduce((sum, dest) => {
-    if (dest.checkIn && dest.checkOut) {
-      return sum + Math.ceil(
-        (dest.checkOut.getTime() - dest.checkIn.getTime()) / (1000 * 60 * 60 * 24)
+  const totalNights = destinations.reduce((sum, stop) => {
+    if (!stop.checkIn || !stop.checkOut) return sum
+    return (
+      sum +
+      Math.max(
+        1,
+        Math.ceil((stop.checkOut.getTime() - stop.checkIn.getTime()) / (1000 * 60 * 60 * 24))
       )
-    }
-    return sum
+    )
   }, 0)
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-2xl font-bold mb-2">Đặt nhiều điểm đến</h2>
           <p className="text-muted-foreground">
-            Lập kế hoạch cho chuyến đi đa điểm của bạn
+            Lập kế hoạch cho hành trình xuyên Việt với các điểm đến đã tuyển chọn sẵn.
           </p>
         </div>
         <Button onClick={addDestination}>
@@ -120,198 +168,202 @@ export function MultiDestinationBooking() {
         </Button>
       </div>
 
-      {/* Destinations */}
       <div className="space-y-4">
-        {destinations.map((destination, index) => (
-          <Card key={destination.id} className="p-6">
-            <div className="flex items-start space-x-4">
-              {/* Step Number */}
-              <div className="flex-shrink-0">
-                <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold">
-                  {index + 1}
-                </div>
-                {index < destinations.length - 1 && (
-                  <div className="w-[2px] h-12 bg-border mx-auto mt-4" />
-                )}
-              </div>
-
-              {/* Content */}
-              <div className="flex-1 space-y-4">
-                {/* Location Input */}
-                <div>
-                  <label className="text-sm font-medium mb-2 flex items-center">
-                    <MapPin className="w-4 h-4 mr-2" />
-                    Điểm đến {index + 1}
-                  </label>
-                  <Input
-                    placeholder="Nhập địa điểm (VD: Đà Lạt, Nha Trang...)"
-                    value={destination.location}
-                    onChange={(e) => {
-                      const updated = [...destinations]
-                      updated[index].location = e.target.value
-                      setDestinations(updated)
-                    }}
-                  />
+        {destinations.map((stop, index) => {
+          const destinationInfo = destinationMap.get(stop.destinationSlug)
+          return (
+            <Card key={stop.id} className="p-6">
+              <div className="flex items-start space-x-4">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold">
+                    {index + 1}
+                  </div>
+                  {index < destinations.length - 1 && (
+                    <div className="w-[2px] h-12 bg-border mx-auto mt-4" />
+                  )}
                 </div>
 
-                {/* Dates */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex-1 space-y-4">
                   <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      Check-in
+                    <label className="text-sm font-medium mb-2 flex items-center">
+                      <MapPin className="w-4 h-4 mr-2" />
+                      Điểm đến {index + 1}
                     </label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !destination.checkIn && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {destination.checkIn ? (
-                            format(destination.checkIn, "dd/MM/yyyy", { locale: vi })
-                          ) : (
-                            <span>Chọn ngày</span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={destination.checkIn}
-                          onSelect={(date) => {
-                            const updated = [...destinations]
-                            updated[index].checkIn = date
-                            setDestinations(updated)
-                          }}
-                          locale={vi}
-                        />
-                      </PopoverContent>
-                    </Popover>
+                    <Select
+                      value={stop.destinationSlug}
+                      onValueChange={(value) => {
+                        setDestinations((prev) => {
+                          const next = [...prev]
+                          const draft = { ...next[index], destinationSlug: value, listing: buildListingPreview(value) }
+                          next[index] = draft
+                          return next
+                        })
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Chọn điểm đến" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {destinationOptions.map((option) => (
+                          <SelectItem key={option.slug} value={option.slug}>
+                            {option.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
-                  <div>
-                    <label className="text-sm font-medium mb-2 block">
-                      Check-out
-                    </label>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className={cn(
-                            "w-full justify-start text-left font-normal",
-                            !destination.checkOut && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {destination.checkOut ? (
-                            format(destination.checkOut, "dd/MM/yyyy", { locale: vi })
-                          ) : (
-                            <span>Chọn ngày</span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={destination.checkOut}
-                          onSelect={(date) => {
-                            const updated = [...destinations]
-                            updated[index].checkOut = date
-                            setDestinations(updated)
-                          }}
-                          locale={vi}
-                          disabled={(date) =>
-                            destination.checkIn ? date <= destination.checkIn : false
-                          }
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </div>
-
-                {/* Guests */}
-                <div>
-                  <label className="text-sm font-medium mb-2 flex items-center">
-                    <Users className="w-4 h-4 mr-2" />
-                    Số khách
-                  </label>
-                  <Input
-                    type="number"
-                    min="1"
-                    value={destination.guests}
-                    onChange={(e) => {
-                      const updated = [...destinations]
-                      updated[index].guests = parseInt(e.target.value) || 1
-                      setDestinations(updated)
-                    }}
-                  />
-                </div>
-
-                {/* Selected Listing */}
-                {destination.listing && (
-                  <Card className="p-4 bg-muted/50">
-                    <div className="flex items-start space-x-4">
-                      <img
-                        src={destination.listing.image}
-                        alt={destination.listing.title}
-                        className="w-20 h-20 rounded-lg object-cover"
-                      />
-                      <div className="flex-1">
-                        <h4 className="font-semibold mb-1">
-                          {destination.listing.title}
-                        </h4>
-                        <div className="flex items-center space-x-2 text-sm text-muted-foreground mb-2">
-                          <Badge variant="secondary">
-                            ⭐ {destination.listing.rating}
-                          </Badge>
-                          {destination.checkIn && destination.checkOut && (
-                            <Badge variant="outline">
-                              {Math.ceil(
-                                (destination.checkOut.getTime() - destination.checkIn.getTime()) /
-                                (1000 * 60 * 60 * 24)
-                              )} đêm
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="font-semibold text-primary">
-                          {destination.listing.price.toLocaleString("vi-VN")}₫ / đêm
-                        </p>
-                      </div>
-                      <Button variant="outline" size="sm">
-                        Thay đổi
-                      </Button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Check-in</label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal",
+                              !stop.checkIn && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {stop.checkIn ? (
+                              format(stop.checkIn, "dd/MM/yyyy", { locale: vi })
+                            ) : (
+                              <span>Chọn ngày</span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Calendar
+                            mode="single"
+                            selected={stop.checkIn}
+                            onSelect={(date) => {
+                              setDestinations((prev) => {
+                                const next = [...prev]
+                                next[index] = { ...next[index], checkIn: date ?? undefined }
+                                return next
+                              })
+                            }}
+                            locale={vi}
+                          />
+                        </PopoverContent>
+                      </Popover>
                     </div>
-                  </Card>
-                )}
 
-                {/* Search Listings Button */}
-                {!destination.listing && destination.location && (
-                  <Button variant="outline" className="w-full">
-                    <Home className="w-4 h-4 mr-2" />
-                    Tìm chỗ nghỉ tại {destination.location}
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Check-out</label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal",
+                              !stop.checkOut && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {stop.checkOut ? (
+                              format(stop.checkOut, "dd/MM/yyyy", { locale: vi })
+                            ) : (
+                              <span>Chọn ngày</span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Calendar
+                            mode="single"
+                            selected={stop.checkOut}
+                            onSelect={(date) => {
+                              setDestinations((prev) => {
+                                const next = [...prev]
+                                next[index] = { ...next[index], checkOut: date ?? undefined }
+                                return next
+                              })
+                            }}
+                            locale={vi}
+                            disabled={(date) => (stop.checkIn ? date <= stop.checkIn : false)}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium mb-2 flex items-center">
+                      <Users className="w-4 h-4 mr-2" />
+                      Số khách
+                    </label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={stop.guests}
+                      onChange={(event) => {
+                        const value = Number(event.target.value) || 1
+                        setDestinations((prev) => {
+                          const next = [...prev]
+                          next[index] = { ...next[index], guests: Math.max(1, value) }
+                          return next
+                        })
+                      }}
+                    />
+                  </div>
+
+                  {stop.listing && (
+                    <Card className="p-4 bg-muted/40">
+                      <div className="flex items-start gap-4">
+                        <img
+                          src={stop.listing.image}
+                          alt={stop.listing.title}
+                          className="w-20 h-20 rounded-lg object-cover"
+                        />
+                        <div className="flex-1">
+                          <h4 className="font-semibold mb-1">{stop.listing.title}</h4>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                            <Badge variant="secondary">⭐ {stop.listing.rating}</Badge>
+                            {destinationInfo && <Badge variant="outline">{destinationInfo.name}</Badge>}
+                            {stop.checkIn && stop.checkOut && (
+                              <Badge variant="outline">
+                                {Math.max(
+                                  1,
+                                  Math.ceil(
+                                    (stop.checkOut.getTime() - stop.checkIn.getTime()) /
+                                      (1000 * 60 * 60 * 24)
+                                  )
+                                )}{" "}
+                                đêm
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="font-semibold text-primary">
+                            {stop.listing.price.toLocaleString("vi-VN")}₫ / đêm
+                          </p>
+                        </div>
+                        <Button variant="outline" size="sm" asChild>
+                          <Link href={`/search?city=${encodeURIComponent(destinationInfo?.name ?? "")}`}>
+                            Xem thêm
+                          </Link>
+                        </Button>
+                      </div>
+                    </Card>
+                  )}
+                </div>
+
+                {destinations.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeDestination(stop.id)}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </Button>
                 )}
               </div>
-
-              {/* Remove Button */}
-              {destinations.length > 1 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeDestination(destination.id)}
-                >
-                  <Trash2 className="w-4 h-4 text-destructive" />
-                </Button>
-              )}
-            </div>
-          </Card>
-        ))}
+            </Card>
+          )
+        })}
       </div>
 
-      {/* Summary */}
       <Card className="p-6 bg-gradient-to-r from-primary/10 to-blue-500/10">
         <h3 className="font-semibold text-lg mb-4">Tóm tắt chuyến đi</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -320,24 +372,71 @@ export function MultiDestinationBooking() {
             <div className="text-2xl font-bold">{destinations.length}</div>
           </div>
           <div>
-            <div className="text-sm text-muted-foreground mb-1">Tổng đêm</div>
+            <div className="text-sm text-muted-foreground mb-1">Tổng đêm lưu trú</div>
             <div className="text-2xl font-bold">{totalNights}</div>
           </div>
           <div>
             <div className="text-sm text-muted-foreground mb-1">Số khách</div>
-            <div className="text-2xl font-bold">{destinations[0]?.guests || 0}</div>
+            <div className="text-2xl font-bold">
+              {destinations.reduce((sum, stop) => sum + stop.guests, 0)}
+            </div>
           </div>
           <div>
-            <div className="text-sm text-muted-foreground mb-1">Tổng chi phí</div>
+            <div className="text-sm text-muted-foreground mb-1">Ước tính chi phí</div>
             <div className="text-2xl font-bold text-primary">
               {totalCost.toLocaleString("vi-VN")}₫
             </div>
           </div>
         </div>
-        <Button className="w-full" size="lg">
-          <DollarSign className="w-4 h-4 mr-2" />
-          Tiếp tục đặt phòng
-        </Button>
+
+        <div className="flex flex-wrap gap-2 mb-6">
+          {destinationOptions.map((option) => (
+            <Badge key={option.slug} variant="outline">
+              {option.name}
+            </Badge>
+          ))}
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-3">
+          <Button asChild size="lg" className="bg-primary">
+            <Link href="/search">
+              <Home className="w-4 h-4 mr-2" />
+              Khám phá chỗ nghỉ tương ứng
+            </Link>
+          </Button>
+          <Button variant="secondary" size="lg">
+            <DollarSign className="w-4 h-4 mr-2" />
+            Nhờ concierge tối ưu chi phí
+          </Button>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <h3 className="font-semibold text-lg mb-4">Gợi ý tiếp theo</h3>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div>
+              <p className="font-medium">Đồng bộ lịch check-in / check-out</p>
+              <p className="text-sm text-muted-foreground">
+                Tự động đề xuất thời gian di chuyển giữa các điểm đến.
+              </p>
+            </div>
+            <Button variant="outline" size="sm">
+              Tự động sắp xếp
+            </Button>
+          </div>
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div>
+              <p className="font-medium">Chia sẻ kế hoạch cho bạn đồng hành</p>
+              <p className="text-sm text-muted-foreground">
+                Gửi link xem và chỉnh sửa kế hoạch tới nhóm của bạn.
+              </p>
+            </div>
+            <Button variant="ghost" size="sm">
+              <ArrowRight className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
       </Card>
     </div>
   )

@@ -12,6 +12,14 @@ type TopicAccumulator = {
 const HASHTAG_REGEX = /#[\p{L}0-9_]+/gu
 const FALLBACK_LIMIT = 5
 
+function normalizeTag(tag: string) {
+  return tag
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, "")
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -57,7 +65,7 @@ export async function GET(request: NextRequest) {
         : "Cộng đồng"
 
       for (const tag of matches) {
-        const normalized = tag.toLowerCase()
+        const normalized = normalizeTag(tag)
         const existing = topicsMap.get(normalized)
         if (existing) {
           existing.count += 1
@@ -86,7 +94,7 @@ export async function GET(request: NextRequest) {
       })
       .slice(0, FALLBACK_LIMIT)
       .map((topic, index) => ({
-        id: `${topic.label}-${index}`,
+        id: `${normalizeTag(topic.label)}-${index}`,
         title: topic.label,
         category: topic.category,
         postsCount: topic.count,
@@ -106,13 +114,15 @@ export async function GET(request: NextRequest) {
         },
       })
 
-      const existingLabels = new Set(topics.map((topic) => topic.title.toLowerCase()))
+      const existingLabels = new Set(topics.map((topic) => normalizeTag(topic.title)))
 
       for (const listing of fallbackListings) {
         if (topics.length >= FALLBACK_LIMIT) break
         const cityOrTitle = listing.city || listing.title
         const label = `#${cityOrTitle.replace(/\s+/g, "")}`
-        if (existingLabels.has(label.toLowerCase())) continue
+        const normalized = normalizeTag(label)
+        if (existingLabels.has(normalized)) continue
+        existingLabels.add(normalized)
 
         topics.push({
           id: listing.id,

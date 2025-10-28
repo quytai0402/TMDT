@@ -1,77 +1,29 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight, MapPin, TrendingUp } from 'lucide-react'
 import Link from 'next/link'
-
-interface Destination {
-  id: string
-  name: string
-  image: string
-  listings: number
-  avgPrice: number
-  description: string
-  trending?: boolean
-}
+import { DESTINATIONS } from '@/data/destinations'
 
 export function FeaturedDestinations() {
   const [currentIndex, setCurrentIndex] = useState(0)
 
-  const destinations: Destination[] = [
-    {
-      id: '1',
-      name: 'Đà Lạt',
-      image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=800&q=80',
-      listings: 245,
-      avgPrice: 850000,
-      description: 'Thành phố ngàn hoa với khí hậu mát mẻ quanh năm',
-      trending: true,
-    },
-    {
-      id: '2',
-      name: 'Phú Quốc',
-      image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800&q=80',
-      listings: 189,
-      avgPrice: 1200000,
-      description: 'Thiên đường biển đảo với bãi cát trắng tuyệt đẹp',
-      trending: true,
-    },
-    {
-      id: '3',
-      name: 'Hội An',
-      image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=800&q=80',
-      listings: 156,
-      avgPrice: 750000,
-      description: 'Phố cổ với di sản văn hóa thế giới',
-    },
-    {
-      id: '4',
-      name: 'Sapa',
-      image: 'https://images.unsplash.com/photo-1528127269322-539801943592?w=800&q=80',
-      listings: 123,
-      avgPrice: 650000,
-      description: 'Ruộng bậc thang và văn hóa vùng cao đặc sắc',
-    },
-    {
-      id: '5',
-      name: 'Nha Trang',
-      image: 'https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800&q=80',
-      listings: 198,
-      avgPrice: 950000,
-      description: 'Bãi biển xanh ngắt và các hoạt động thể thao nước',
-      trending: true,
-    },
-    {
-      id: '6',
-      name: 'Hạ Long',
-      image: 'https://images.unsplash.com/photo-1528127269322-539801943592?w=800&q=80',
-      listings: 167,
-      avgPrice: 1100000,
-      description: 'Kỳ quan thiên nhiên với vịnh biển đẹp nhất Việt Nam',
-    },
-  ]
+  const destinations = useMemo(() => {
+    return [...DESTINATIONS]
+      .sort((a, b) => b.experienceCount - a.experienceCount)
+      .slice(0, 6)
+      .map((destination, index) => ({
+        slug: destination.slug,
+        name: destination.name,
+        image: destination.heroImage,
+        listings: destination.listingCount,
+        avgPrice: destination.avgPrice,
+        description: destination.summary,
+        trending: index < 3,
+      }))
+  }, [])
 
   const itemsPerPage = 3
   const maxIndex = Math.ceil(destinations.length / itemsPerPage) - 1
@@ -84,10 +36,7 @@ export function FeaturedDestinations() {
     setCurrentIndex((prev) => (prev === 0 ? maxIndex : prev - 1))
   }
 
-  const visibleDestinations = destinations.slice(
-    currentIndex * itemsPerPage,
-    (currentIndex + 1) * itemsPerPage
-  )
+  const visibleDestinations = destinations.slice(currentIndex * itemsPerPage, (currentIndex + 1) * itemsPerPage)
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -105,7 +54,7 @@ export function FeaturedDestinations() {
               Điểm Đến Nổi Bật
             </h2>
             <p className="text-muted-foreground">
-              Khám phá những địa điểm du lịch hấp dẫn nhất Việt Nam
+              Khám phá những điểm đến đang được săn đón nhất trên LuxeStay
             </p>
           </div>
           <div className="hidden md:flex gap-2">
@@ -130,7 +79,7 @@ export function FeaturedDestinations() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {visibleDestinations.map((destination) => (
-            <Link key={destination.id} href={`/search?location=${destination.name}`}>
+            <Link key={destination.slug} href={`/search?city=${encodeURIComponent(destination.name)}`}>
               <Card className="group overflow-hidden hover:shadow-xl transition-all duration-300 border-0">
                 <div className="relative h-64 overflow-hidden">
                   <img

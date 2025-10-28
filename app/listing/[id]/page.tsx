@@ -26,9 +26,10 @@ import { ShareButton } from "@/components/share-button"
 import { ListingLoyaltyPerks } from "@/components/listing-loyalty-perks"
 import { ListingTrustPanel } from "@/components/listing-trust-panel"
 import { prisma } from "@/lib/prisma"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { getMembershipForUser } from "@/lib/membership"
 
 async function getListingData(id: string) {
   const listing = await prisma.listing.findUnique({
@@ -123,6 +124,23 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
   }
 
   const session = await getServerSession(authOptions)
+
+  if (listing.isSecret) {
+    const isAdmin = session?.user?.role === 'ADMIN'
+    const isHost = session?.user?.id === listing.host.id
+
+    if (!session?.user?.id) {
+      redirect(`/membership?reason=secret-listing&returnTo=${encodeURIComponent(`/listing/${listing.id}`)}`)
+    }
+
+    if (!isAdmin && !isHost) {
+      const membership = await getMembershipForUser(session.user.id)
+      if (!membership?.isActive) {
+        redirect(`/membership?reason=secret-listing&returnTo=${encodeURIComponent(`/listing/${listing.id}`)}`)
+      }
+    }
+  }
+
   const canViewInsights = Boolean(
     session?.user &&
     (session.user.role === 'ADMIN' || session.user.id === listing.host.id)

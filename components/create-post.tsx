@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -78,6 +79,24 @@ export function CreatePost({ userAvatar, userName, onPostCreated }: CreatePostPr
       })
       setSubmitting(false)
     }
+  }
+
+  if (!session) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-between gap-3 py-6">
+          <div>
+            <h3 className="font-semibold">Tham gia cộng đồng LuxeStay</h3>
+            <p className="text-sm text-muted-foreground">
+              Đăng nhập để chia sẻ trải nghiệm và tương tác với các thành viên khác.
+            </p>
+          </div>
+          <Button asChild>
+            <Link href="/login?callbackUrl=%2Fcommunity">Đăng nhập</Link>
+          </Button>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (

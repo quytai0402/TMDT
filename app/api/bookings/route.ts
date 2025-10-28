@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { calculateNights, calculateServiceFee, calculateTotalPrice, calculateDistance } from '@/lib/helpers'
 import { sendBookingConfirmationEmail } from '@/lib/email'
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 
 const createBookingSchema = z
   .object({
@@ -227,9 +228,18 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const guestUser = session?.user?.id
-      ? await prisma.user.findUnique({
-          where: { id: session.user.id },
+    const sessionUser = session?.user
+    const userWhere: Prisma.UserWhereInput[] = []
+    if (sessionUser?.id) {
+      userWhere.push({ id: sessionUser.id })
+    }
+    if (sessionUser?.email) {
+      userWhere.push({ email: sessionUser.email })
+    }
+
+    const guestUser = userWhere.length
+      ? await prisma.user.findFirst({
+          where: { OR: userWhere },
           select: {
             id: true,
             name: true,
@@ -239,33 +249,32 @@ export async function POST(req: NextRequest) {
         })
       : null
 
-    if (session?.user && !guestUser) {
-      return NextResponse.json(
-        { error: 'User profile không tồn tại. Vui lòng đăng nhập lại.' },
-        { status: 404 }
-      )
-    }
-
     const rawGuestName = validatedData.guestName?.trim()
     const rawGuestEmail = validatedData.guestEmail?.trim()
     const rawGuestPhone = validatedData.guestPhone?.trim()
 
-    const contactName =
-      guestUser?.name?.trim() ||
-      rawGuestName ||
-      'Khách vãng lai'
+    if (!guestUser) {
+      if (!rawGuestName) {
+        return NextResponse.json(
+          { error: 'Vui lòng nhập họ tên để hoàn tất đặt phòng.' },
+          { status: 400 }
+        )
+      }
+
+      if (!rawGuestEmail && !rawGuestPhone) {
+        return NextResponse.json(
+          { error: 'Vui lòng cung cấp ít nhất một email hoặc số điện thoại để liên hệ.' },
+          { status: 400 }
+        )
+      }
+    }
+
+    const contactName = guestUser?.name?.trim() || rawGuestName || 'Khách LuxeStay'
     const contactEmail = guestUser?.email || rawGuestEmail || null
     const contactPhone = (guestUser?.phone || rawGuestPhone)?.trim() || null
     const contactPhoneNormalized = contactPhone
       ? contactPhone.replace(/\D/g, '')
       : null
-
-    if (!contactPhone && !guestUser) {
-      return NextResponse.json(
-        { error: 'Vui lòng cung cấp số điện thoại để hoàn tất đặt phòng' },
-        { status: 400 }
-      )
-    }
 
     // Get listing
     const listing = await prisma.listing.findUnique({

@@ -3,87 +3,207 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { z } from "zod"
+import {
+  RewardActionType,
+  RewardSource,
+  RewardTransactionType,
+} from "@prisma/client"
+
+type ActionConfig = {
+  title: string
+  description?: string
+  points: number
+  source: RewardSource
+  cooldownHours?: number | null
+  maxTimesPerWeek?: number | null
+  isRecurring?: boolean
+}
+
+const ACTION_CONFIG: Record<RewardActionType, ActionConfig> = {
+  [RewardActionType.BOOKING_COMPLETED]: {
+    title: "Hoàn tất booking",
+    description: "Điểm thưởng cho mỗi lần hoàn tất đặt phòng.",
+    points: 250,
+    source: RewardSource.BOOKING,
+    isRecurring: true,
+  },
+  [RewardActionType.REVIEW_SUBMITTED]: {
+    title: "Viết đánh giá",
+    description: "Cảm ơn bạn đã chia sẻ trải nghiệm của mình.",
+    points: 80,
+    source: RewardSource.REVIEW,
+    isRecurring: true,
+  },
+  [RewardActionType.PROFILE_COMPLETED]: {
+    title: "Hoàn tất hồ sơ",
+    description: "Hoàn thiện hồ sơ cá nhân để nhận ưu đãi.",
+    points: 120,
+    source: RewardSource.PROMOTION,
+    isRecurring: false,
+  },
+  [RewardActionType.REFERRAL_COMPLETED]: {
+    title: "Giới thiệu bạn bè",
+    description: "Bạn được thưởng khi lời mời quy đổi thành booking.",
+    points: 400,
+    source: RewardSource.REFERRAL,
+    isRecurring: true,
+  },
+  [RewardActionType.QUEST_COMPLETED]: {
+    title: "Hoàn thành nhiệm vụ",
+    description: "Điểm thưởng cho các nhiệm vụ gamification.",
+    points: 60,
+    source: RewardSource.QUEST,
+    isRecurring: true,
+  },
+  [RewardActionType.DAILY_CHECK_IN]: {
+    title: "Daily check-in",
+    description: "Ghé LuxeStay mỗi ngày để giữ streak và tích điểm.",
+    points: 40,
+    source: RewardSource.DAILY,
+    cooldownHours: 24,
+    maxTimesPerWeek: 7,
+    isRecurring: true,
+  },
+  [RewardActionType.ANNIVERSARY]: {
+    title: "Kỷ niệm thành viên",
+    description: "Món quà nhỏ nhân dịp kỷ niệm với LuxeStay.",
+    points: 500,
+    source: RewardSource.PROMOTION,
+    isRecurring: true,
+  },
+  [RewardActionType.PROMOTION]: {
+    title: "Khuyến mãi đặc biệt",
+    description: "Điểm thưởng từ chương trình khuyến mãi.",
+    points: 100,
+    source: RewardSource.PROMOTION,
+    isRecurring: true,
+  },
+  [RewardActionType.MANUAL_ADJUSTMENT]: {
+    title: "Điều chỉnh thủ công",
+    description: "Điều chỉnh điểm bởi đội ngũ chăm sóc khách hàng.",
+    points: 0,
+    source: RewardSource.MANUAL,
+    isRecurring: true,
+  },
+}
 
 const awardPointsSchema = z.object({
-  actionType: z.enum([
-    "BOOKING_COMPLETED",
-    "REVIEW_SUBMITTED",
-    "REFERRAL_SIGNUP",
-    "PROFILE_COMPLETED",
-    "FIRST_BOOKING",
-    "REPEAT_BOOKING",
-    "EARLY_CHECKIN",
-    "LATE_CHECKOUT",
-    "IDENTITY_VERIFIED",
-    "PAYMENT_METHOD_ADDED",
-    "WISHLIST_CREATED",
-    "SOCIAL_SHARE",
-    "NEWSLETTER_SIGNUP",
-    "PROPERTY_LISTING",
-    "SUPERHOST_ACHIEVED",
-    "DAILY_CHECK_IN",
-    "QUEST_COMPLETION"
-  ]),
+  actionType: z.nativeEnum(RewardActionType),
   metadata: z.record(z.any()).optional(),
   bookingId: z.string().optional(),
   questId: z.string().optional(),
-  multiplier: z.number().min(1).max(10).optional()
+  multiplier: z.number().min(0.1).max(10).optional(),
 })
+
+function buildSlug(actionType: RewardActionType) {
+  return `reward-${actionType.toLowerCase().replace(/_/g, "-")}`
+}
+
+function buildResponseTransaction(transaction: {
+  id: string
+  points: number
+  description: string | null
+  createdAt: Date
+  action: { title: string }
+}) {
+  return {
+    id: transaction.id,
+    points: transaction.points,
+    action: transaction.action?.title ?? "Reward",
+    description: transaction.description,
+    createdAt: transaction.createdAt,
+  }
+}
+
+async function resolveUser(sessionUser: { id?: string; email?: string | null }) {
+  if (!sessionUser?.id && !sessionUser?.email) {
+    return null
+  }
+
+  const whereClauses = []
+  if (sessionUser.id) {
+    whereClauses.push({ id: sessionUser.id })
+  }
+  if (sessionUser.email) {
+    whereClauses.push({ email: sessionUser.email })
+  }
+
+  return prisma.user.findFirst({
+    where: { OR: whereClauses },
+    select: {
+      id: true,
+      loyaltyPoints: true,
+      loyaltyTier: true,
+    },
+  })
+}
 
 /**
  * POST /api/rewards/actions
  * Award points for a completed action
- * This is typically called by other backend services
  */
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions)
-    
     if (!session?.user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const body = await request.json()
     const validation = awardPointsSchema.safeParse(body)
-
     if (!validation.success) {
       return NextResponse.json(
-        { error: "Invalid request", details: validation.error.errors },
+        { error: "Invalid request", details: validation.error.flatten() },
         { status: 400 }
       )
     }
 
     const { actionType, metadata, bookingId, questId, multiplier } = validation.data
+    const config = ACTION_CONFIG[actionType]
 
-    // Get or bootstrap the reward action configuration
-    let action = await (prisma as any).rewardAction.findFirst({
-      where: { actionType }
-    })
-
-    if (!action) {
-      if (actionType === "DAILY_CHECK_IN") {
-        action = await (prisma as any).rewardAction.create({
-          data: {
-            actionType,
-            name: "Daily Check-In",
-            description: "Điểm thưởng cho check-in mỗi ngày",
-            points: 10,
-            isActive: true,
-            category: "ENGAGEMENT",
-          },
-        })
-      } else {
-        return NextResponse.json(
-          { error: `No reward configured for action: ${actionType}` },
-          { status: 404 }
-        )
-      }
+    if (!config) {
+      return NextResponse.json(
+        { error: `No reward configuration for action: ${actionType}` },
+        { status: 404 }
+      )
     }
 
-    // Check if action is still active
+    const user = await resolveUser({
+      id: session.user.id,
+      email: session.user.email,
+    })
+
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 })
+    }
+
+    const slug = buildSlug(actionType)
+    const action = await prisma.rewardAction.upsert({
+      where: { slug },
+      update: {
+        title: config.title,
+        description: config.description,
+        points: config.points,
+        isActive: true,
+        cooldownHours: config.cooldownHours ?? null,
+        maxTimesPerWeek: config.maxTimesPerWeek ?? null,
+        isRecurring: config.isRecurring ?? true,
+      },
+      create: {
+        slug,
+        title: config.title,
+        description: config.description,
+        type: actionType,
+        source: config.source,
+        points: config.points,
+        cooldownHours: config.cooldownHours ?? null,
+        maxTimesPerWeek: config.maxTimesPerWeek ?? null,
+        isRecurring: config.isRecurring ?? true,
+        isActive: true,
+        metadata,
+      },
+    })
+
     if (!action.isActive) {
       return NextResponse.json(
         { error: "This reward action is currently inactive" },
@@ -91,232 +211,121 @@ export async function POST(request: Request) {
       )
     }
 
-    // Get user with tier info
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        loyaltyPoints: true,
-        loyaltyTier: true,
-        name: true,
-        email: true
-      }
-    })
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      )
-    }
-
-    // Get tier multiplier
-    const tier = await (prisma as any).rewardTier.findFirst({
-      where: { tier: user.loyaltyTier }
-    })
-
-    const tierMultiplier = tier?.pointsMultiplier || 1.0
-    const customMultiplier = multiplier || 1.0
-    
-    // Calculate points (base * tier multiplier * custom multiplier)
-    const basePoints = action.points
-    const totalPoints = Math.round(basePoints * tierMultiplier * customMultiplier)
-
-    // Check if user already earned points for this specific action (prevent duplicates)
     if (bookingId) {
-      const existingTransaction = await (prisma as any).rewardTransaction.findFirst({
+      const duplicate = await prisma.rewardTransaction.findFirst({
         where: {
-          userId: session.user.id,
+          userId: user.id,
           actionId: action.id,
-          metadata: {
-            path: ['bookingId'],
-            equals: bookingId
-          }
-        }
+          referenceId: bookingId,
+        },
       })
 
-      if (existingTransaction) {
+      if (duplicate) {
         return NextResponse.json(
-          { 
-            error: "Points already awarded for this action",
-            existingTransaction 
+          {
+            error: "Points already awarded for this booking",
+            transactionId: duplicate.id,
           },
           { status: 409 }
         )
       }
     }
 
-    // Create transaction
-    const transaction = await (prisma as any).rewardTransaction.create({
+    const tier = await prisma.rewardTier.findFirst({
+      where: { tier: user.loyaltyTier },
+      select: {
+        tier: true,
+        bonusMultiplier: true,
+      },
+    })
+
+    const tierMultiplier = tier?.bonusMultiplier ?? 1
+    const customMultiplier = multiplier ?? 1
+    const basePoints = config.points
+    const totalPoints = Math.max(
+      0,
+      Math.round(basePoints * tierMultiplier * customMultiplier)
+    )
+
+    const userAfterIncrement = await prisma.user.update({
+      where: { id: user.id },
       data: {
-        userId: session.user.id,
+        loyaltyPoints: {
+          increment: totalPoints,
+        },
+      },
+      select: {
+        id: true,
+        loyaltyPoints: true,
+        loyaltyTier: true,
+      },
+    })
+
+    const transaction = await prisma.rewardTransaction.create({
+      data: {
+        userId: user.id,
         actionId: action.id,
         questId,
+        referenceId: bookingId ?? undefined,
+        transactionType: RewardTransactionType.CREDIT,
+        source: config.source,
         points: totalPoints,
-        type: "EARN",
-        source: actionType,
-        description: action.description,
+        balanceAfter: userAfterIncrement.loyaltyPoints,
+        description: config.description ?? config.title,
         metadata: {
           ...metadata,
           bookingId,
+          basePoints,
           tierMultiplier,
           customMultiplier,
-          basePoints
-        }
+          actionSlug: action.slug,
+        },
       },
       include: {
-        action: true
-      }
+        action: {
+          select: {
+            title: true,
+          },
+        },
+      },
     })
 
-    // Award points to user
-    const updatedUser = await prisma.user.update({
-      where: { id: session.user.id },
-      data: {
-        loyaltyPoints: {
-          increment: totalPoints
-        }
-      },
+    const tiers = await prisma.rewardTier.findMany({
+      orderBy: { minPoints: "asc" },
       select: {
-        loyaltyPoints: true,
-        loyaltyTier: true
-      }
-    })
-
-    // Check for tier upgrade
-    const nextTier = await (prisma as any).rewardTier.findFirst({
-      where: {
-        minPoints: {
-          lte: updatedUser.loyaltyPoints,
-          gt: tier?.minPoints || 0
-        }
+        tier: true,
+        minPoints: true,
       },
-      orderBy: {
-        minPoints: 'desc'
-      }
     })
 
     let tierUpgraded = false
-    if (nextTier && nextTier.tier !== updatedUser.loyaltyTier) {
-      await prisma.user.update({
-        where: { id: session.user.id },
-        data: {
-          loyaltyTier: nextTier.tier
-        }
-      })
-      tierUpgraded = true
+    let currentTier = userAfterIncrement.loyaltyTier
+    if (tiers.length > 0) {
+      const eligibleTier = [...tiers]
+        .reverse()
+        .find((t) => userAfterIncrement.loyaltyPoints >= t.minPoints)
 
-      // Create tier upgrade transaction
-      await (prisma as any).rewardTransaction.create({
-        data: {
-          userId: session.user.id,
-          points: 0,
-          type: "EARN",
-          source: "TIER_UPGRADE",
-          description: `Upgraded to ${nextTier.name} tier!`,
-          metadata: {
-            previousTier: updatedUser.loyaltyTier,
-            newTier: nextTier.tier
-          }
-        }
-      })
-    }
-
-    // Check badge progress
-    const badges = await (prisma as any).rewardBadge.findMany({
-      where: {
-        isActive: true,
-        criteria: {
-          path: ['actionType'],
-          equals: actionType
-        }
-      }
-    })
-
-    const badgesEarned = []
-    for (const badge of badges) {
-      // Check if user already has this badge
-      const existingBadge = await (prisma as any).userBadge.findFirst({
-        where: {
-          userId: session.user.id,
-          badgeId: badge.id
-        }
-      })
-
-      if (!existingBadge) {
-        // Count how many times user has done this action
-        const actionCount = await (prisma as any).rewardTransaction.count({
-          where: {
-            userId: session.user.id,
-            actionId: action.id
-          }
+      if (eligibleTier && eligibleTier.tier !== userAfterIncrement.loyaltyTier) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            loyaltyTier: eligibleTier.tier,
+          },
         })
-
-        // Check if criteria is met (simplified - you may want more complex logic)
-        const requiredCount = badge.criteria?.requiredCount || 1
-        if (actionCount >= requiredCount) {
-          // Award badge
-          await (prisma as any).userBadge.create({
-            data: {
-              userId: session.user.id,
-              badgeId: badge.id,
-              earnedAt: new Date(),
-              progress: 100
-            }
-          })
-
-          // Create badge earned transaction
-          await (prisma as any).rewardTransaction.create({
-            data: {
-              userId: session.user.id,
-              badgeId: badge.id,
-              points: badge.bonusPoints || 0,
-              type: "EARN",
-              source: "BADGE_EARNED",
-              description: `Earned badge: ${badge.name}!`,
-              metadata: {
-                badgeId: badge.id,
-                badgeName: badge.name
-              }
-            }
-          })
-
-          // Award bonus points if applicable
-          if (badge.bonusPoints > 0) {
-            await prisma.user.update({
-              where: { id: session.user.id },
-              data: {
-                loyaltyPoints: {
-                  increment: badge.bonusPoints
-                }
-              }
-            })
-          }
-
-          badgesEarned.push(badge)
-        }
+        currentTier = eligibleTier.tier
+        tierUpgraded = true
       }
     }
 
     return NextResponse.json({
       success: true,
-      transaction: {
-        id: transaction.id,
-        points: totalPoints,
-        action: action.name,
-        description: action.description,
-        createdAt: transaction.createdAt
-      },
+      transaction: buildResponseTransaction(transaction),
       user: {
-        newBalance: updatedUser.loyaltyPoints + (badgesEarned.reduce((sum, b) => sum + (b.bonusPoints || 0), 0)),
-        currentTier: tierUpgraded ? nextTier.tier : updatedUser.loyaltyTier,
-        tierUpgraded
+        id: user.id,
+        newBalance: userAfterIncrement.loyaltyPoints,
+        loyaltyTier: currentTier,
+        tierUpgraded,
       },
-      badgesEarned: badgesEarned.map(b => ({
-        id: b.id,
-        name: b.name,
-        icon: b.icon,
-        bonusPoints: b.bonusPoints
-      }))
     })
   } catch (error) {
     console.error("Error awarding points:", error)
@@ -334,21 +343,26 @@ export async function POST(request: Request) {
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
-    
     if (!session?.user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const actions = await (prisma as any).rewardAction.findMany({
-      where: {
-        isActive: true
+    const actions = await prisma.rewardAction.findMany({
+      where: { isActive: true },
+      orderBy: { points: "desc" },
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        description: true,
+        points: true,
+        source: true,
+        type: true,
+        cooldownHours: true,
+        maxTimesPerWeek: true,
+        isRecurring: true,
+        updatedAt: true,
       },
-      orderBy: {
-        points: 'desc'
-      }
     })
 
     return NextResponse.json({ actions })

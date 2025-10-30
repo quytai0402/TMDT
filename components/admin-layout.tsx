@@ -30,6 +30,7 @@ import {
   Home,
   Shield,
   Award,
+  Crown,
   ChevronRight,
   LogOut,
 } from "lucide-react"
@@ -89,6 +90,11 @@ const NAV_ITEMS: NavItem[] = [
     title: "Tin nhắn",
     href: "/admin/messages",
     icon: MessageSquare,
+  },
+  {
+    title: "Membership",
+    href: "/admin/memberships",
+    icon: Crown,
   },
   {
     title: "Báo cáo",

@@ -43,6 +43,12 @@ const ROLE_FILTERS: Array<{ label: string; value: string }> = [
   { label: "Quản trị", value: "admin" },
 ]
 
+const ROLE_LABELS: Record<string, string> = {
+  ADMIN: "Quản trị",
+  HOST: "Chủ nhà",
+  GUEST: "Khách",
+}
+
 const formatNumber = (value?: number | null) => {
   if (!value) return "0"
   return new Intl.NumberFormat("vi-VN").format(value)
@@ -94,6 +100,7 @@ export function UserManagement() {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [totalUsers, setTotalUsers] = useState(0)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -113,7 +120,9 @@ export function UserManagement() {
         }
 
         const data = await response.json()
-        setUsers(Array.isArray(data?.users) ? data.users : [])
+        const nextUsers = Array.isArray(data?.users) ? data.users : []
+        setUsers(nextUsers)
+        setTotalUsers(Number(data?.pagination?.total) || nextUsers.length)
       } catch (err) {
         if ((err as Error).name === "AbortError") return
         console.error("Failed to fetch users:", err)
@@ -142,9 +151,13 @@ export function UserManagement() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Quản lý người dùng</CardTitle>
-        <CardDescription>Theo dõi và kiểm soát người dùng trên toàn nền tảng</CardDescription>
+      <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+        <div>
+          <CardTitle>Quản lý người dùng</CardTitle>
+          <CardDescription>
+            Tổng cộng {formatNumber(totalUsers)} tài khoản trên hệ thống
+          </CardDescription>
+        </div>
       </CardHeader>
       <CardContent>
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -204,9 +217,11 @@ export function UserManagement() {
 
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h4 className="font-semibold">{user.name || "Chưa đặt tên"}</h4>
-                        {statusIndicator(user)}
-                        <Badge variant={roleBadgeVariant(user.role)}>{user.role ?? "GUEST"}</Badge>
+                    <h4 className="font-semibold">{user.name || "Chưa đặt tên"}</h4>
+                    {statusIndicator(user)}
+                    <Badge variant={roleBadgeVariant(user.role)}>
+                      {ROLE_LABELS[user.role ?? "GUEST"] ?? user.role ?? "Khách"}
+                    </Badge>
                         {user.isSuperHost && (
                           <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
                             Super Host

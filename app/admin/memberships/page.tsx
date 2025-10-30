@@ -1,0 +1,246 @@
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import { AdminLayout } from '@/components/admin-layout'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
+import { Loader2, Crown, Users, Calendar, RefreshCcw } from 'lucide-react'
+import { toast } from 'sonner'
+
+type MembershipPlanSummary = {
+  id: string
+  name: string
+  slug: string
+  price: number
+  billingCycle: string
+  perks: string[]
+  description?: string | null
+  stats: {
+    activeMembers: number
+    expiredMembers: number
+  }
+}
+
+type MembershipMember = {
+  id: string
+  name: string | null
+  email: string | null
+  status: string
+  startedAt: string | null
+  expiresAt: string | null
+  features: string[]
+  plan: {
+    id: string
+    name: string
+    slug: string
+  } | null
+}
+
+type MembershipResponse = {
+  plans: MembershipPlanSummary[]
+  members: MembershipMember[]
+}
+
+const statusBadge = (status: string) => {
+  switch (status) {
+    case 'ACTIVE':
+      return { variant: 'default' as const, label: 'Đang hoạt động' }
+    case 'EXPIRED':
+      return { variant: 'secondary' as const, label: 'Hết hạn' }
+    case 'CANCELLED':
+      return { variant: 'outline' as const, label: 'Đã hủy' }
+    default:
+      return { variant: 'outline' as const, label: status }
+  }
+}
+
+const formatDate = (value: string | null) => {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('vi-VN')
+}
+
+const currency = (value: number) =>
+  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value)
+
+export default function AdminMembershipsPage() {
+  const [data, setData] = useState<MembershipResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED'>('ALL')
+
+  const loadMemberships = async () => {
+    try {
+      setLoading(true)
+      const params = new URLSearchParams()
+      if (filter !== 'ALL') params.append('status', filter)
+
+      const res = await fetch(`/api/admin/memberships?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch memberships')
+      const payload: MembershipResponse = await res.json()
+      setData(payload)
+    } catch (error) {
+      console.error('Membership load error:', error)
+      toast.error('Không thể tải dữ liệu membership')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadMemberships()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter])
+
+  const filteredMembers = useMemo(() => {
+    if (!data?.members) return []
+    return data.members
+  }, [data])
+
+  return (
+    <AdminLayout>
+      <div className="space-y-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold">Quản lý membership</h1>
+            <p className="text-muted-foreground mt-2">
+              Theo dõi các gói, trạng thái thành viên và quyền lợi được kích hoạt
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => void loadMemberships()}>
+            <RefreshCcw className="h-4 w-4 mr-2" />
+            Làm mới
+          </Button>
+        </div>
+
+        {loading && (
+          <div className="flex items-center justify-center py-10 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin mr-2" />
+            Đang tải dữ liệu membership...
+          </div>
+        )}
+
+        {!loading && data && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {data.plans.map((plan) => (
+                <Card key={plan.id}>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <Crown className="h-4 w-4 text-primary" />
+                        {plan.name}
+                      </CardTitle>
+                      <CardDescription>{plan.description || 'Gói membership'}</CardDescription>
+                    </div>
+                    <Badge variant="outline">{plan.billingCycle === 'ANNUAL' ? 'Hàng năm' : 'Hàng tháng'}</Badge>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="text-2xl font-semibold">{currency(plan.price)}</div>
+                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Users className="h-4 w-4" /> {plan.stats.activeMembers} đang hoạt động
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-4 w-4" /> {plan.stats.expiredMembers} đã hết hạn
+                      </span>
+                    </div>
+                    <ul className="text-sm space-y-1">
+                      {plan.perks.map((perk) => (
+                        <li key={perk}>• {perk}</li>
+                      ))}
+                    </ul>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            <Card>
+              <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <CardTitle>Danh sách thành viên</CardTitle>
+                  <CardDescription>
+                    Tổng cộng {filteredMembers.length} thành viên đang theo dõi.
+                  </CardDescription>
+                </div>
+                <Select value={filter} onValueChange={(value: 'ALL' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED') => setFilter(value)}>
+                  <SelectTrigger className="w-full md:w-56">
+                    <SelectValue placeholder="Tất cả trạng thái" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Tất cả trạng thái</SelectItem>
+                    <SelectItem value="ACTIVE">Đang hoạt động</SelectItem>
+                    <SelectItem value="EXPIRED">Đã hết hạn</SelectItem>
+                    <SelectItem value="CANCELLED">Đã hủy</SelectItem>
+                  </SelectContent>
+                </Select>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Thành viên</TableHead>
+                        <TableHead>Gói</TableHead>
+                        <TableHead>Trạng thái</TableHead>
+                        <TableHead>Ngày kích hoạt</TableHead>
+                        <TableHead>Ngày hết hạn</TableHead>
+                        <TableHead>Quyền lợi</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredMembers.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                            Không có thành viên nào phù hợp bộ lọc.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredMembers.map((member) => {
+                          const badge = statusBadge(member.status)
+                          return (
+                            <TableRow key={member.id}>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  <div className="font-medium">{member.name || 'Chưa cập nhật'}</div>
+                                  <div className="text-sm text-muted-foreground">{member.email}</div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{member.plan?.name || 'Chưa gán'}</Badge>
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant={badge.variant}>{badge.label}</Badge>
+                              </TableCell>
+                              <TableCell>{formatDate(member.startedAt)}</TableCell>
+                              <TableCell>{formatDate(member.expiresAt)}</TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-1">
+                                  {member.features.map((feature) => (
+                                    <Badge key={feature} variant="secondary">
+                                      {feature}
+                                    </Badge>
+                                  ))}
+                                  {member.features.length === 0 && (
+                                    <span className="text-xs text-muted-foreground">Chưa có</span>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
+      </div>
+    </AdminLayout>
+  )
+}

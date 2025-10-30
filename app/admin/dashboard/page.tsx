@@ -201,7 +201,7 @@ export default function AdminDashboardPage() {
       <div className="space-y-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-semibold">Admin Dashboard</h1>
+            <h1 className="text-3xl font-semibold">Bảng điều khiển</h1>
             <p className="text-sm text-muted-foreground">
               Toàn cảnh hiệu suất nền tảng và các tác vụ cần ưu tiên.
             </p>
@@ -209,11 +209,11 @@ export default function AdminDashboardPage() {
           <div className="flex items-center gap-3">
             <Badge className="bg-green-100 text-green-700 px-3 py-1">
               <span className="mr-2 inline-flex h-2 w-2 rounded-full bg-green-600" />
-              Service healthy
+              Hệ thống ổn định
             </Badge>
             <Button variant="outline">
               <Shield className="mr-2 h-4 w-4" />
-              Alerts ({alertCount})
+              Cảnh báo ({alertCount})
             </Button>
           </div>
         </div>
@@ -306,7 +306,11 @@ export default function AdminDashboardPage() {
                     activities.map((activity) => (
                       <div key={activity.id} className="flex items-start gap-3 rounded-lg border border-muted p-3">
                         <Badge variant="secondary">
-                          {activity.type === "user" ? "Người dùng" : activity.type === "listing" ? "Listing" : "Booking"}
+                          {activity.type === "user"
+                            ? "Người dùng"
+                            : activity.type === "listing"
+                            ? "Chỗ nghỉ"
+                            : "Đặt phòng"}
                         </Badge>
                         <div className="flex-1">
                           <p className="text-sm font-medium">{activity.title}</p>

@@ -38,19 +38,23 @@ interface Payment {
 }
 
 interface PaymentStats {
-  total: number
-  completed: number
-  pending: number
-  failed: number
-  totalAmount: number
+  totalRevenue: number
+  platformFee: number
+  todayRevenue: number
+  todayCount: number
+  completedCount: number
+  pendingCount: number
+  failedCount: number
 }
 
 const DEFAULT_STATS: PaymentStats = {
-  total: 0,
-  completed: 0,
-  pending: 0,
-  failed: 0,
-  totalAmount: 0,
+  totalRevenue: 0,
+  platformFee: 0,
+  todayRevenue: 0,
+  todayCount: 0,
+  completedCount: 0,
+  pendingCount: 0,
+  failedCount: 0,
 }
 
 export default function AdminPaymentsPage() {
@@ -64,16 +68,26 @@ export default function AdminPaymentsPage() {
     try {
       setLoading(true)
       const params = new URLSearchParams()
-      if (filter !== 'all') params.append('status', filter.toUpperCase())
+      if (filter !== 'all') params.append('filter', filter)
       if (searchQuery) params.append('search', searchQuery)
-      
-      const res = await fetch(`/api/admin/payments?${params}`)
+
+      const res = await fetch(`/api/admin/payments?${params.toString()}`)
+      if (!res.ok) throw new Error('Failed to fetch payments')
       const data = await res.json()
       setPayments(data.payments || [])
-      setStats(data.stats || DEFAULT_STATS)
+      setStats({
+        totalRevenue: data.stats?.totalRevenue ?? 0,
+        platformFee: data.stats?.platformFee ?? 0,
+        todayRevenue: data.stats?.todayRevenue ?? 0,
+        todayCount: data.stats?.todayCount ?? 0,
+        completedCount: data.stats?.completedCount ?? 0,
+        pendingCount: data.stats?.pendingCount ?? 0,
+        failedCount: data.stats?.failedCount ?? 0,
+      })
     } catch (error) {
       console.error('Failed to fetch payments:', error)
       setStats(DEFAULT_STATS)
+      setPayments([])
     } finally {
       setLoading(false)
     }
@@ -130,9 +144,11 @@ export default function AdminPaymentsPage() {
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Tổng thu</p>
-                  <p className="text-2xl font-bold">{formatCurrency(stats.totalAmount)}</p>
-                  <p className="text-xs text-green-600 mt-1">+12% so với tháng trước</p>
+                  <p className="text-sm font-medium text-muted-foreground">Tổng doanh thu</p>
+                  <p className="text-2xl font-bold">{formatCurrency(stats.totalRevenue)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Hôm nay {formatCurrency(stats.todayRevenue)} • {stats.todayCount} giao dịch
+                  </p>
                 </div>
                 <DollarSign className="h-8 w-8 text-green-600" />
               </div>
@@ -143,8 +159,8 @@ export default function AdminPaymentsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Thành công</p>
-                  <p className="text-2xl font-bold">{stats.completed}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{stats.total} giao dịch</p>
+                  <p className="text-2xl font-bold">{stats.completedCount}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Tổng giao dịch thành công</p>
                 </div>
                 <TrendingUp className="h-8 w-8 text-blue-600" />
               </div>
@@ -155,7 +171,7 @@ export default function AdminPaymentsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Đang xử lý</p>
-                  <p className="text-2xl font-bold text-orange-600">{stats.pending}</p>
+                  <p className="text-2xl font-bold text-orange-600">{stats.pendingCount}</p>
                   <p className="text-xs text-muted-foreground mt-1">Chờ xác nhận</p>
                 </div>
                 <Clock className="h-8 w-8 text-orange-600" />
@@ -167,7 +183,7 @@ export default function AdminPaymentsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Thất bại</p>
-                  <p className="text-2xl font-bold text-red-600">{stats.failed}</p>
+                  <p className="text-2xl font-bold text-red-600">{stats.failedCount}</p>
                   <p className="text-xs text-muted-foreground mt-1">Cần kiểm tra</p>
                 </div>
                 <ArrowDownRight className="h-8 w-8 text-red-600" />

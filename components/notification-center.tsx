@@ -141,17 +141,22 @@ export function NotificationCenter() {
       setIsConnected(true)
 
       const handleNotification = (payload: { notification: Notification }) => {
+        const newNotification: Notification = {
+          ...payload.notification,
+          isRead: false,
+        }
+
         setUnreadCount((prev) => prev + 1)
 
         if (open) {
           setNotifications((prev) => {
-            const next = [payload.notification, ...prev]
+            const next = [newNotification, ...prev]
             return next.slice(0, 50)
           })
         }
 
-        toast.success(payload.notification.title, {
-          description: payload.notification.message,
+        toast.success(newNotification.title, {
+          description: newNotification.message,
           action: {
             label: "Xem",
             onClick: () => setOpen(true),

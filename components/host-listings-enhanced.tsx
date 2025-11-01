@@ -20,6 +20,20 @@ export function HostListingsEnhanced() {
   const { getMyListings, deleteListing, loading } = useListings()
   const [listings, setListings] = useState<any[]>([])
 
+  const formatCurrency = (value: unknown): string | null => {
+    if (value === null || value === undefined) {
+      return null
+    }
+
+    const numericValue = typeof value === 'number' ? value : Number(value)
+
+    if (!Number.isFinite(numericValue)) {
+      return null
+    }
+
+    return numericValue.toLocaleString('vi-VN')
+  }
+
   useEffect(() => {
     fetchListings()
   }, [])
@@ -95,11 +109,19 @@ export function HostListingsEnhanced() {
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {listings.map((listing) => (
-            <div
-              key={listing.id}
-              className="flex gap-4 p-4 border rounded-lg hover:border-primary transition-colors"
-            >
+          {listings.map((listing) => {
+            const nightlyPriceValue =
+              listing.pricePerNight ??
+              listing.nightlyPrice ??
+              listing.price ??
+              listing.basePrice
+            const formattedNightlyPrice = formatCurrency(nightlyPriceValue)
+
+            return (
+              <div
+                key={listing.id}
+                className="flex gap-4 p-4 border rounded-lg hover:border-primary transition-colors"
+              >
               <div className="relative w-32 h-24 rounded-lg overflow-hidden flex-shrink-0">
                 <Image
                   src={listing.photos?.[0] || '/placeholder.jpg'}
@@ -166,12 +188,13 @@ export function HostListingsEnhanced() {
                   </Badge>
 
                   <span className="font-semibold">
-                    {listing.pricePerNight.toLocaleString('vi-VN')}₫/đêm
+                    {formattedNightlyPrice ? `${formattedNightlyPrice}₫/đêm` : 'Giá đang cập nhật'}
                   </span>
                 </div>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
 
         <Button asChild variant="outline" className="w-full mt-4">

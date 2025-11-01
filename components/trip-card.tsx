@@ -35,6 +35,12 @@ type TripCardProps = {
     pets: number
     totalPrice: number
     status: "PENDING" | "CONFIRMED" | "COMPLETED" | "CANCELLED" | "DECLINED" | "EXPIRED"
+    canReview?: boolean
+    hasReview?: boolean
+    reviewUrl?: string | null
+    review?: {
+      id: string
+    } | null
   }
 }
 
@@ -65,6 +71,9 @@ export function TripCard({ trip }: TripCardProps) {
   const locationLabel = [trip.listing.city, trip.listing.state].filter(Boolean).join(", ")
   const hostId = trip.host?.id ?? trip.listing.host?.id
   const hostName = trip.host?.name ?? trip.listing.host?.name ?? "Chủ nhà"
+  const canReview = Boolean(trip.canReview)
+  const hasReview = Boolean(trip.hasReview ?? (trip.review && trip.review.id))
+  const reviewUrl = canReview ? (trip.reviewUrl || `/trips/${trip.id}/review`) : null
 
   const handleMessageHost = () => {
     if (!hostId) {
@@ -193,11 +202,16 @@ export function TripCard({ trip }: TripCardProps) {
                   <MessageCircle className="h-4 w-4 mr-2" />
                   {isMessaging || isPending ? "Đang mở chat..." : "Nhắn tin"}
                 </Button>
-                {trip.status === "COMPLETED" && (
-                  <Button size="sm" className="bg-primary hover:bg-primary-hover">
-                    Đánh giá
+                {canReview && reviewUrl ? (
+                  <Button size="sm" className="bg-primary hover:bg-primary-hover" asChild>
+                    <Link href={reviewUrl}>Đánh giá</Link>
                   </Button>
-                )}
+                ) : null}
+                {!canReview && hasReview && trip.status === "COMPLETED" ? (
+                  <Button size="sm" variant="outline" disabled>
+                    Đã đánh giá
+                  </Button>
+                ) : null}
               </div>
             </div>
           </div>

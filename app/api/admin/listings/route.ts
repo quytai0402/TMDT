@@ -2,7 +2,17 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import type { Prisma, ListingStatus } from "@prisma/client"
+import type { Prisma } from "@prisma/client"
+import { ListingStatus } from "@prisma/client"
+
+const STATUS_ALIASES: Record<string, ListingStatus> = {
+  PENDING: ListingStatus.PENDING_REVIEW,
+  REVIEW: ListingStatus.PENDING_REVIEW,
+  REJECTED: ListingStatus.INACTIVE,
+  APPROVED: ListingStatus.ACTIVE,
+}
+
+const VALID_LISTING_STATUSES = new Set<string>(Object.values(ListingStatus))
 
 // GET /api/admin/listings - Get all listings with filters
 export async function GET(request: NextRequest) {
@@ -44,16 +54,9 @@ export async function GET(request: NextRequest) {
 
     if (status && status !== "all") {
       const normalized = status.toUpperCase()
-      const statusMap: Record<string, ListingStatus> = {
-        PENDING: "PENDING_REVIEW",
-        REVIEW: "PENDING_REVIEW",
-        REJECTED: "INACTIVE",
-        APPROVED: "ACTIVE",
-      }
-      const candidate = statusMap[normalized] ?? (normalized as ListingStatus)
-      const validStatuses = new Set<ListingStatus>(Object.values(ListingStatus))
-      if (validStatuses.has(candidate)) {
-        where.status = candidate
+      const candidate = STATUS_ALIASES[normalized] ?? normalized
+      if (VALID_LISTING_STATUSES.has(candidate)) {
+        where.status = candidate as ListingStatus
       }
     }
 
@@ -145,18 +148,10 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    const statusMap: Record<string, ListingStatus> = {
-      PENDING: "PENDING_REVIEW",
-      REVIEW: "PENDING_REVIEW",
-      REJECTED: "INACTIVE",
-      APPROVED: "ACTIVE",
-    }
-
     const normalized = String(status).toUpperCase()
-    const candidate = statusMap[normalized] ?? (normalized as ListingStatus)
-    const validStatuses = new Set<ListingStatus>(Object.values(ListingStatus))
+    const candidate = STATUS_ALIASES[normalized] ?? normalized
 
-    if (!validStatuses.has(candidate)) {
+    if (!VALID_LISTING_STATUSES.has(candidate)) {
       return NextResponse.json(
         { error: "Invalid status" },
         { status: 400 }
@@ -165,7 +160,7 @@ export async function PATCH(request: NextRequest) {
 
     const updatedListing = await prisma.listing.update({
       where: { id: listingId },
-      data: { status: candidate },
+      data: { status: candidate as ListingStatus },
     })
 
     return NextResponse.json({

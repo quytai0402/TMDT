@@ -1,8 +1,26 @@
-import { PrismaClient } from '@prisma/client'
+import {
+  PrismaClient,
+  QuestType,
+  QuestCategory,
+  PromotionType,
+  PromotionSource,
+  DiscountType,
+  LoyaltyTier,
+  PropertyType,
+} from '@prisma/client'
+import type { Prisma } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
 const prismaAny = prisma as any
+
+const ensureJsonObject = (value: Prisma.JsonValue | null | undefined): Prisma.JsonObject => {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Prisma.JsonObject
+  }
+
+  return {}
+}
 
 async function main() {
   console.log('🌱 Starting database seeding...')
@@ -294,6 +312,147 @@ async function main() {
     )
   )
 
+
+  const membershipPlanConfigs = [
+    {
+      slug: 'luxe-silver',
+      name: 'Luxe Silver',
+      tagline: 'Ưu đãi linh hoạt cho khách thân thiết',
+      description: 'Giảm giá cơ bản và quyền lợi ưu tiên khi đặt homestay trên LuxeStay.',
+      icon: '🥈',
+      color: '#B0BEC5',
+      monthlyPrice: 299000,
+      annualPrice: 2990000,
+      savings: 10,
+      isPopular: false,
+      features: [
+        'Giảm 5% cho mọi booking',
+        'Ưu tiên hỗ trợ qua chat',
+        'Miễn phí nâng hạng cuối tuần (tuỳ tình trạng phòng)',
+      ],
+      exclusiveFeatures: [
+        'Miễn phí check-in sớm (tuỳ tình trạng phòng)',
+      ],
+      bookingDiscountRate: 5,
+      applyDiscountToServices: false,
+      displayOrder: 1,
+    },
+    {
+      slug: 'luxe-gold',
+      name: 'Luxe Gold',
+      tagline: 'Trải nghiệm nâng hạng và dịch vụ concierge',
+      description: 'Được thiết kế cho khách hàng trung thành với nhu cầu nâng hạng phòng và dịch vụ cao cấp.',
+      icon: '🥇',
+      color: '#F1C40F',
+      monthlyPrice: 499000,
+      annualPrice: 4990000,
+      savings: 15,
+      isPopular: true,
+      features: [
+        'Giảm 10% cho mọi booking',
+        'Priority concierge 24/7',
+        'Miễn phí nâng hạng phòng khi còn trống',
+      ],
+      exclusiveFeatures: [
+        'Tặng 1 voucher spa mỗi quý',
+        'Giảm 10% cho dịch vụ bổ sung',
+      ],
+      bookingDiscountRate: 10,
+      applyDiscountToServices: true,
+      displayOrder: 2,
+    },
+    {
+      slug: 'luxe-platinum',
+      name: 'Luxe Platinum',
+      tagline: 'Quyền lợi độc quyền & concierge cá nhân hoá',
+      description: 'Tối ưu cho khách doanh nhân và gia đình cao cấp cần dịch vụ riêng biệt.',
+      icon: '💎',
+      color: '#8E24AA',
+      monthlyPrice: 899000,
+      annualPrice: 8990000,
+      savings: 20,
+      isPopular: false,
+      features: [
+        'Giảm 12% cho mọi booking',
+        'Concierge cá nhân hoá',
+        'Ưu tiên check-in/out linh hoạt',
+      ],
+      exclusiveFeatures: [
+        'Tặng 1 đêm miễn phí mỗi năm',
+        'Giảm 15% cho dịch vụ bổ sung',
+        'Trải nghiệm partner cao cấp',
+      ],
+      bookingDiscountRate: 12,
+      applyDiscountToServices: true,
+      displayOrder: 3,
+    },
+  ]
+
+  const membershipPlanRecords = await Promise.all(
+    membershipPlanConfigs.map((plan) =>
+      prisma.membershipPlan.upsert({
+        where: { slug: plan.slug },
+        update: {
+          name: plan.name,
+          tagline: plan.tagline ?? null,
+          description: plan.description ?? null,
+          icon: plan.icon ?? null,
+          color: plan.color ?? null,
+          monthlyPrice: plan.monthlyPrice,
+          annualPrice: plan.annualPrice,
+          savings: plan.savings ?? null,
+          isPopular: plan.isPopular ?? false,
+          features: plan.features,
+          exclusiveFeatures: plan.exclusiveFeatures,
+          bookingDiscountRate: plan.bookingDiscountRate,
+          applyDiscountToServices: plan.applyDiscountToServices,
+          displayOrder: plan.displayOrder,
+        },
+        create: {
+          slug: plan.slug,
+          name: plan.name,
+          tagline: plan.tagline ?? null,
+          description: plan.description ?? null,
+          icon: plan.icon ?? null,
+          color: plan.color ?? null,
+          monthlyPrice: plan.monthlyPrice,
+          annualPrice: plan.annualPrice,
+          savings: plan.savings ?? null,
+          isPopular: plan.isPopular ?? false,
+          features: plan.features,
+          exclusiveFeatures: plan.exclusiveFeatures,
+          bookingDiscountRate: plan.bookingDiscountRate,
+          applyDiscountToServices: plan.applyDiscountToServices,
+          displayOrder: plan.displayOrder,
+        },
+      })
+    )
+  )
+
+  const membershipPlanMap = new Map<string, (typeof membershipPlanRecords)[number]>()
+  membershipPlanRecords.forEach((plan) => membershipPlanMap.set(plan.slug, plan))
+
+  const goldPlan = membershipPlanMap.get('luxe-gold')
+  if (goldPlan) {
+    const nowTimestamp = new Date()
+    const nextYear = new Date(nowTimestamp)
+    nextYear.setFullYear(nextYear.getFullYear() + 1)
+
+    await prisma.user.update({
+      where: { id: guest1.id },
+      data: {
+        membershipPlanId: goldPlan.id,
+        membershipStatus: 'ACTIVE',
+        membershipStartedAt: nowTimestamp,
+        membershipExpiresAt: nextYear,
+        membershipBillingCycle: 'ANNUAL',
+        membershipFeatures: [...goldPlan.features, ...goldPlan.exclusiveFeatures],
+        loyaltyPoints: 4800,
+        loyaltyTier: 'GOLD',
+      },
+    })
+  }
+
   const actionConfigs: Array<{
     slug: string
     title: string
@@ -386,6 +545,108 @@ async function main() {
   actionRecords.forEach((action: any) => {
     actionMap.set(action.slug, action)
   })
+
+  const questConfigs: Array<{
+    title: string
+    description: string
+    type: QuestType
+    category: QuestCategory
+    targetCount: number
+    rewardPoints: number
+    rewardBadgeSlug?: string
+    isDaily?: boolean
+    isWeekly?: boolean
+    icon?: string
+    color?: string
+  }> = [
+    {
+      title: 'Đặt phòng đầu tiên',
+      description: 'Hoàn tất đơn đặt phòng đầu tiên cùng LuxeStay.',
+      type: QuestType.BOOKING,
+      category: QuestCategory.ONBOARDING,
+      targetCount: 1,
+      rewardPoints: 400,
+      rewardBadgeSlug: 'bronze-explorer',
+      icon: '🧳',
+      color: '#0EA5E9',
+    },
+    {
+      title: 'Viết 3 đánh giá chân thành',
+      description: 'Chia sẻ trải nghiệm của bạn sau mỗi chuyến đi.',
+      type: QuestType.REVIEW,
+      category: QuestCategory.ENGAGEMENT,
+      targetCount: 3,
+      rewardPoints: 450,
+      rewardBadgeSlug: 'silver-jetsetter',
+      icon: '📝',
+      color: '#F97316',
+    },
+    {
+      title: 'Điểm danh 5 ngày liên tiếp',
+      description: 'Đăng nhập LuxeStay liên tục 5 ngày để duy trì streak.',
+      type: QuestType.DAILY_CHECK_IN,
+      category: QuestCategory.LOYALTY,
+      targetCount: 5,
+      rewardPoints: 300,
+      rewardBadgeSlug: 'silver-jetsetter',
+      isDaily: true,
+      icon: '📅',
+      color: '#6366F1',
+    },
+    {
+      title: 'Khám phá 10 homestay tiềm năng',
+      description: 'Lưu hoặc xem chi tiết 10 homestay thân thiện.',
+      type: QuestType.EXPLORATION,
+      category: QuestCategory.SOCIAL,
+      targetCount: 10,
+      rewardPoints: 350,
+      icon: '🗺️',
+      color: '#22C55E',
+    },
+    {
+      title: 'Chia sẻ 3 homestay với bạn bè',
+      description: 'Giới thiệu homestay yêu thích của bạn tới cộng đồng.',
+      type: QuestType.SOCIAL,
+      category: QuestCategory.SOCIAL,
+      targetCount: 3,
+      rewardPoints: 280,
+      icon: '🤝',
+      color: '#EC4899',
+    },
+  ]
+
+  for (const quest of questConfigs) {
+    const existingQuest = await prisma.quest.findFirst({
+      where: { title: quest.title },
+    })
+
+    const questData = {
+      title: quest.title,
+      description: quest.description,
+      type: quest.type,
+      category: quest.category,
+      targetCount: quest.targetCount,
+      rewardPoints: quest.rewardPoints,
+      rewardBadge: quest.rewardBadgeSlug ? badgeMap.get(quest.rewardBadgeSlug)?.name ?? null : null,
+      rewardBadgeId: quest.rewardBadgeSlug ? badgeMap.get(quest.rewardBadgeSlug)?.id ?? null : null,
+      isDaily: quest.isDaily ?? false,
+      isWeekly: quest.isWeekly ?? false,
+      isActive: true,
+      icon: quest.icon ?? null,
+      color: quest.color ?? null,
+    }
+
+    if (existingQuest) {
+      await prisma.quest.update({
+        where: { id: existingQuest.id },
+        data: questData,
+      })
+    } else {
+      await prisma.quest.create({
+        data: questData,
+      })
+    }
+  }
 
   const catalogConfigs: Array<{
     slug: string
@@ -1145,6 +1406,219 @@ async function main() {
   })
 
   console.log('✅ Extended listings created')
+
+  console.log('🎟️ Creating vouchers & coupons...')
+
+  const seedNow = new Date()
+  const addDays = (days: number) => {
+    const date = new Date(seedNow)
+    date.setDate(date.getDate() + days)
+    return date
+  }
+
+  const adminVoucherConfig = {
+    code: 'LUXE10',
+    name: 'Ưu đãi thành viên toàn hệ thống',
+    description: 'Giảm 10% cho đơn từ 2 đêm, tối đa 2.000.000₫.',
+    type: PromotionType.GENERAL,
+    discountType: DiscountType.PERCENTAGE,
+    discountValue: 10,
+    maxDiscount: 2_000_000,
+    minBookingValue: 4_000_000,
+    maxUses: 500,
+    maxUsesPerUser: 3,
+    pointCost: 0,
+    source: PromotionSource.ADMIN,
+    hostId: null,
+    stackWithMembership: true,
+    stackWithPromotions: false,
+    allowedMembershipTiers: [
+      LoyaltyTier.SILVER,
+      LoyaltyTier.GOLD,
+      LoyaltyTier.PLATINUM,
+      LoyaltyTier.DIAMOND,
+    ],
+    listingIds: [] as string[],
+    propertyTypes: [] as PropertyType[],
+    metadata: {
+      highlight: 'Giảm 10% toàn bộ hệ thống',
+    } as Prisma.JsonObject,
+    validFrom: seedNow,
+    validUntil: addDays(120),
+    isActive: true,
+  } satisfies Prisma.PromotionUncheckedCreateInput
+
+  const loyaltyVoucherConfig = {
+    code: 'POINTS15',
+    name: 'Đổi điểm nhận voucher 15%',
+    description: 'Voucher giảm 15% tối đa 1.500.000₫ dành cho thành viên đổi điểm.',
+    type: PromotionType.GENERAL,
+    discountType: DiscountType.PERCENTAGE,
+    discountValue: 15,
+    maxDiscount: 1_500_000,
+    minBookingValue: 3_000_000,
+    maxUses: 300,
+    maxUsesPerUser: 2,
+    pointCost: 2_500,
+    source: PromotionSource.LOYALTY_EXCHANGE,
+    hostId: null,
+    stackWithMembership: true,
+    stackWithPromotions: false,
+    allowedMembershipTiers: [] as LoyaltyTier[],
+    listingIds: [] as string[],
+    propertyTypes: [] as PropertyType[],
+    metadata: {
+      highlight: 'Đổi 2.500 điểm để nhận ưu đãi 15%',
+    } as Prisma.JsonObject,
+    validFrom: seedNow,
+    validUntil: addDays(90),
+    isActive: true,
+  } satisfies Prisma.PromotionUncheckedCreateInput
+
+  const hostVoucherConfig = {
+    code: 'VILLA20',
+    name: 'Ưu đãi riêng villa Nha Trang',
+    description: 'Giảm 20% cho kỳ nghỉ tối thiểu 3 đêm tại villa Nha Trang.',
+    type: PromotionType.GENERAL,
+    discountType: DiscountType.PERCENTAGE,
+    discountValue: 20,
+    maxDiscount: 3_000_000,
+    minBookingValue: 6_000_000,
+    maxUses: 120,
+    maxUsesPerUser: 1,
+    pointCost: 0,
+    source: PromotionSource.HOST,
+    hostId: host1.id,
+    stackWithMembership: true,
+    stackWithPromotions: false,
+    allowedMembershipTiers: [] as LoyaltyTier[],
+    listingIds: [listing1.id],
+    propertyTypes: [listing1.propertyType],
+    metadata: {
+      feature: 'Host-specific coupon',
+    } as Prisma.JsonObject,
+    validFrom: seedNow,
+    validUntil: addDays(60),
+    isActive: true,
+  } satisfies Prisma.PromotionUncheckedCreateInput
+
+  const { code: adminVoucherCode, ...adminVoucherData } = adminVoucherConfig
+  const { code: loyaltyVoucherCode, ...loyaltyVoucherData } = loyaltyVoucherConfig
+  const { code: hostVoucherCode, ...hostVoucherData } = hostVoucherConfig
+
+  const [adminVoucher, loyaltyVoucher, hostVoucher] = await Promise.all([
+    prisma.promotion.upsert({
+      where: { code: adminVoucherCode },
+      update: adminVoucherData,
+      create: adminVoucherConfig,
+    }),
+    prisma.promotion.upsert({
+      where: { code: loyaltyVoucherCode },
+      update: loyaltyVoucherData,
+      create: loyaltyVoucherConfig,
+    }),
+    prisma.promotion.upsert({
+      where: { code: hostVoucherCode },
+      update: hostVoucherData,
+      create: hostVoucherConfig,
+    }),
+  ])
+
+  const spaReward = await prisma.rewardCatalogItem.findUnique({
+    where: { slug: 'spa-credit' },
+  })
+
+  if (spaReward && spaReward.promotionId !== loyaltyVoucher.id) {
+    const existingMetadata = ensureJsonObject(spaReward.metadata)
+
+    await prisma.rewardCatalogItem.update({
+      where: { id: spaReward.id },
+      data: {
+        promotionId: loyaltyVoucher.id,
+        pointsCost: loyaltyVoucher.pointCost ?? spaReward.pointsCost,
+        metadata: {
+          ...existingMetadata,
+          promotionCode: loyaltyVoucher.code,
+        } as Prisma.JsonObject,
+      },
+    })
+  }
+
+  const existingRedemption = await prisma.promotionRedemption.findFirst({
+    where: {
+      promotionId: loyaltyVoucher.id,
+      userId: guest2.id,
+    },
+  })
+
+  if (!existingRedemption && spaReward) {
+    const currentGuest2 = await prisma.user.findUnique({
+      where: { id: guest2.id },
+      select: { loyaltyPoints: true },
+    })
+
+    const redemptionCost = loyaltyVoucher.pointCost ?? spaReward.pointsCost ?? 0
+    const balanceAfter = Math.max((currentGuest2?.loyaltyPoints ?? 0) - redemptionCost, 0)
+
+    const rewardRedemption = await prisma.rewardRedemption.create({
+      data: {
+        userId: guest2.id,
+        rewardId: spaReward.id,
+        status: 'FULFILLED',
+        pointsSpent: redemptionCost,
+        fulfilledAt: seedNow,
+        metadata: {
+          promotionId: loyaltyVoucher.id,
+          catalogItemSlug: spaReward.slug,
+        },
+      },
+    })
+
+    const promotionRedemption = await prisma.promotionRedemption.create({
+      data: {
+        promotionId: loyaltyVoucher.id,
+        userId: guest2.id,
+        status: 'ACTIVE',
+        pointsSpent: redemptionCost,
+        redeemedAt: seedNow,
+        expiresAt: loyaltyVoucher.validUntil,
+        metadata: {
+          rewardRedemptionId: rewardRedemption.id,
+          catalogItemSlug: spaReward.slug,
+        },
+      },
+    })
+
+    await prisma.rewardTransaction.create({
+      data: {
+        userId: guest2.id,
+        transactionType: 'DEBIT',
+        source: 'REDEMPTION',
+        points: -redemptionCost,
+        balanceAfter,
+        description: `Đổi voucher ${loyaltyVoucher.code}`,
+        referenceId: promotionRedemption.id,
+        metadata: {
+          promotionId: loyaltyVoucher.id,
+          catalogItemSlug: spaReward.slug,
+        },
+      },
+    })
+
+    await prisma.user.update({
+      where: { id: guest2.id },
+      data: { loyaltyPoints: balanceAfter },
+    })
+
+    await prisma.promotion.update({
+      where: { id: loyaltyVoucher.id },
+      data: {
+        usedCount: { increment: 1 },
+      },
+    })
+  }
+
+  console.log('✅ Vouchers seeded')
 
   // Create Bookings
   console.log('📅 Creating bookings...')

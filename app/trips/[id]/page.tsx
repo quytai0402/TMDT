@@ -64,7 +64,14 @@ export default function TripDetailPage() {
   }
 
   // Transform API data to TripHub format
-  const services =
+  const services: Array<{
+    id: string
+    name: string
+    quantityLabel?: string
+    totalPrice: number
+    status?: string
+    updatedAt?: string | null
+  }> =
     Array.isArray(trip.additionalServices) && trip.additionalServices.length > 0
       ? trip.additionalServices.map((service: any) => ({
           id: service.id,
@@ -118,7 +125,7 @@ export default function TripDetailPage() {
     bookingCode: trip.id.slice(-8).toUpperCase(),
     status: trip.status.toLowerCase(),
     canReview: Boolean(trip.canReview),
-    reviewUrl: `/trips/${trip.id}/review`,
+    reviewUrl: trip.canReview ? `/trips/${trip.id}/review` : undefined,
     listing: {
       title: trip.listing.title,
       location: `${trip.listing.city}, ${trip.listing.state}`,
@@ -173,7 +180,9 @@ export default function TripDetailPage() {
       `Check-out trước ${trip.listing.checkOutTime || '11:00'}`,
     ],
     services,
-    servicesTotal: Number(trip.additionalServicesTotal) || services.reduce((sum: number, service) => sum + service.totalPrice, 0),
+    servicesTotal:
+      Number(trip.additionalServicesTotal) ||
+      services.reduce((sum: number, service: { totalPrice: number }) => sum + service.totalPrice, 0),
     conciergePlans,
     packingChecklist,
     upsellExperiences,

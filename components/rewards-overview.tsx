@@ -160,7 +160,7 @@ export function RewardsOverview({ compact = false }: RewardsOverviewProps) {
           </Button>
           <Button 
             size="sm"
-            onClick={() => router.push("/rewards/catalog")}
+            onClick={() => router.push("/rewards?section=catalog")}
           >
             <Gift className="h-4 w-4 mr-1" />
             Đổi quà

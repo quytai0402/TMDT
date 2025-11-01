@@ -90,27 +90,35 @@ export async function GET(request: Request) {
     })
 
     // Mark which items user can afford
-    const itemsWithAffordability = items.map((item) => ({
-      id: item.id,
-      slug: item.slug,
-      name: item.name,
-      description: item.description,
-      category: item.category,
-      pointsCost: item.pointsCost,
-      cashValue: item.cashValue,
-      quantityAvailable: item.quantityAvailable,
-      maxPerUser: item.maxPerUser,
-      startAt: item.startAt,
-      endAt: item.endAt,
-      isActive: item.isActive,
-      image: item.image,
-      terms: item.terms,
-      metadata: item.metadata,
-      badgeId: item.badgeId,
-      promotion: item.promotion,
-      canAfford: user ? user.loyaltyPoints >= item.pointsCost : false,
-      userPoints: user?.loyaltyPoints || 0,
-    }))
+    const itemsWithAffordability = items.map((item) => {
+      const metadata = (typeof item.metadata === "object" && item.metadata !== null) ? item.metadata as Record<string, unknown> : {}
+      const requiredTier = typeof metadata.requiredTier === "string" ? metadata.requiredTier : null
+      const validityDays = typeof metadata.validityDays === "number" ? metadata.validityDays : null
+
+      return {
+        id: item.id,
+        slug: item.slug,
+        name: item.name,
+        description: item.description,
+        category: item.category,
+        pointsCost: item.pointsCost,
+        cashValue: item.cashValue,
+        quantityAvailable: item.quantityAvailable,
+        maxPerUser: item.maxPerUser,
+        startAt: item.startAt,
+        endAt: item.endAt,
+        isActive: item.isActive,
+        image: item.image,
+        terms: item.terms,
+        metadata: item.metadata,
+        badgeId: item.badgeId,
+        promotion: item.promotion,
+        canAfford: user ? user.loyaltyPoints >= item.pointsCost : false,
+        userPoints: user?.loyaltyPoints || 0,
+        requiredTier,
+        validityDays,
+      }
+    })
 
     return NextResponse.json({
       items: itemsWithAffordability,

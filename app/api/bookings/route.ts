@@ -155,8 +155,15 @@ export async function GET(req: NextRequest) {
             title: true,
             images: true,
             city: true,
+            state: true,
             country: true,
             propertyType: true,
+            host: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
           },
         },
         guest: {
@@ -177,11 +184,34 @@ export async function GET(req: NextRequest) {
           },
         },
         payment: true,
+        review: {
+          select: {
+            id: true,
+            overallRating: true,
+            createdAt: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     })
 
-    return NextResponse.json({ bookings })
+    const enrichedBookings = bookings.map((booking) => {
+      const hasReview = Boolean(booking.review)
+      const canReview =
+        booking.status === 'COMPLETED' &&
+        type === 'guest' &&
+        booking.guestId === session.user.id &&
+        !hasReview
+
+      return {
+        ...booking,
+        canReview,
+        hasReview,
+        reviewUrl: canReview ? `/trips/${booking.id}/review` : null,
+      }
+    })
+
+    return NextResponse.json({ bookings: enrichedBookings })
   } catch (error) {
     console.error('Get bookings error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

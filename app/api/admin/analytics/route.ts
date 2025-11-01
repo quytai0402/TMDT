@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { computeBookingFinancials } from '@/lib/finance'
+import { BookingStatus, PaymentStatus, ListingStatus } from '@prisma/client'
 
 export async function GET(req: NextRequest) {
   try {
@@ -35,18 +36,18 @@ export async function GET(req: NextRequest) {
       prisma.user.count(),
       prisma.user.count({ where: { isHost: true } }),
       prisma.listing.count(),
-      prisma.listing.count({ where: { status: 'ACTIVE' } }),
+      prisma.listing.count({ where: { status: ListingStatus.ACTIVE } }),
       prisma.booking.count(),
-      prisma.booking.count({ where: { status: 'COMPLETED' } }),
+      prisma.booking.count({ where: { status: BookingStatus.COMPLETED } }),
       prisma.booking.aggregate({
-        where: { status: 'COMPLETED' },
+        where: { status: BookingStatus.COMPLETED },
         _sum: {
           platformCommission: true,
           serviceFee: true,
         },
       }),
       prisma.payment.aggregate({
-        where: { status: 'COMPLETED' },
+        where: { status: PaymentStatus.COMPLETED },
         _sum: {
           amount: true,
         },
@@ -100,7 +101,7 @@ export async function GET(req: NextRequest) {
     // Revenue by period (simplified for MongoDB)
     const commissionBookings = await prisma.booking.findMany({
       where: {
-        status: 'COMPLETED',
+        status: BookingStatus.COMPLETED,
         completedAt: { gte: startDate },
       },
       select: {
@@ -131,7 +132,7 @@ export async function GET(req: NextRequest) {
       where: {
         bookings: {
           some: {
-            status: 'COMPLETED',
+            status: BookingStatus.COMPLETED,
             checkOut: { gte: startDate },
           },
         },
@@ -146,7 +147,7 @@ export async function GET(req: NextRequest) {
           select: {
             bookings: {
               where: {
-                status: 'COMPLETED',
+                status: BookingStatus.COMPLETED,
                 checkOut: { gte: startDate },
               },
             },
@@ -159,6 +160,11 @@ export async function GET(req: NextRequest) {
       take: 10,
     })
 
+    const platformCommission = Number(commissionAggregate._sum.platformCommission ?? 0)
+    const fallbackServiceFee = Number(commissionAggregate._sum.serviceFee ?? 0)
+    const platformRevenue = platformCommission > 0 ? platformCommission : fallbackServiceFee
+    const totalPayments = Number(paymentsAggregate._sum.amount ?? 0)
+
     return NextResponse.json({
       overview: {
         totalUsers,
@@ -167,10 +173,7 @@ export async function GET(req: NextRequest) {
         activeListings,
         totalBookings,
         completedBookings: completedBookingsCount,
-        totalRevenue:
-          (commissionAggregate._sum.platformCommission ?? 0) > 0
-            ? commissionAggregate._sum.platformCommission ?? 0
-            : commissionAggregate._sum.serviceFee ?? 0,
+        totalRevenue: platformRevenue,
       },
       growth: {
         period: parseInt(period),
@@ -188,7 +191,7 @@ export async function GET(req: NextRequest) {
         },
       },
       revenue: {
-        total: paymentsAggregate._sum.amount ?? 0,
+        total: totalPayments,
         byDay: revenueByDay,
       },
       topListings,

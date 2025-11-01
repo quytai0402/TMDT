@@ -27,10 +27,40 @@ export function useReviews() {
     setError(null)
 
     try {
+      const payload: Record<string, unknown> = {
+        bookingId: data.bookingId,
+        type: data.reviewType,
+        overallRating: data.rating,
+        comment: data.comment.trim(),
+      }
+
+      if (data.reviewType === 'GUEST_TO_LISTING' && data.categoryRatings) {
+        const categories = data.categoryRatings
+
+        if (categories.cleanliness) {
+          payload.cleanlinessRating = categories.cleanliness
+        }
+        if (categories.accuracy) {
+          payload.accuracyRating = categories.accuracy
+        }
+        if (categories.checkIn) {
+          payload.checkInRating = categories.checkIn
+        }
+        if (categories.communication) {
+          payload.communicationRating = categories.communication
+        }
+        if (categories.location) {
+          payload.locationRating = categories.location
+        }
+        if (categories.value) {
+          payload.valueRating = categories.value
+        }
+      }
+
       const response = await fetch('/api/reviews', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       })
 
       const result = await response.json()

@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { getMembershipForUser } from "@/lib/membership"
-import { Prisma } from "@prisma/client"
+import { Prisma, BookingStatus, RewardRedemptionStatus } from "@prisma/client"
 
 const MEMBERSHIP_CONFIG = {
   BRONZE: { freeNights: 0, upgrades: 0 },
@@ -76,12 +76,16 @@ export async function GET() {
     const bookingsThisYear = await prisma.booking.count({
       where: {
         guestId: user.id,
-        status: { in: ['COMPLETED', 'CONFIRMED'] },
+        status: {
+          in: [BookingStatus.COMPLETED, BookingStatus.CONFIRMED],
+        },
         checkIn: { gte: startOfYear },
       },
     })
 
-    const redemptionStatusFilter = { in: ['FULFILLED', 'APPROVED'] } as const
+    const redemptionStatusFilter = {
+      in: [RewardRedemptionStatus.FULFILLED, RewardRedemptionStatus.APPROVED],
+    } as const
 
     const freeNightRedemptions = await prisma.rewardRedemption.count({
       where: {
@@ -106,7 +110,9 @@ export async function GET() {
     const experienceBookings = await prisma.experienceBooking.count({
       where: {
         guestId: user.id,
-        status: { in: ['COMPLETED', 'CONFIRMED'] },
+        status: {
+          in: [BookingStatus.COMPLETED, BookingStatus.CONFIRMED],
+        },
       },
     })
 

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
+import { RewardsCatalogPreview } from "@/components/rewards-catalog-preview"
 
 import {
   Award,
@@ -76,11 +77,31 @@ interface LoyaltyData {
 export function GamificationDashboard() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
 
   const [data, setData] = useState<LoyaltyData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState("benefits")
+
+  useEffect(() => {
+    const requestedTab = searchParams?.get("section") ?? searchParams?.get("tab")
+    if (!requestedTab) return
+    if (["benefits", "tiers", "catalog"].includes(requestedTab) && requestedTab !== activeTab) {
+      setActiveTab(requestedTab)
+    }
+  }, [searchParams, activeTab])
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value)
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    params.set("section", value)
+    const queryString = params.toString()
+    const destination = queryString ? `${window.location.pathname}?${queryString}` : window.location.pathname
+    router.replace(destination, { scroll: false })
+  }
 
   const fetchLoyaltyData = useCallback(async () => {
     try {
@@ -315,13 +336,16 @@ export function GamificationDashboard() {
         </Card>
       </div>
 
-      <Tabs defaultValue="benefits" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2 max-w-xl">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
+        <TabsList className="grid w-full max-w-2xl grid-cols-3">
           <TabsTrigger value="benefits" className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" /> Quyền lợi hiện tại
           </TabsTrigger>
           <TabsTrigger value="tiers" className="flex items-center gap-2">
             <Award className="h-4 w-4" /> Các hạng thành viên
+          </TabsTrigger>
+          <TabsTrigger value="catalog" className="flex items-center gap-2">
+            <Gift className="h-4 w-4" /> Đổi quà
           </TabsTrigger>
         </TabsList>
 
@@ -413,6 +437,10 @@ export function GamificationDashboard() {
               </Card>
             )
           })}
+        </TabsContent>
+
+        <TabsContent value="catalog">
+          <RewardsCatalogPreview />
         </TabsContent>
       </Tabs>
     </div>

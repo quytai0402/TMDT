@@ -35,6 +35,7 @@ interface CatalogItem {
   pointsCost: number
   category: string
   imageUrl?: string
+  image?: string
   stock?: number | null
   isAvailable: boolean
   canAfford: boolean
@@ -277,15 +278,19 @@ export default function RewardsCatalogPage() {
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filteredItems.map((item) => (
               <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                {item.imageUrl && (
+                {(() => {
+                  const imageSrc = item.imageUrl ?? item.image
+                  if (!imageSrc) return null
+                  return (
                   <div className="aspect-video bg-muted overflow-hidden">
                     <img 
-                      src={item.imageUrl} 
+                      src={imageSrc} 
                       alt={item.name}
                       className="w-full h-full object-cover"
                     />
                   </div>
-                )}
+                  )
+                })()}
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">
                     <CardTitle className="text-lg">{item.name}</CardTitle>
@@ -362,13 +367,17 @@ export default function RewardsCatalogPage() {
           {selectedItem && (
             <div className="space-y-4 py-4">
               <div className="flex items-start gap-4">
-                {selectedItem.imageUrl && (
-                  <img 
-                    src={selectedItem.imageUrl} 
-                    alt={selectedItem.name}
-                    className="w-24 h-24 object-cover rounded"
-                  />
-                )}
+                {(() => {
+                  const imageSrc = selectedItem.imageUrl ?? selectedItem.image
+                  if (!imageSrc) return null
+                  return (
+                    <img 
+                      src={imageSrc}
+                      alt={selectedItem.name}
+                      className="w-24 h-24 object-cover rounded"
+                    />
+                  )
+                })()}
                 <div className="flex-1">
                   <h3 className="font-semibold mb-1">{selectedItem.name}</h3>
                   <p className="text-sm text-muted-foreground mb-2">

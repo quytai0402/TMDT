@@ -6,27 +6,59 @@ import { ListingStatus } from "@prisma/client"
 
 export async function GET() {
   try {
-    const regions = await prisma.listing.groupBy({
-      by: ["city", "state", "country"],
+  // Manual aggregation because MongoDB connector does not support groupBy
+  const listings = await prisma.listing.findMany({
       where: {
         city: { not: null },
         status: {
           in: [ListingStatus.ACTIVE, ListingStatus.PENDING_REVIEW, ListingStatus.INACTIVE],
         },
       },
-      _count: { _all: true },
-      orderBy: { _count: { _all: "desc" } },
+      select: {
+        city: true,
+        state: true,
+        country: true,
+      },
     })
 
-    const data = regions
-      .filter((region) => region.city)
+    const regionMap = new Map<
+      string,
+      { city: string; state: string | null; country: string | null; count: number }
+    >()
+
+    for (const listing of listings) {
+      if (!listing.city) continue
+
+      const state = listing.state ?? null
+      const country = listing.country ?? null
+      const key = `${listing.city}|${state ?? ""}|${country ?? ""}`
+
+      const current = regionMap.get(key)
+      if (current) {
+        current.count += 1
+        continue
+      }
+
+      regionMap.set(key, {
+        city: listing.city,
+        state,
+        country,
+        count: 1,
+      })
+    }
+
+    const data = Array.from(regionMap.values())
       .map((region) => ({
         slug: generateSlug(`${region.city}-${region.state ?? ""}-${region.country ?? ""}`),
-        name: region.city ?? "",
+        name: region.city,
         state: region.state,
         country: region.country,
-        listingCount: region._count._all,
+        listingCount: region.count,
       }))
+      .sort((a, b) => {
+        if (b.listingCount !== a.listingCount) return b.listingCount - a.listingCount
+        return a.name.localeCompare(b.name, "vi", { sensitivity: "base" })
+      })
 
     return NextResponse.json({ regions: data })
   } catch (error) {

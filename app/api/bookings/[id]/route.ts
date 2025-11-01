@@ -63,10 +63,11 @@ export async function GET(
       guestType: booking.guestType,
     }
 
+    const hasReview = Boolean(booking.review)
     const canReview =
       booking.status === 'COMPLETED' &&
       session.user.id === booking.guestId &&
-      !booking.review
+      !hasReview
 
     const additionalServices = Array.isArray(booking.additionalServices)
       ? booking.additionalServices
@@ -77,6 +78,8 @@ export async function GET(
       additionalServices,
       guestContact,
       canReview,
+      hasReview,
+      reviewUrl: canReview ? `/trips/${booking.id}/review` : null,
     })
   } catch (error) {
     console.error('Error fetching booking detail:', error)

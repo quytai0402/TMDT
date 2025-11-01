@@ -118,3 +118,28 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions)
+
+    if (!session?.user || session.user.role !== 'ADMIN') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { reviewId } = await req.json()
+
+    if (!reviewId) {
+      return NextResponse.json({ error: 'Missing reviewId' }, { status: 400 })
+    }
+
+    await prisma.review.delete({
+      where: { id: reviewId },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Error deleting review:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}

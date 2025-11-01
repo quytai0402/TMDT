@@ -200,7 +200,7 @@ export function QuickActions() {
         icon: Shield,
         color: 'text-purple-600',
         bgColor: 'bg-purple-50 dark:bg-purple-950',
-        onClick: () => router.push('/admin')
+        onClick: () => router.push('/admin/dashboard')
       },
       {
         title: 'Người dùng',

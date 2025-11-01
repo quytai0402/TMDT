@@ -265,7 +265,7 @@ export function ListingModeration() {
       <CardContent className="space-y-6">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {filteredSummary.map(({ label, value, icon: Icon, total }) => (
-            <Card key={value}>
+            <Card key={`${value}-${label}`}>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <Icon className="h-4 w-4 text-muted-foreground" />

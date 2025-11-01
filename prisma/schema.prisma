@@ -13,76 +13,79 @@ datasource db {
 // ============================================
 
 model User {
-  id                String    @id @default(auto()) @map("_id") @db.ObjectId
-  email             String    @unique
-  emailVerified     DateTime?
-  name              String?
-  password          String?
-  phone             String?
-  phoneVerified     Boolean   @default(false)
-  image             String?
-  bio               String?
-  languages         String[]
-  
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  password      String?
+  phone         String?
+  phoneVerified Boolean   @default(false)
+  image         String?
+  bio           String?
+  languages     String[]
+
   // User type & verification
-  role              UserRole  @default(GUEST)
-  isVerified        Boolean   @default(false)
-  isHost            Boolean   @default(false)
-  isSuperHost       Boolean   @default(false)
-  
+  role        UserRole   @default(GUEST)
+  isVerified  Boolean    @default(false)
+  isHost      Boolean    @default(false)
+  isSuperHost Boolean    @default(false)
+  status      UserStatus @default(ACTIVE)
+
   // Loyalty Program
-  loyaltyPoints     Int       @default(0)
-  loyaltyTier       LoyaltyTier @default(BRONZE)
-  referralCode      String?
-  referredBy        String?   @db.ObjectId
-  membershipPlanId        String?   @db.ObjectId
-  membershipStatus        MembershipStatus @default(INACTIVE)
-  membershipStartedAt     DateTime?
-  membershipExpiresAt     DateTime?
-  membershipFeatures      String[]  @default([])
-  membershipBillingCycle  MembershipBillingCycle?
+  loyaltyPoints          Int                     @default(0)
+  loyaltyTier            LoyaltyTier             @default(BRONZE)
+  referralCode           String?
+  referredBy             String?                 @db.ObjectId
+  membershipPlanId       String?                 @db.ObjectId
+  membershipStatus       MembershipStatus        @default(INACTIVE)
+  membershipStartedAt    DateTime?
+  membershipExpiresAt    DateTime?
+  membershipFeatures     String[]                @default([])
+  membershipBillingCycle MembershipBillingCycle?
 
   // Timestamps
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  lastLoginAt       DateTime?
-  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastLoginAt DateTime?
+
   // Relations
-  accounts          Account[]
-  sessions          Session[]
-  listings          Listing[]
-  bookingsAsGuest   Booking[] @relation("GuestBookings")
-  bookingsAsHost    Booking[] @relation("HostBookings")
-  reviewsWritten    Review[]  @relation("ReviewsWritten")
-  reviewsReceived   Review[]  @relation("ReviewsReceived")
-  messages          Message[]
-  notifications     Notification[]
-  wishlists         Wishlist[]
-  savedCollections  Collection[]
-  paymentMethods    PaymentMethod[]
-  transactions      Transaction[]
-  rewardTransactions RewardTransaction[]
-  rewardRedemptions RewardRedemption[]
-  rewardBadges     UserBadge[]
-  disputes          Dispute[]
-  teamMemberships   TeamMember[]
-  hostProfile       HostProfile?
-  serviceBookings   ServiceBooking[]
-  posts             Post[]
-  comments          Comment[]
-  experiences       Experience[]
-  experienceBookings ExperienceBooking[]
-  experienceReviews ExperienceReview[] @relation("ExperienceReviewsWritten")
-  userQuests        UserQuest[]
-  conciergePlansHosted   ConciergePlan[] @relation("HostConciergePlans")
-  conciergePlansAsGuest  ConciergePlan[] @relation("GuestConciergePlans")
-  conciergePlansAssigned ConciergePlan[] @relation("AgentConciergePlans")
-  membershipPlan   MembershipPlan? @relation(fields: [membershipPlanId], references: [id], onDelete: SetNull)
-  following        UserFollow[] @relation("UserFollowing")
-  followers        UserFollow[] @relation("UserFollowers")
-  
-  @@map("users")
+  accounts               Account[]
+  sessions               Session[]
+  listings               Listing[]
+  bookingsAsGuest        Booking[]           @relation("GuestBookings")
+  bookingsAsHost         Booking[]           @relation("HostBookings")
+  reviewsWritten         Review[]            @relation("ReviewsWritten")
+  reviewsReceived        Review[]            @relation("ReviewsReceived")
+  messages               Message[]
+  notifications          Notification[]
+  wishlists              Wishlist[]
+  savedCollections       Collection[]
+  paymentMethods         PaymentMethod[]
+  transactions           Transaction[]
+  rewardTransactions     RewardTransaction[]
+  rewardRedemptions      RewardRedemption[]
+  rewardBadges           UserBadge[]
+  disputes               Dispute[]
+  teamMemberships        TeamMember[]
+  hostProfile            HostProfile?
+  serviceBookings        ServiceBooking[]
+  posts                  Post[]
+  comments               Comment[]
+  experiences            Experience[]
+  experienceBookings     ExperienceBooking[]
+  experienceReviews      ExperienceReview[]  @relation("ExperienceReviewsWritten")
+  userQuests             UserQuest[]
+  conciergePlansHosted   ConciergePlan[]     @relation("HostConciergePlans")
+  conciergePlansAsGuest  ConciergePlan[]     @relation("GuestConciergePlans")
+  conciergePlansAssigned ConciergePlan[]     @relation("AgentConciergePlans")
+  membershipPlan         MembershipPlan?     @relation(fields: [membershipPlanId], references: [id], onDelete: SetNull)
+  following              UserFollow[]        @relation("UserFollowing")
+  followers              UserFollow[]        @relation("UserFollowers")
+  hostPayouts            HostPayout[]
+  hostApplications       HostApplication[]
+
   @@index([referralCode], map: "users_referralCode_idx")
+  @@map("users")
 }
 
 model Account {
@@ -116,9 +119,9 @@ model Session {
 }
 
 model VerificationToken {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
   identifier String
-  token      String   @unique
+  token      String    @unique
   expires    DateTime
   type       TokenType @default(EMAIL_VERIFICATION)
 
@@ -131,44 +134,44 @@ model VerificationToken {
 // ============================================
 
 model Quest {
-  id              String      @id @default(auto()) @map("_id") @db.ObjectId
-  title           String
-  description     String
-  type            QuestType
-  category        QuestCategory
-  
+  id          String        @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  description String
+  type        QuestType
+  category    QuestCategory
+
   // Requirements
-  targetCount     Int         @default(1)
-  rewardPoints    Int
-  rewardBadge     String?
-  rewardBadgeId   String?     @db.ObjectId
-  
+  targetCount   Int     @default(1)
+  rewardPoints  Int
+  rewardBadge   String?
+  rewardBadgeId String? @db.ObjectId
+
   // Quest properties
-  isDaily         Boolean     @default(false)
-  isWeekly        Boolean     @default(false)
-  isActive        Boolean     @default(true)
-  icon            String?
-  color           String?
-  
+  isDaily  Boolean @default(false)
+  isWeekly Boolean @default(false)
+  isActive Boolean @default(true)
+  icon     String?
+  color    String?
+
   // Relations
-  completions     UserQuest[]
-  badge           RewardBadge? @relation(fields: [rewardBadgeId], references: [id], onDelete: SetNull)
+  completions        UserQuest[]
+  badge              RewardBadge?        @relation(fields: [rewardBadgeId], references: [id], onDelete: SetNull)
   rewardTransactions RewardTransaction[] @relation("QuestRewardTransactions")
 
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("quests")
 }
 
 model UserFollow {
-  id           String   @id @default(auto()) @map("_id") @db.ObjectId
-  followerId   String   @db.ObjectId
-  followingId  String   @db.ObjectId
-  createdAt    DateTime @default(now())
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  followerId  String   @db.ObjectId
+  followingId String   @db.ObjectId
+  createdAt   DateTime @default(now())
 
-  follower     User     @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
-  following    User     @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+  follower  User @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
 
   @@unique([followerId, followingId])
   @@index([followingId])
@@ -176,25 +179,25 @@ model UserFollow {
 }
 
 model UserQuest {
-  id              String      @id @default(auto()) @map("_id") @db.ObjectId
-  userId          String      @db.ObjectId
-  questId         String      @db.ObjectId
-  
+  id      String @id @default(auto()) @map("_id") @db.ObjectId
+  userId  String @db.ObjectId
+  questId String @db.ObjectId
+
   // Progress
-  currentCount    Int         @default(0)
-  isCompleted     Boolean     @default(false)
-  completedAt     DateTime?
-  
+  currentCount Int       @default(0)
+  isCompleted  Boolean   @default(false)
+  completedAt  DateTime?
+
   // Daily quest tracking
-  lastResetAt     DateTime    @default(now())
-  
+  lastResetAt DateTime @default(now())
+
   // Relations
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  quest           Quest       @relation(fields: [questId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quest Quest @relation(fields: [questId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@unique([userId, questId])
   @@map("user_quests")
 }
@@ -204,46 +207,46 @@ model UserQuest {
 // ============================================
 
 model RewardTier {
-  id              String       @id @default(auto()) @map("_id") @db.ObjectId
-  tier            LoyaltyTier  @unique
+  id              String      @id @default(auto()) @map("_id") @db.ObjectId
+  tier            LoyaltyTier @unique
   name            String
   description     String?
   minPoints       Int
   maxPoints       Int?
-  bonusMultiplier Float        @default(1)
+  bonusMultiplier Float       @default(1)
   benefits        String[]
-  displayOrder    Int          @default(0)
-  badgeId         String?      @db.ObjectId
+  displayOrder    Int         @default(0)
+  badgeId         String?     @db.ObjectId
 
-  badge           RewardBadge? @relation(fields: [badgeId], references: [id], onDelete: SetNull)
+  badge RewardBadge? @relation(fields: [badgeId], references: [id], onDelete: SetNull)
 
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@map("reward_tiers")
   @@index([displayOrder])
+  @@map("reward_tiers")
 }
 
 model RewardBadge {
-  id              String        @id @default(auto()) @map("_id") @db.ObjectId
-  slug            String        @unique
-  name            String
-  description     String?
-  tier            LoyaltyTier?
-  pointsRequired  Int?
-  icon            String?
-  color           String?
-  isLimited       Boolean       @default(false)
-  metadata        Json?
+  id             String       @id @default(auto()) @map("_id") @db.ObjectId
+  slug           String       @unique
+  name           String
+  description    String?
+  tier           LoyaltyTier?
+  pointsRequired Int?
+  icon           String?
+  color          String?
+  isLimited      Boolean      @default(false)
+  metadata       Json?
 
-  quests          Quest[]
-  tiers           RewardTier[]
-  actions         RewardAction[]
-  catalogItems    RewardCatalogItem[]
-  userBadges      UserBadge[]
+  quests       Quest[]
+  tiers        RewardTier[]
+  actions      RewardAction[]
+  catalogItems RewardCatalogItem[]
+  userBadges   UserBadge[]
 
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("reward_badges")
 }
@@ -267,22 +270,22 @@ model MembershipPlan {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  members          User[]
+  members User[]
 
-  @@map("membership_plans")
   @@index([displayOrder])
+  @@map("membership_plans")
 }
 
 model UserBadge {
-  id              String       @id @default(auto()) @map("_id") @db.ObjectId
-  userId          String       @db.ObjectId
-  badgeId         String       @db.ObjectId
-  source          RewardSource @default(ADMIN)
-  metadata        Json?
-  earnedAt        DateTime     @default(now())
+  id       String       @id @default(auto()) @map("_id") @db.ObjectId
+  userId   String       @db.ObjectId
+  badgeId  String       @db.ObjectId
+  source   RewardSource @default(ADMIN)
+  metadata Json?
+  earnedAt DateTime     @default(now())
 
-  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  badge           RewardBadge  @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge RewardBadge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
 
   @@unique([userId, badgeId])
   @@map("user_badges")
@@ -299,25 +302,25 @@ model RewardAction {
   maxTimesPerDay  Int?
   maxTimesPerWeek Int?
   cooldownHours   Int?
-  isRecurring     Boolean         @default(true)
-  isActive        Boolean         @default(true)
+  isRecurring     Boolean          @default(true)
+  isActive        Boolean          @default(true)
   metadata        Json?
-  badgeId         String?         @db.ObjectId
+  badgeId         String?          @db.ObjectId
 
-  badge           RewardBadge?    @relation(fields: [badgeId], references: [id], onDelete: SetNull)
-  transactions    RewardTransaction[]
+  badge        RewardBadge?        @relation(fields: [badgeId], references: [id], onDelete: SetNull)
+  transactions RewardTransaction[]
 
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("reward_actions")
 }
 
 model RewardTransaction {
-  id              String               @id @default(auto()) @map("_id") @db.ObjectId
-  userId          String               @db.ObjectId
-  actionId        String?              @db.ObjectId
-  questId         String?              @db.ObjectId
+  id              String                @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String                @db.ObjectId
+  actionId        String?               @db.ObjectId
+  questId         String?               @db.ObjectId
   transactionType RewardTransactionType
   source          RewardSource
   points          Int
@@ -325,72 +328,72 @@ model RewardTransaction {
   description     String?
   referenceId     String?
   metadata        Json?
-  occurredAt      DateTime            @default(now())
+  occurredAt      DateTime              @default(now())
   expiresAt       DateTime?
 
-  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  action          RewardAction?        @relation(fields: [actionId], references: [id], onDelete: SetNull)
-  quest           Quest?               @relation("QuestRewardTransactions", fields: [questId], references: [id], onDelete: SetNull)
-  redemption      RewardRedemption?    @relation("RedemptionTransaction")
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action     RewardAction?     @relation(fields: [actionId], references: [id], onDelete: SetNull)
+  quest      Quest?            @relation("QuestRewardTransactions", fields: [questId], references: [id], onDelete: SetNull)
+  redemption RewardRedemption? @relation("RedemptionTransaction")
 
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@map("reward_transactions")
   @@index([userId, occurredAt])
   @@index([transactionType])
+  @@map("reward_transactions")
 }
 
 model RewardCatalogItem {
-  id               String                @id @default(auto()) @map("_id") @db.ObjectId
-  slug             String                @unique
-  name             String
-  description      String?
-  category         RewardCatalogCategory
-  pointsCost       Int
-  cashValue        Float?
+  id                String                @id @default(auto()) @map("_id") @db.ObjectId
+  slug              String                @unique
+  name              String
+  description       String?
+  category          RewardCatalogCategory
+  pointsCost        Int
+  cashValue         Float?
   quantityAvailable Int?
-  maxPerUser       Int?
-  startAt          DateTime?
-  endAt            DateTime?
-  isActive         Boolean              @default(true)
-  image            String?
-  terms            String?
-  metadata         Json?
-  badgeId          String?              @db.ObjectId
+  maxPerUser        Int?
+  startAt           DateTime?
+  endAt             DateTime?
+  isActive          Boolean               @default(true)
+  image             String?
+  terms             String?
+  metadata          Json?
+  badgeId           String?               @db.ObjectId
 
-  badge            RewardBadge?         @relation(fields: [badgeId], references: [id], onDelete: SetNull)
-  redemptions      RewardRedemption[]
+  badge       RewardBadge?       @relation(fields: [badgeId], references: [id], onDelete: SetNull)
+  redemptions RewardRedemption[]
 
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@map("reward_catalog_items")
   @@index([category, isActive])
+  @@map("reward_catalog_items")
 }
 
 model RewardRedemption {
-  id              String                @id @default(auto()) @map("_id") @db.ObjectId
-  userId          String                @db.ObjectId
-  rewardId        String                @db.ObjectId
-  status          RewardRedemptionStatus @default(PENDING)
-  pointsSpent     Int
-  metadata        Json?
-  notes           String?
-  requestedAt     DateTime              @default(now())
-  processedAt     DateTime?
-  fulfilledAt     DateTime?
-  transactionId   String?               @unique @db.ObjectId
+  id            String                 @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String                 @db.ObjectId
+  rewardId      String                 @db.ObjectId
+  status        RewardRedemptionStatus @default(PENDING)
+  pointsSpent   Int
+  metadata      Json?
+  notes         String?
+  requestedAt   DateTime               @default(now())
+  processedAt   DateTime?
+  fulfilledAt   DateTime?
+  transactionId String?                @unique @db.ObjectId
 
-  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  reward          RewardCatalogItem     @relation(fields: [rewardId], references: [id], onDelete: Restrict)
-  transaction     RewardTransaction?    @relation("RedemptionTransaction", fields: [transactionId], references: [id], onDelete: SetNull)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reward      RewardCatalogItem  @relation(fields: [rewardId], references: [id], onDelete: Restrict)
+  transaction RewardTransaction? @relation("RedemptionTransaction", fields: [transactionId], references: [id], onDelete: SetNull)
 
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@map("reward_redemptions")
   @@index([userId, status])
+  @@map("reward_redemptions")
 }
 
 // ============================================
@@ -398,43 +401,67 @@ model RewardRedemption {
 // ============================================
 
 model HostProfile {
-  id                    String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId                String   @unique @db.ObjectId
-  responseRate          Float    @default(0)
-  responseTime          Int      @default(0) // in minutes
-  acceptanceRate        Float    @default(0)
-  isSuperHost           Boolean  @default(false)
-  superHostSince        DateTime?
-  totalEarnings         Float    @default(0)
-  averageRating         Float    @default(0)
-  totalReviews          Int      @default(0)
-  instantBookEnabled    Boolean  @default(false)
-  governmentIdVerified  Boolean  @default(false)
-  emailVerified         Boolean  @default(false)
-  phoneVerified         Boolean  @default(false)
-  
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  teamMembers           TeamMember[]
-  
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-  
+  id                   String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId               String    @unique @db.ObjectId
+  responseRate         Float     @default(0)
+  responseTime         Int       @default(0) // in minutes
+  acceptanceRate       Float     @default(0)
+  isSuperHost          Boolean   @default(false)
+  superHostSince       DateTime?
+  totalEarnings        Float     @default(0)
+  availableBalance     Float     @default(0)
+  pendingPayoutBalance Float     @default(0)
+  averageRating        Float     @default(0)
+  totalReviews         Int       @default(0)
+  instantBookEnabled   Boolean   @default(false)
+  governmentIdVerified Boolean   @default(false)
+  emailVerified        Boolean   @default(false)
+  phoneVerified        Boolean   @default(false)
+  primaryLocationSlug  String?
+  primaryLocationName  String?
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamMembers TeamMember[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("host_profiles")
 }
 
+model HostApplication {
+  id                      String                @id @default(auto()) @map("_id") @db.ObjectId
+  userId                  String                @db.ObjectId
+  locationSlug            String
+  locationName            String
+  introduction            String?
+  experience              String?
+  status                  HostApplicationStatus @default(PENDING)
+  adminNotes              String?
+  maintenanceAcknowledged Boolean               @default(false)
+  createdAt               DateTime              @default(now())
+  reviewedAt              DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("host_applications")
+}
+
 model TeamMember {
-  id              String      @id @default(auto()) @map("_id") @db.ObjectId
-  hostProfileId   String      @db.ObjectId
-  userId          String      @db.ObjectId
-  role            TeamRole
-  permissions     Permission[]
-  
-  hostProfile     HostProfile @relation(fields: [hostProfileId], references: [id], onDelete: Cascade)
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  
+  id            String       @id @default(auto()) @map("_id") @db.ObjectId
+  hostProfileId String       @db.ObjectId
+  userId        String       @db.ObjectId
+  role          TeamRole
+  permissions   Permission[]
+
+  hostProfile HostProfile @relation(fields: [hostProfileId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("team_members")
 }
 
@@ -443,175 +470,175 @@ model TeamMember {
 // ============================================
 
 model Listing {
-  id                  String   @id @default(auto()) @map("_id") @db.ObjectId
-  hostId              String   @db.ObjectId
-  
+  id     String @id @default(auto()) @map("_id") @db.ObjectId
+  hostId String @db.ObjectId
+
   // Basic Info
-  title               String
-  description         String
-  propertyType        PropertyType
-  roomType            RoomType
-  
+  title        String
+  description  String
+  propertyType PropertyType
+  roomType     RoomType
+
   // Capacity
-  maxGuests           Int
-  bedrooms            Int
-  beds                Int
-  bathrooms           Float
-  
+  maxGuests Int
+  bedrooms  Int
+  beds      Int
+  bathrooms Float
+
   // Location
-  country             String
-  city                String
-  state               String?
-  address             String
-  zipCode             String?
-  latitude            Float
-  longitude           Float
-  neighborhood        String?
-  
+  country      String
+  city         String
+  state        String?
+  address      String
+  zipCode      String?
+  latitude     Float
+  longitude    Float
+  neighborhood String?
+
   // Pricing
-  basePrice           Float
-  cleaningFee         Float    @default(0)
-  serviceFee          Float    @default(0)
-  weeklyDiscount      Float    @default(0)
-  monthlyDiscount     Float    @default(0)
-  currency            String   @default("VND")
-  
+  basePrice       Float
+  cleaningFee     Float  @default(0)
+  serviceFee      Float  @default(0)
+  weeklyDiscount  Float  @default(0)
+  monthlyDiscount Float  @default(0)
+  currency        String @default("VND")
+
   // Dynamic Pricing
   dynamicPricingEnabled Boolean @default(false)
-  weekendMultiplier   Float    @default(1.2)
-  
+  weekendMultiplier     Float   @default(1.2)
+
   // Media
-  images              String[]
-  virtualTour360Url   String?
-  videoUrl            String?
-  floorPlanUrl        String?
-  
+  images            String[]
+  virtualTour360Url String?
+  videoUrl          String?
+  floorPlanUrl      String?
+
   // Amenities
-  amenities           String[] @db.ObjectId
-  
+  amenities String[] @db.ObjectId
+
   // Rules & Policies
-  checkInTime         String   @default("14:00")
-  checkOutTime        String   @default("11:00")
-  minNights           Int      @default(1)
-  maxNights           Int      @default(365)
-  instantBookable     Boolean  @default(false)
-  cancellationPolicy  CancellationPolicy @default(MODERATE)
-  houseRules          String?
-  allowPets           Boolean  @default(false)
-  allowSmoking        Boolean  @default(false)
-  allowEvents         Boolean  @default(false)
-  allowChildren       Boolean  @default(true)
-  
+  checkInTime        String             @default("14:00")
+  checkOutTime       String             @default("11:00")
+  minNights          Int                @default(1)
+  maxNights          Int                @default(365)
+  instantBookable    Boolean            @default(false)
+  cancellationPolicy CancellationPolicy @default(MODERATE)
+  houseRules         String?
+  allowPets          Boolean            @default(false)
+  allowSmoking       Boolean            @default(false)
+  allowEvents        Boolean            @default(false)
+  allowChildren      Boolean            @default(true)
+
   // Smart Features
-  hasSmartLock        Boolean  @default(false)
-  smartLockCode       String?
-  wifiName            String?
-  wifiPassword        String?
-  
+  hasSmartLock  Boolean @default(false)
+  smartLockCode String?
+  wifiName      String?
+  wifiPassword  String?
+
   // Verification & Status
-  isVerified          Boolean  @default(false)
-  verifiedAmenities   String[]
-  status              ListingStatus @default(DRAFT)
-  
+  isVerified        Boolean       @default(false)
+  verifiedAmenities String[]
+  status            ListingStatus @default(DRAFT)
+
   // SEO & Visibility
-  slug                String?  @unique
-  featured            Boolean  @default(false)
-  featuredUntil       DateTime?
-  views               Int      @default(0)
-  isSecret            Boolean  @default(false)
+  slug          String?   @unique
+  featured      Boolean   @default(false)
+  featuredUntil DateTime?
+  views         Int       @default(0)
+  isSecret      Boolean   @default(false)
 
   // Stats
-  averageRating       Float    @default(0)
-  totalReviews        Int      @default(0)
-  totalBookings       Int      @default(0)
-  occupancyRate       Float    @default(0)
-  
+  averageRating Float @default(0)
+  totalReviews  Int   @default(0)
+  totalBookings Int   @default(0)
+  occupancyRate Float @default(0)
+
   // Timestamps
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
-  publishedAt         DateTime?
-  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  publishedAt DateTime?
+
   // Relations
-  host                User     @relation(fields: [hostId], references: [id], onDelete: Cascade)
-  bookings            Booking[]
-  reviews             Review[]
-  blockedDates        BlockedDate[]
-  pricingRules        PricingRule[]
-  neighborhoodGuide   NeighborhoodGuide?
-  posts               Post[]
-  conciergePlans      ConciergePlan[]
-  
+  host              User               @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  bookings          Booking[]
+  reviews           Review[]
+  blockedDates      BlockedDate[]
+  pricingRules      PricingRule[]
+  neighborhoodGuide NeighborhoodGuide?
+  posts             Post[]
+  conciergePlans    ConciergePlan[]
+
   @@map("listings")
 }
 
 model BlockedDate {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  listingId   String   @db.ObjectId
-  startDate   DateTime
-  endDate     DateTime
-  reason      String?
-  
-  listing     Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  
-  createdAt   DateTime @default(now())
-  
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  listingId String   @db.ObjectId
+  startDate DateTime
+  endDate   DateTime
+  reason    String?
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
   @@map("blocked_dates")
 }
 
 model PricingRule {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  listingId   String   @db.ObjectId
-  name        String
-  startDate   DateTime
-  endDate     DateTime
-  multiplier  Float    // 1.5 = 150% of base price
-  fixedPrice  Float?   // Override base price
-  isActive    Boolean  @default(true)
-  
-  listing     Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  listingId  String   @db.ObjectId
+  name       String
+  startDate  DateTime
+  endDate    DateTime
+  multiplier Float // 1.5 = 150% of base price
+  fixedPrice Float? // Override base price
+  isActive   Boolean  @default(true)
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("pricing_rules")
 }
 
 model Amenity {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  name        String   @unique
+  id          String          @id @default(auto()) @map("_id") @db.ObjectId
+  name        String          @unique
   nameVi      String?
   icon        String
   category    AmenityCategory
-  isPopular   Boolean  @default(false)
+  isPopular   Boolean         @default(false)
   description String?
-  
-  createdAt   DateTime @default(now())
-  
+
+  createdAt DateTime @default(now())
+
   @@map("amenities")
 }
 
 model NeighborhoodGuide {
-  id                String   @id @default(auto()) @map("_id") @db.ObjectId
-  listingId         String   @unique @db.ObjectId
-  overview          String
-  gettingAround     String?
-  restaurants       PlaceRecommendation[]
-  cafes             PlaceRecommendation[]
-  attractions       PlaceRecommendation[]
-  shopping          PlaceRecommendation[]
-  
-  listing           Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
+  id            String                @id @default(auto()) @map("_id") @db.ObjectId
+  listingId     String                @unique @db.ObjectId
+  overview      String
+  gettingAround String?
+  restaurants   PlaceRecommendation[]
+  cafes         PlaceRecommendation[]
+  attractions   PlaceRecommendation[]
+  shopping      PlaceRecommendation[]
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("neighborhood_guides")
 }
 
 type PlaceRecommendation {
   name        String
   description String
-  distance    Float  // in kilometers
+  distance    Float // in kilometers
   placeId     String? // Google Places ID
 }
 
@@ -620,74 +647,80 @@ type PlaceRecommendation {
 // ============================================
 
 model Booking {
-  id                String   @id @default(auto()) @map("_id") @db.ObjectId
-  listingId         String   @db.ObjectId
-  guestId           String?  @db.ObjectId
-  hostId            String   @db.ObjectId
-  guestType         BookingGuestType @default(REGISTERED)
-  
+  id        String           @id @default(auto()) @map("_id") @db.ObjectId
+  listingId String           @db.ObjectId
+  guestId   String?          @db.ObjectId
+  hostId    String           @db.ObjectId
+  guestType BookingGuestType @default(REGISTERED)
+
   // Guest contact
-  contactName       String?
-  contactEmail      String?
-  contactPhone      String?
+  contactName            String?
+  contactEmail           String?
+  contactPhone           String?
   contactPhoneNormalized String?
-  
+
   // Dates
-  checkIn           DateTime
-  checkOut          DateTime
-  nights            Int
-  
+  checkIn  DateTime
+  checkOut DateTime
+  nights   Int
+
   // Guests
-  adults            Int      @default(1)
-  children          Int      @default(0)
-  infants           Int      @default(0)
-  pets              Int      @default(0)
-  
+  adults   Int @default(1)
+  children Int @default(0)
+  infants  Int @default(0)
+  pets     Int @default(0)
+
   // Pricing
-  basePrice         Float
-  cleaningFee       Float    @default(0)
-  serviceFee        Float    @default(0)
-  discount          Float    @default(0)
-  additionalServices Json?
-  additionalServicesTotal Float @default(0)
-  totalPrice        Float
-  currency          String   @default("VND")
-  
+  basePrice               Float
+  cleaningFee             Float  @default(0)
+  serviceFee              Float  @default(0)
+  discount                Float  @default(0)
+  additionalServices      Json?
+  additionalServicesTotal Float  @default(0)
+  totalPrice              Float
+  currency                String @default("VND")
+
   // Status
-  status            BookingStatus @default(PENDING)
-  instantBook       Boolean  @default(false)
-  
+  status              BookingStatus    @default(PENDING)
+  instantBook         Boolean          @default(false)
+  hostEarnings        Float            @default(0)
+  platformCommission  Float            @default(0)
+  hostPayoutStatus    HostPayoutStatus @default(PENDING)
+  hostPayoutRequestId String?          @db.ObjectId
+  hostPayoutSettledAt DateTime?
+
   // Special Requests
-  specialRequests   String?
-  
+  specialRequests String?
+
   // Check-in Info
   checkInInstructions String?
-  accessCode        String?
-  
-  // Cancellation
-  cancelledAt       DateTime?
-  cancelledBy       String?  @db.ObjectId
-  cancellationReason String?
-  refundAmount      Float?
-  
-  // Timestamps
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  confirmedAt       DateTime?
-  completedAt       DateTime?
-  
-  // Relations
-  listing           Listing  @relation(fields: [listingId], references: [id], onDelete: Restrict)
-  guest             User?    @relation("GuestBookings", fields: [guestId], references: [id], onDelete: SetNull)
-  host              User     @relation("HostBookings", fields: [hostId], references: [id], onDelete: Restrict)
-  payment           Payment?
-  review            Review?
-  messages          Message[]
-  serviceBookings   ServiceBooking[]
-  conciergePlans    ConciergePlan[]
+  accessCode          String?
 
-  @@map("bookings")
+  // Cancellation
+  cancelledAt        DateTime?
+  cancelledBy        String?   @db.ObjectId
+  cancellationReason String?
+  refundAmount       Float?
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  confirmedAt DateTime?
+  completedAt DateTime?
+
+  // Relations
+  listing         Listing          @relation(fields: [listingId], references: [id], onDelete: Restrict)
+  guest           User?            @relation("GuestBookings", fields: [guestId], references: [id], onDelete: SetNull)
+  host            User             @relation("HostBookings", fields: [hostId], references: [id], onDelete: Restrict)
+  payment         Payment?
+  review          Review?
+  messages        Message[]
+  serviceBookings ServiceBooking[]
+  conciergePlans  ConciergePlan[]
+  hostPayout      HostPayout?      @relation("PayoutBookings", fields: [hostPayoutRequestId], references: [id], onDelete: SetNull)
+
   @@index([contactPhoneNormalized])
+  @@map("bookings")
 }
 
 model ConciergePlan {
@@ -706,17 +739,17 @@ model ConciergePlan {
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
 
-  booking          Booking?            @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  listing          Listing             @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  guest            User?               @relation("GuestConciergePlans", fields: [guestId], references: [id], onDelete: SetNull)
-  host             User                @relation("HostConciergePlans", fields: [hostId], references: [id], onDelete: Cascade)
-  conciergeAgent   User?               @relation("AgentConciergePlans", fields: [conciergeAgentId], references: [id], onDelete: SetNull)
+  booking        Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  listing        Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  guest          User?    @relation("GuestConciergePlans", fields: [guestId], references: [id], onDelete: SetNull)
+  host           User     @relation("HostConciergePlans", fields: [hostId], references: [id], onDelete: Cascade)
+  conciergeAgent User?    @relation("AgentConciergePlans", fields: [conciergeAgentId], references: [id], onDelete: SetNull)
 
-  @@map("concierge_plans")
   @@index([bookingId])
   @@index([listingId])
   @@index([guestId])
   @@index([hostId])
+  @@map("concierge_plans")
 }
 
 // ============================================
@@ -724,51 +757,51 @@ model ConciergePlan {
 // ============================================
 
 model Payment {
-  id                String   @id @default(auto()) @map("_id") @db.ObjectId
-  bookingId         String   @unique @db.ObjectId
-  
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId String @unique @db.ObjectId
+
   // Payment Details
-  amount            Float
-  currency          String   @default("VND")
-  paymentMethod     PaymentMethodType
-  paymentGateway    PaymentGateway
-  
+  amount         Float
+  currency       String            @default("VND")
+  paymentMethod  PaymentMethodType
+  paymentGateway PaymentGateway
+
   // Status
-  status            PaymentStatus @default(PENDING)
-  
+  status PaymentStatus @default(PENDING)
+
   // Gateway Response
-  transactionId     String?
-  gatewayResponse   Json?
-  
+  transactionId   String?
+  gatewayResponse Json?
+
   // Split Payment
-  isSplitPayment    Boolean  @default(false)
-  splitPayments     SplitPaymentDetail[]
-  
+  isSplitPayment Boolean              @default(false)
+  splitPayments  SplitPaymentDetail[]
+
   // Installment
-  isInstallment     Boolean  @default(false)
-  installmentPlan   InstallmentPlan?
-  
+  isInstallment   Boolean          @default(false)
+  installmentPlan InstallmentPlan?
+
   // Refund
-  refundAmount      Float?
-  refundReason      String?
-  refundedAt        DateTime?
-  
+  refundAmount Float?
+  refundReason String?
+  refundedAt   DateTime?
+
   // Timestamps
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  paidAt            DateTime?
-  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  paidAt    DateTime?
+
   // Relations
-  booking           Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
   @@map("payments")
 }
 
 type SplitPaymentDetail {
-  userId        String
-  amount        Float
-  status        PaymentStatus
-  paidAt        DateTime?
+  userId String
+  amount Float
+  status PaymentStatus
+  paidAt DateTime?
 }
 
 type InstallmentPlan {
@@ -786,46 +819,64 @@ type InstallmentDetail {
 }
 
 model PaymentMethod {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId          String   @db.ObjectId
-  type            PaymentMethodType
-  
+  id     String            @id @default(auto()) @map("_id") @db.ObjectId
+  userId String            @db.ObjectId
+  type   PaymentMethodType
+
   // Card Details (masked)
-  last4           String?
-  brand           String?
-  expiryMonth     Int?
-  expiryYear      Int?
-  
+  last4       String?
+  brand       String?
+  expiryMonth Int?
+  expiryYear  Int?
+
   // E-wallet
-  walletType      String?
-  walletPhone     String?
-  
-  isDefault       Boolean  @default(false)
-  
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  walletType  String?
+  walletPhone String?
+
+  isDefault Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("payment_methods")
 }
 
 model Transaction {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId          String   @db.ObjectId
-  type            TransactionType
-  amount          Float
-  currency        String   @default("VND")
-  description     String?
-  status          TransactionStatus
-  referenceId     String?  // Booking ID, Payout ID, etc.
-  
-  user            User     @relation(fields: [userId], references: [id], onDelete: Restrict)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  id          String            @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String            @db.ObjectId
+  type        TransactionType
+  amount      Float
+  currency    String            @default("VND")
+  description String?
+  status      TransactionStatus
+  referenceId String? // Booking ID, Payout ID, etc.
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("transactions")
+}
+
+model HostPayout {
+  id           String       @id @default(auto()) @map("_id") @db.ObjectId
+  hostId       String       @db.ObjectId
+  amount       Float
+  status       PayoutStatus @default(PENDING)
+  bookingIds   String[]
+  payoutMethod String?
+  notes        String?
+  adminNotes   String?
+  requestedAt  DateTime     @default(now())
+  processedAt  DateTime?
+  host         User         @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  bookings     Booking[]    @relation("PayoutBookings")
+
+  @@index([hostId])
+  @@map("host_payouts")
 }
 
 // ============================================
@@ -833,51 +884,51 @@ model Transaction {
 // ============================================
 
 model Review {
-  id                String   @id @default(auto()) @map("_id") @db.ObjectId
-  listingId         String   @db.ObjectId
-  bookingId         String   @unique @db.ObjectId
-  reviewerId        String   @db.ObjectId
-  revieweeId        String   @db.ObjectId
-  
+  id         String @id @default(auto()) @map("_id") @db.ObjectId
+  listingId  String @db.ObjectId
+  bookingId  String @unique @db.ObjectId
+  reviewerId String @db.ObjectId
+  revieweeId String @db.ObjectId
+
   // Type
-  type              ReviewType
-  
+  type ReviewType
+
   // Ratings
-  overallRating     Float
-  cleanlinessRating Float?
-  accuracyRating    Float?
-  checkInRating     Float?
+  overallRating       Float
+  cleanlinessRating   Float?
+  accuracyRating      Float?
+  checkInRating       Float?
   communicationRating Float?
-  locationRating    Float?
-  valueRating       Float?
-  
+  locationRating      Float?
+  valueRating         Float?
+
   // Content
-  comment           String
-  
+  comment String
+
   // AI Analysis
-  aiSentiment       String?  // positive, negative, neutral
-  aiSummary         String?
-  aiKeywords        String[]
-  
+  aiSentiment String? // positive, negative, neutral
+  aiSummary   String?
+  aiKeywords  String[]
+
   // Moderation
-  isVerified        Boolean  @default(false)
-  isFlagged         Boolean  @default(false)
-  flagReason        String?
-  
+  isVerified Boolean @default(false)
+  isFlagged  Boolean @default(false)
+  flagReason String?
+
   // Response
-  hostResponse      String?
-  hostRespondedAt   DateTime?
-  
+  hostResponse    String?
+  hostRespondedAt DateTime?
+
   // Timestamps
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  listing           Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
-  booking           Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  reviewer          User     @relation("ReviewsWritten", fields: [reviewerId], references: [id], onDelete: Restrict)
-  reviewee          User     @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Restrict)
-  
+  listing  Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  booking  Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  reviewer User    @relation("ReviewsWritten", fields: [reviewerId], references: [id], onDelete: Restrict)
+  reviewee User    @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Restrict)
+
   @@map("reviews")
 }
 
@@ -886,36 +937,36 @@ model Review {
 // ============================================
 
 model Message {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  conversationId  String   @db.ObjectId
-  senderId        String   @db.ObjectId
-  bookingId       String?  @db.ObjectId
-  
+  id             String  @id @default(auto()) @map("_id") @db.ObjectId
+  conversationId String  @db.ObjectId
+  senderId       String  @db.ObjectId
+  bookingId      String? @db.ObjectId
+
   // Content
-  content         String
-  messageType     MessageType @default(TEXT)
-  attachments     String[]
-  
+  content     String
+  messageType MessageType @default(TEXT)
+  attachments String[]
+
   // Status
-  isRead          Boolean  @default(false)
-  readAt          DateTime?
-  
+  isRead Boolean   @default(false)
+  readAt DateTime?
+
   // AI Features
-  translatedContent Json?   // {en: "...", vi: "..."}
-  isAutomated     Boolean  @default(false)
-  
+  translatedContent Json? // {en: "...", vi: "..."}
+  isAutomated       Boolean @default(false)
+
   // Timestamps
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  sender          User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  booking         Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  
-  @@map("messages")
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  booking      Booking?     @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
   @@index([conversationId])
   @@index([senderId])
+  @@map("messages")
 }
 
 // ============================================
@@ -923,26 +974,26 @@ model Message {
 // ============================================
 
 model Notification {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId          String   @db.ObjectId
-  type            NotificationType
-  title           String
-  message         String
-  link            String?
-  data            Json?
-  
-  isRead          Boolean  @default(false)
-  readAt          DateTime?
-  
+  id      String           @id @default(auto()) @map("_id") @db.ObjectId
+  userId  String           @db.ObjectId
+  type    NotificationType
+  title   String
+  message String
+  link    String?
+  data    Json?
+
+  isRead Boolean   @default(false)
+  readAt DateTime?
+
   // Channels
-  sentEmail       Boolean  @default(false)
-  sentPush        Boolean  @default(false)
-  sentSMS         Boolean  @default(false)
-  
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime @default(now())
-  
+  sentEmail Boolean @default(false)
+  sentPush  Boolean @default(false)
+  sentSMS   Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
   @@map("notifications")
 }
 
@@ -987,32 +1038,32 @@ model CmsBlock {
 // ============================================
 
 model Wishlist {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId          String   @db.ObjectId
-  listingIds      String[] @db.ObjectId
-  
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String   @db.ObjectId
+  listingIds String[] @db.ObjectId
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("wishlists")
 }
 
 model Collection {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId          String   @db.ObjectId
-  name            String
-  description     String?
-  coverImage      String?
-  listingIds      String[] @db.ObjectId
-  isPublic        Boolean  @default(false)
-  
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId      String   @db.ObjectId
+  name        String
+  description String?
+  coverImage  String?
+  listingIds  String[] @db.ObjectId
+  isPublic    Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("collections")
 }
 
@@ -1021,75 +1072,75 @@ model Collection {
 // ============================================
 
 model Dispute {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  bookingId       String   @db.ObjectId
-  reporterId      String   @db.ObjectId
-  respondentId    String   @db.ObjectId
-  
-  type            DisputeType
-  status          DisputeStatus @default(OPEN)
-  priority        DisputePriority @default(MEDIUM)
-  
-  subject         String
-  description     String
-  evidence        String[]
-  
-  resolution      String?
-  resolvedBy      String?  @db.ObjectId
-  resolvedAt      DateTime?
-  
-  refundAmount    Float?
-  
-  reporter        User     @relation(fields: [reporterId], references: [id], onDelete: Restrict)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  id           String @id @default(auto()) @map("_id") @db.ObjectId
+  bookingId    String @db.ObjectId
+  reporterId   String @db.ObjectId
+  respondentId String @db.ObjectId
+
+  type     DisputeType
+  status   DisputeStatus   @default(OPEN)
+  priority DisputePriority @default(MEDIUM)
+
+  subject     String
+  description String
+  evidence    String[]
+
+  resolution String?
+  resolvedBy String?   @db.ObjectId
+  resolvedAt DateTime?
+
+  refundAmount Float?
+
+  reporter User @relation(fields: [reporterId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("disputes")
 }
 
 model Promotion {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  code            String   @unique
-  name            String
-  description     String?
-  
-  type            PromotionType
-  discountType    DiscountType
-  discountValue   Float
-  maxDiscount     Float?
-  
+  id          String  @id @default(auto()) @map("_id") @db.ObjectId
+  code        String  @unique
+  name        String
+  description String?
+
+  type          PromotionType
+  discountType  DiscountType
+  discountValue Float
+  maxDiscount   Float?
+
   minBookingValue Float?
   maxUses         Int?
-  usedCount       Int      @default(0)
-  
+  usedCount       Int    @default(0)
+
   // Targeting
-  userIds         String[] @db.ObjectId
-  listingIds      String[] @db.ObjectId
-  propertyTypes   PropertyType[]
-  
-  validFrom       DateTime
-  validUntil      DateTime
-  isActive        Boolean  @default(true)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  userIds       String[]       @db.ObjectId
+  listingIds    String[]       @db.ObjectId
+  propertyTypes PropertyType[]
+
+  validFrom  DateTime
+  validUntil DateTime
+  isActive   Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("promotions")
 }
 
 model AuditLog {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  userId          String?  @db.ObjectId
-  action          String
-  entityType      String
-  entityId        String?
-  changes         Json?
-  ipAddress       String?
-  userAgent       String?
-  
-  createdAt       DateTime @default(now())
-  
+  id         String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String? @db.ObjectId
+  action     String
+  entityType String
+  entityId   String?
+  changes    Json?
+  ipAddress  String?
+  userAgent  String?
+
+  createdAt DateTime @default(now())
+
   @@map("audit_logs")
 }
 
@@ -1328,6 +1379,30 @@ enum TransactionStatus {
   CANCELLED
 }
 
+enum HostPayoutStatus {
+  PENDING
+  REQUESTED
+  PAID
+}
+
+enum PayoutStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum HostApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
 enum ReviewType {
   GUEST_TO_HOST
   HOST_TO_GUEST
@@ -1423,99 +1498,99 @@ enum ServiceStatus {
 // ============================================
 
 model Service {
-  id            String          @id @default(auto()) @map("_id") @db.ObjectId
-  name          String
-  description   String
-  category      ServiceCategory
-  subcategory   String?
-  
+  id          String          @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  description String
+  category    ServiceCategory
+  subcategory String?
+
   // Location
-  address       String
-  city          String
-  state         String?
-  country       String        @default("Vietnam")
-  latitude      Float
-  longitude     Float
-  
+  address   String
+  city      String
+  state     String?
+  country   String  @default("Vietnam")
+  latitude  Float
+  longitude Float
+
   // Contact
-  phone         String?
-  email         String?
-  website       String?
-  
+  phone   String?
+  email   String?
+  website String?
+
   // Operating hours
-  openHours     String        // e.g., "8:00 - 20:00 (T2-CN)"
-  isOpen24Hours Boolean       @default(false)
-  
+  openHours     String // e.g., "8:00 - 20:00 (T2-CN)"
+  isOpen24Hours Boolean @default(false)
+
   // Media
-  images        String[]
-  logo          String?
-  
+  images String[]
+  logo   String?
+
   // Pricing
-  basePrice     Int?          // Price per service (optional, some are free like parks)
-  currency      String        @default("VND")
-  
+  basePrice Int? // Price per service (optional, some are free like parks)
+  currency  String @default("VND")
+
   // Ratings
-  averageRating Float         @default(0)
-  totalReviews  Int           @default(0)
-  
+  averageRating Float @default(0)
+  totalReviews  Int   @default(0)
+
   // Features
-  features      String[]      // ["Khám tổng quát", "Tiêm phòng", etc]
-  amenities     String[]      // ["WiFi", "Parking", etc]
-  
+  features  String[] // ["Khám tổng quát", "Tiêm phòng", etc]
+  amenities String[] // ["WiFi", "Parking", etc]
+
   // Bookable
-  isBookable    Boolean       @default(false)
-  requiresDeposit Boolean     @default(false)
-  depositAmount Int?
-  
+  isBookable      Boolean @default(false)
+  requiresDeposit Boolean @default(false)
+  depositAmount   Int?
+
   // Status
-  status        ServiceStatus @default(ACTIVE)
-  verifiedAt    DateTime?
-  
+  status     ServiceStatus @default(ACTIVE)
+  verifiedAt DateTime?
+
   // Relations (services near listings)
-  nearbyListings String[]     @db.ObjectId
-  
+  nearbyListings String[] @db.ObjectId
+
   // Bookings
   serviceBookings ServiceBooking[]
-  
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("services")
 }
 
 model ServiceBooking {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  serviceId       String   @db.ObjectId
-  bookingId       String   @db.ObjectId  // Link to main booking
-  guestId         String   @db.ObjectId
-  
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
+  serviceId String @db.ObjectId
+  bookingId String @db.ObjectId // Link to main booking
+  guestId   String @db.ObjectId
+
   // Booking details
   bookingDate     DateTime
-  timeSlot        String?  // "10:00 - 11:00"
-  numberOfPets    Int?     // For pet services
-  petDetails      String?  // JSON string with pet info
+  timeSlot        String? // "10:00 - 11:00"
+  numberOfPets    Int? // For pet services
+  petDetails      String? // JSON string with pet info
   specialRequests String?
-  
+
   // Pricing
-  price           Int
-  currency        String   @default("VND")
-  paid            Boolean  @default(false)
-  
+  price    Int
+  currency String  @default("VND")
+  paid     Boolean @default(false)
+
   // Status
-  status          BookingStatus @default(PENDING)
-  confirmedAt     DateTime?
-  completedAt     DateTime?
-  cancelledAt     DateTime?
+  status             BookingStatus @default(PENDING)
+  confirmedAt        DateTime?
+  completedAt        DateTime?
+  cancelledAt        DateTime?
   cancellationReason String?
-  
+
   // Relations
-  service         Service  @relation(fields: [serviceId], references: [id])
-  booking         Booking  @relation(fields: [bookingId], references: [id])
-  guest           User     @relation(fields: [guestId], references: [id])
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  service Service @relation(fields: [serviceId], references: [id])
+  booking Booking @relation(fields: [bookingId], references: [id])
+  guest   User    @relation(fields: [guestId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@map("service_bookings")
 }
 
@@ -1524,75 +1599,75 @@ model ServiceBooking {
 // ============================================
 
 model Post {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  authorId        String   @db.ObjectId
-  content         String
-  
+  id       String @id @default(auto()) @map("_id") @db.ObjectId
+  authorId String @db.ObjectId
+  content  String
+
   // Media attachments
-  media           PostMedia[]
-  
+  media PostMedia[]
+
   // Optional listing reference
-  listingId       String?  @db.ObjectId
-  listing         Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
-  
+  listingId String?  @db.ObjectId
+  listing   Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+
   // Location
-  location        String?  // City/location text
-  latitude        Float?
-  longitude       Float?
-  
+  location  String? // City/location text
+  latitude  Float?
+  longitude Float?
+
   // Engagement
-  likes           String[] @db.ObjectId // User IDs who liked
-  likesCount      Int      @default(0)
-  commentsCount   Int      @default(0)
-  sharesCount     Int      @default(0)
-  
+  likes         String[] @db.ObjectId // User IDs who liked
+  likesCount    Int      @default(0)
+  commentsCount Int      @default(0)
+  sharesCount   Int      @default(0)
+
   // Status
-  status          PostStatus @default(ACTIVE)
-  isPublic        Boolean  @default(true)
-  isPinned        Boolean  @default(false)
-  
+  status   PostStatus @default(ACTIVE)
+  isPublic Boolean    @default(true)
+  isPinned Boolean    @default(false)
+
   // Relations
-  author          User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  comments        Comment[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  @@map("posts")
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments Comment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([authorId])
   @@index([listingId])
   @@index([createdAt])
+  @@map("posts")
 }
 
 type PostMedia {
-  type            String   // "image" | "video"
-  url             String
-  caption         String?
+  type    String // "image" | "video"
+  url     String
+  caption String?
 }
 
 model Comment {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  postId          String   @db.ObjectId
-  authorId        String   @db.ObjectId
-  content         String
-  
+  id       String @id @default(auto()) @map("_id") @db.ObjectId
+  postId   String @db.ObjectId
+  authorId String @db.ObjectId
+  content  String
+
   // Nested replies
-  parentId        String?  @db.ObjectId
-  
+  parentId String? @db.ObjectId
+
   // Engagement
-  likes           String[] @db.ObjectId
-  likesCount      Int      @default(0)
-  
+  likes      String[] @db.ObjectId
+  likesCount Int      @default(0)
+
   // Relations
-  post            Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  author          User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  @@map("comments")
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([postId])
   @@index([authorId])
+  @@map("comments")
 }
 
 enum PostStatus {
@@ -1607,119 +1682,119 @@ enum PostStatus {
 // ============================================
 
 model Experience {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  hostId          String   @db.ObjectId
-  
+  id     String @id @default(auto()) @map("_id") @db.ObjectId
+  hostId String @db.ObjectId
+
   // Basic Info
-  title           String
-  description     String
-  category        ExperienceCategory
-  
+  title       String
+  description String
+  category    ExperienceCategory
+
   // Location
-  city            String
-  state           String?
-  location        String   // Detailed location
-  latitude        Float?
-  longitude       Float?
-  
+  city      String
+  state     String?
+  location  String // Detailed location
+  latitude  Float?
+  longitude Float?
+
   // Media
-  image           String
-  images          String[]
-  videoUrl        String?
-  
+  image    String
+  images   String[]
+  videoUrl String?
+
   // Pricing & Duration
-  price           Float
-  currency        String   @default("VND")
-  duration        String   // "3 giờ", "Cả ngày"
-  groupSize       String   // "Tối đa 8 người"
-  minGuests       Int      @default(1)
-  maxGuests       Int      @default(10)
-  
+  price     Float
+  currency  String @default("VND")
+  duration  String // "3 giờ", "Cả ngày"
+  groupSize String // "Tối đa 8 người"
+  minGuests Int    @default(1)
+  maxGuests Int    @default(10)
+
   // Details
-  includedItems   String[] // What's included
-  notIncluded     String[] // What's not included
-  requirements    String[] // Age limit, fitness level, etc.
-  languages       String[] // Languages spoken by host
-  
+  includedItems String[] // What's included
+  notIncluded   String[] // What's not included
+  requirements  String[] // Age limit, fitness level, etc.
+  languages     String[] // Languages spoken by host
+
   // Tags
-  tags            String[]
-  
+  tags String[]
+
   // Status & Verification
-  status          ExperienceStatus @default(DRAFT)
-  isVerified      Boolean  @default(false)
-  featured        Boolean  @default(false)
-  isMembersOnly   Boolean  @default(false)
+  status        ExperienceStatus @default(DRAFT)
+  isVerified    Boolean          @default(false)
+  featured      Boolean          @default(false)
+  isMembersOnly Boolean          @default(false)
 
   // Stats
-  averageRating   Float    @default(0)
-  totalReviews    Int      @default(0)
-  totalBookings   Int      @default(0)
-  
+  averageRating Float @default(0)
+  totalReviews  Int   @default(0)
+  totalBookings Int   @default(0)
+
   // Relations
-  host            User     @relation(fields: [hostId], references: [id], onDelete: Cascade)
-  bookings        ExperienceBooking[]
-  reviews         ExperienceReview[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  @@map("experiences")
+  host     User                @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  bookings ExperienceBooking[]
+  reviews  ExperienceReview[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([hostId])
   @@index([category])
   @@index([city])
+  @@map("experiences")
 }
 
 model ExperienceBooking {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  experienceId    String   @db.ObjectId
-  guestId         String   @db.ObjectId
-  
+  id           String @id @default(auto()) @map("_id") @db.ObjectId
+  experienceId String @db.ObjectId
+  guestId      String @db.ObjectId
+
   // Booking details
-  date            DateTime
-  timeSlot        String?  // "10:00 - 13:00"
-  numberOfGuests  Int
-  
+  date           DateTime
+  timeSlot       String? // "10:00 - 13:00"
+  numberOfGuests Int
+
   // Pricing
-  pricePerPerson  Float
-  totalPrice      Float
-  currency        String   @default("VND")
-  
+  pricePerPerson Float
+  totalPrice     Float
+  currency       String @default("VND")
+
   // Status
-  status          BookingStatus @default(PENDING)
-  paid            Boolean  @default(false)
-  
+  status BookingStatus @default(PENDING)
+  paid   Boolean       @default(false)
+
   // Relations
-  experience      Experience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
-  guest           User     @relation(fields: [guestId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  @@map("experience_bookings")
+  experience Experience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  guest      User       @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([experienceId])
   @@index([guestId])
+  @@map("experience_bookings")
 }
 
 model ExperienceReview {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  experienceId    String   @db.ObjectId
-  bookingId       String   @db.ObjectId
-  authorId        String   @db.ObjectId
-  
-  rating          Float
-  content         String
-  images          String[]
-  
+  id           String @id @default(auto()) @map("_id") @db.ObjectId
+  experienceId String @db.ObjectId
+  bookingId    String @db.ObjectId
+  authorId     String @db.ObjectId
+
+  rating  Float
+  content String
+  images  String[]
+
   // Relations
-  experience      Experience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
-  author          User     @relation("ExperienceReviewsWritten", fields: [authorId], references: [id], onDelete: Cascade)
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  @@map("experience_reviews")
+  experience Experience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  author     User       @relation("ExperienceReviewsWritten", fields: [authorId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([experienceId])
   @@index([authorId])
+  @@map("experience_reviews")
 }
 
 // ============================================
@@ -1727,36 +1802,36 @@ model ExperienceReview {
 // ============================================
 
 model Conversation {
-  id              String   @id @default(auto()) @map("_id") @db.ObjectId
-  participants    String[] @db.ObjectId  // User IDs
-  listingId       String?  @db.ObjectId  // Optional linked listing
-  
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  participants String[] @db.ObjectId // User IDs
+  listingId    String?  @db.ObjectId // Optional linked listing
+
   // Metadata
-  lastMessage     String?
-  lastMessageAt   DateTime?
-  unreadCount     Json?    // { userId: count } for each participant
-  
+  lastMessage   String?
+  lastMessageAt DateTime?
+  unreadCount   Json? // { userId: count } for each participant
+
   // Relations
-  messages        Message[]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  @@map("conversations")
+  messages Message[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([participants])
+  @@map("conversations")
 }
 
 enum ExperienceCategory {
-  FOOD_DRINK      // Ẩm thực
-  ADVENTURE       // Mạo hiểm
-  CULTURE         // Văn hóa
-  WELLNESS        // Sức khỏe & Yoga
-  WATER_SPORTS    // Hoạt động nước
-  WORKSHOP        // Workshop & Học tập
-  SIGHTSEEING     // Tham quan
-  ENTERTAINMENT   // Giải trí
-  SHOPPING        // Mua sắm
-  NIGHTLIFE       // Nightlife
+  FOOD_DRINK // Ẩm thực
+  ADVENTURE // Mạo hiểm
+  CULTURE // Văn hóa
+  WELLNESS // Sức khỏe & Yoga
+  WATER_SPORTS // Hoạt động nước
+  WORKSHOP // Workshop & Học tập
+  SIGHTSEEING // Tham quan
+  ENTERTAINMENT // Giải trí
+  SHOPPING // Mua sắm
+  NIGHTLIFE // Nightlife
 }
 
 enum ExperienceStatus {
@@ -1773,32 +1848,32 @@ enum LiveChatStatus {
 }
 
 model LiveChatSession {
-  id            String           @id @default(auto()) @map("_id") @db.ObjectId
+  id            String            @id @default(auto()) @map("_id") @db.ObjectId
   userId        String?
   userName      String?
   userEmail     String?
-  status        LiveChatStatus   @default(WAITING)
-  queuePosition Int?             @default(1)
+  status        LiveChatStatus    @default(WAITING)
+  queuePosition Int?              @default(1)
   metadata      Json?
-  createdAt     DateTime         @default(now())
+  createdAt     DateTime          @default(now())
   connectedAt   DateTime?
   endedAt       DateTime?
   messages      LiveChatMessage[]
 
-  @@map("live_chat_sessions")
   @@index([status, createdAt])
+  @@map("live_chat_sessions")
 }
 
 model LiveChatMessage {
-  id         String          @id @default(auto()) @map("_id") @db.ObjectId
-  sessionId  String          @db.ObjectId
-  sender     String
-  content    String
-  metadata   Json?
-  createdAt  DateTime        @default(now())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  sessionId String   @db.ObjectId
+  sender    String
+  content   String
+  metadata  Json?
+  createdAt DateTime @default(now())
 
-  session    LiveChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session LiveChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
-  @@map("live_chat_messages")
   @@index([sessionId, createdAt])
+  @@map("live_chat_messages")
 }

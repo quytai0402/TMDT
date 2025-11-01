@@ -30,6 +30,7 @@ import { notFound, redirect } from "next/navigation"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { getMembershipForUser } from "@/lib/membership"
+import { ListingConciergeHydrator } from "@/components/concierge-context-hydrator"
 
 const HEX_OBJECT_ID_REGEX = /^[a-fA-F0-9]{24}$/
 
@@ -175,6 +176,18 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
     <div className="min-h-screen flex flex-col">
       <Header />
       <ListingViewTracker listingId={listing.id} />
+      <ListingConciergeHydrator
+        listingId={listing.id}
+        listingSlug={listing.slug ?? null}
+        listingTitle={listing.title}
+        metadata={{
+          city: listing.city,
+          country: listing.country,
+          nightlyRate: listing.basePrice,
+          currency: listing.currency,
+          hostId: listing.host.id,
+        }}
+      />
       <main className="flex-1">
         <div className="container mx-auto px-4 lg:px-8 py-8">
           {/* Title */}
@@ -253,14 +266,11 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
               />
 
               <WorkationSection 
-                listingId={id}
+                listingId={listing.id}
                 dailyPrice={listing.basePrice}
-                wifiSpeed={{
-                  download: 287,
-                  upload: 145,
-                  ping: 12,
-                  lastTested: "5 ngày trước"
-                }}
+                listingCity={listing.city}
+                listingLat={listing.latitude}
+                listingLng={listing.longitude}
               />
 
               {/* NEW: Nearby Places with Google Maps */}

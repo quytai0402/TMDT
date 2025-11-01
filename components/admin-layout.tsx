@@ -55,7 +55,7 @@ type NavItemWithBadge = NavItem & { badge: string | null }
 const NAV_ITEMS: NavItem[] = [
   {
     title: "Tổng quan",
-    href: "/admin",
+    href: "/admin/dashboard",
     icon: LayoutDashboard,
   },
   {
@@ -63,6 +63,11 @@ const NAV_ITEMS: NavItem[] = [
     href: "/admin/users",
     icon: Users,
     badgeKey: "users",
+  },
+  {
+    title: "Hồ sơ host",
+    href: "/admin/hosts/applications",
+    icon: Home,
   },
   {
     title: "Chỗ nghỉ",
@@ -170,18 +175,14 @@ export function AdminLayout({ children }: AdminLayoutProps) {
     })
   }, [metrics])
 
-  const isActive = (href: string) => {
-    if (href === "/admin") {
-      return pathname === href
-    }
-    return pathname?.startsWith(href)
-  }
+  const isActive = (href: string) =>
+    pathname === href || pathname?.startsWith(`${href}/`) || (href === "/admin/dashboard" && pathname === "/admin")
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="p-6 border-b">
-        <Link href="/admin" className="flex items-center gap-3">
+        <Link href="/admin/dashboard" className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-pink-500 flex items-center justify-center shadow-lg">
             <span className="text-white font-serif text-xl font-bold">L</span>
           </div>

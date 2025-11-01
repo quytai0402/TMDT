@@ -14,6 +14,8 @@ export interface CreateBookingData {
   guestName?: string
   guestPhone?: string
   guestEmail?: string
+  additionalServices?: any[]
+  additionalServicesTotal?: number
 }
 
 const getErrorMessage = (error: unknown) =>
@@ -117,11 +119,65 @@ export function useBooking() {
     }
   }, [])
 
+  const updateBookingStatus = useCallback(async (id: string, status: string) => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch(`/api/bookings/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Update status failed')
+      }
+
+      return result
+    } catch (error) {
+      setError(getErrorMessage(error))
+      throw error
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const updateServiceStatus = useCallback(async (bookingId: string, serviceId: string, status: string) => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const response = await fetch(`/api/bookings/${bookingId}/services`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serviceId, status }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Update service failed')
+      }
+
+      return result
+    } catch (error) {
+      setError(getErrorMessage(error))
+      throw error
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   return {
     createBooking,
     getBookings,
     getBooking,
     updateBooking,
+    updateBookingStatus,
+    updateServiceStatus,
     loading,
     error,
   }

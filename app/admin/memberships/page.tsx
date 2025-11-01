@@ -14,8 +14,9 @@ type MembershipPlanSummary = {
   id: string
   name: string
   slug: string
-  price: number
-  billingCycle: string
+  monthlyPrice: number
+  annualPrice: number
+  billingCycle?: string | null
   perks: string[]
   description?: string | null
   stats: {
@@ -100,6 +101,15 @@ export default function AdminMembershipsPage() {
     return data.members
   }, [data])
 
+  const planPerkMap = useMemo(() => {
+    const map = new Map<string, string[]>()
+    if (!data?.plans) return map
+    for (const plan of data.plans) {
+      map.set(plan.id, Array.isArray(plan.perks) ? plan.perks : [])
+    }
+    return map
+  }, [data])
+
   return (
     <AdminLayout>
       <div className="space-y-6">
@@ -126,7 +136,26 @@ export default function AdminMembershipsPage() {
         {!loading && data && (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {data.plans.map((plan) => (
+              {data.plans.map((plan) => {
+                const perks = Array.isArray(plan.perks) ? plan.perks : []
+                const monthlyPrice = typeof plan.monthlyPrice === 'number' ? plan.monthlyPrice : 0
+                const annualPrice = typeof plan.annualPrice === 'number' ? plan.annualPrice : 0
+                const hasMonthly = monthlyPrice > 0
+                const hasAnnual = annualPrice > 0
+                const annualSavings = hasMonthly && hasAnnual ? Math.max(monthlyPrice * 12 - annualPrice, 0) : 0
+                const billingLabel =
+                  plan.billingCycle === 'ANNUAL'
+                    ? 'Hàng năm'
+                    : plan.billingCycle === 'MONTHLY'
+                      ? 'Hàng tháng'
+                      : hasMonthly && hasAnnual
+                        ? 'Tháng / Năm'
+                        : hasMonthly
+                          ? 'Hàng tháng'
+                          : hasAnnual
+                            ? 'Hàng năm'
+                            : 'Tùy chỉnh'
+                return (
                 <Card key={plan.id}>
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
                     <div>
@@ -136,10 +165,20 @@ export default function AdminMembershipsPage() {
                       </CardTitle>
                       <CardDescription>{plan.description || 'Gói membership'}</CardDescription>
                     </div>
-                    <Badge variant="outline">{plan.billingCycle === 'ANNUAL' ? 'Hàng năm' : 'Hàng tháng'}</Badge>
+                    <Badge variant="outline">{billingLabel}</Badge>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="text-2xl font-semibold">{currency(plan.price)}</div>
+                    <div className="space-y-1">
+                      <p className="text-2xl font-semibold">
+                        {hasMonthly ? `${currency(monthlyPrice)} / tháng` : hasAnnual ? `${currency(annualPrice)} / năm` : 'Liên hệ'}
+                      </p>
+                      {hasMonthly && hasAnnual && (
+                        <p className="text-xs text-muted-foreground">
+                          {currency(annualPrice)} / năm
+                          {annualSavings > 0 ? ` · tiết kiệm ${currency(annualSavings)}` : ''}
+                        </p>
+                      )}
+                    </div>
                     <div className="flex items-center gap-3 text-sm text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Users className="h-4 w-4" /> {plan.stats.activeMembers} đang hoạt động
@@ -149,13 +188,13 @@ export default function AdminMembershipsPage() {
                       </span>
                     </div>
                     <ul className="text-sm space-y-1">
-                      {plan.perks.map((perk) => (
+                      {perks.length ? perks.map((perk) => (
                         <li key={perk}>• {perk}</li>
-                      ))}
+                      )) : <li className="text-muted-foreground">Chưa cấu hình quyền lợi.</li>}
                     </ul>
                   </CardContent>
                 </Card>
-              ))}
+              )})}
             </div>
 
             <Card>
@@ -200,9 +239,14 @@ export default function AdminMembershipsPage() {
                         </TableRow>
                       ) : (
                         filteredMembers.map((member) => {
-                          const badge = statusBadge(member.status)
-                          return (
-                            <TableRow key={member.id}>
+                      const badge = statusBadge(member.status)
+                      const baseFeatures = Array.isArray(member.features) ? member.features : []
+                      const inheritedFeatures =
+                        baseFeatures.length > 0
+                          ? baseFeatures
+                          : planPerkMap.get(member.plan?.id ?? "") ?? []
+                      return (
+                        <TableRow key={member.id}>
                               <TableCell>
                                 <div className="space-y-1">
                                   <div className="font-medium">{member.name || 'Chưa cập nhật'}</div>
@@ -219,12 +263,12 @@ export default function AdminMembershipsPage() {
                               <TableCell>{formatDate(member.expiresAt)}</TableCell>
                               <TableCell>
                                 <div className="flex flex-wrap gap-1">
-                                  {member.features.map((feature) => (
+                                  {inheritedFeatures.map((feature) => (
                                     <Badge key={feature} variant="secondary">
                                       {feature}
                                     </Badge>
                                   ))}
-                                  {member.features.length === 0 && (
+                                  {inheritedFeatures.length === 0 && (
                                     <span className="text-xs text-muted-foreground">Chưa có</span>
                                   )}
                                 </div>

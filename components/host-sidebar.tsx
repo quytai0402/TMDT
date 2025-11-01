@@ -2,16 +2,18 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Home, Calendar, MessageCircle, BarChart3, Settings, Plus, DollarSign, Zap, BookOpen } from "lucide-react"
+import { LayoutDashboard, Home, Calendar, MessageCircle, BarChart3, Settings, Plus, DollarSign, Zap, BookOpen, ClipboardList, Wallet } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Tổng quan", href: "/host/dashboard" },
   { icon: Home, label: "Listings", href: "/host/listings" },
   { icon: Calendar, label: "Lịch đặt phòng", href: "/host/calendar" },
+  { icon: ClipboardList, label: "Đơn đặt phòng", href: "/host/bookings" },
   { icon: MessageCircle, label: "Tin nhắn", href: "/host/messages" },
   { icon: BarChart3, label: "Thống kê", href: "/host/analytics" },
   { icon: DollarSign, label: "Smart Pricing", href: "/host/pricing" },
+  { icon: Wallet, label: "Ví host", href: "/host/payouts" },
   { icon: Zap, label: "Tự động hóa", href: "/host/automation" },
   { icon: BookOpen, label: "Tài nguyên", href: "/host/resources" },
   { icon: Settings, label: "Cài đặt", href: "/host/settings" },

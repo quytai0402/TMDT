@@ -88,6 +88,14 @@ export function Header() {
               Trải nghiệm
             </Link>
 
+            <Link
+              href="/become-host"
+              className="px-2.5 py-1.5 text-sm font-medium text-gray-700 hover:text-primary hover:bg-primary/5 rounded-lg transition-all duration-200 flex items-center gap-1"
+            >
+              <Home className="h-3.5 w-3.5" />
+              Trở thành chủ nhà
+            </Link>
+
             <Link href="/map" className="px-2.5 py-1.5 text-sm font-medium text-gray-700 hover:text-primary hover:bg-primary/5 rounded-lg transition-all duration-200 flex items-center gap-1">
               <MapPin className="h-3.5 w-3.5" />
               Bản đồ
@@ -212,6 +220,9 @@ export function Header() {
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => router.push('/expenses')}>
                           Quản lý chi tiêu
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => router.push('/become-host')}>
+                          Trở thành chủ nhà
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => router.push('/profile')}>
                           Tài khoản

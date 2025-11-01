@@ -675,6 +675,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const requestedAt = new Date().toISOString()
     const normalizedAdditionalServices = (validatedData.additionalServices ?? []).map((service) => ({
       id: service.id,
       name: service.name,
@@ -686,6 +687,16 @@ export async function POST(req: NextRequest) {
       quantityLabel: service.quantityLabel,
       category: service.category,
       metadata: service.metadata ?? undefined,
+      status: 'PENDING',
+      statusHistory: [
+        {
+          status: 'PENDING',
+          at: requestedAt,
+          by: session?.user?.id ?? guestUser?.id ?? null,
+        },
+      ],
+      requestedAt,
+      updatedAt: requestedAt,
     }))
 
     const computedAdditionalServicesTotal = normalizedAdditionalServices.reduce(
@@ -734,7 +745,7 @@ export async function POST(req: NextRequest) {
         additionalServices: normalizedAdditionalServices,
         additionalServicesTotal,
         totalPrice,
-        status: listing.instantBookable ? 'CONFIRMED' : 'PENDING',
+        status: 'PENDING',
         instantBook: listing.instantBookable,
         specialRequests: validatedData.specialRequests,
       },
@@ -747,10 +758,21 @@ export async function POST(req: NextRequest) {
 
     const bookingRef = booking.id.slice(-6).toUpperCase()
 
+    const serviceSummary = normalizedAdditionalServices.map((service) => {
+      if (service.quantityLabel) return `${service.name} (${service.quantityLabel})`
+      if (service.quantity && service.quantity > 1) return `${service.quantity}x ${service.name}`
+      return service.name
+    })
+
+    const hasAdditionalServices = normalizedAdditionalServices.length > 0
+    const servicesSuffix = hasAdditionalServices
+      ? ` Kèm dịch vụ: ${serviceSummary.join(', ')}.`
+      : ''
+
     await notifyUser(listing.hostId, {
       type: NotificationType.BOOKING_REQUEST,
       title: 'Yêu cầu đặt phòng mới',
-      message: `${contactName} muốn đặt "${listing.title}" (${bookingRef}).`,
+      message: `${contactName} muốn đặt "${listing.title}" (${bookingRef}).${servicesSuffix}`,
       link: `/host/bookings/${booking.id}`,
       data: {
         bookingId: booking.id,
@@ -758,45 +780,58 @@ export async function POST(req: NextRequest) {
         contactPhone,
         checkIn: booking.checkIn,
         checkOut: booking.checkOut,
+        additionalServices: normalizedAdditionalServices,
       },
     })
 
     await notifyAdmins({
       type: NotificationType.BOOKING_REQUEST,
       title: 'Đơn đặt phòng mới',
-      message: `Đơn ${bookingRef} cho "${listing.title}" cần theo dõi.`,
+      message: `Đơn ${bookingRef} cho "${listing.title}" cần theo dõi.${servicesSuffix}`,
       link: `/admin/bookings?highlight=${booking.id}`,
       data: {
         bookingId: booking.id,
         listingId: listing.id,
         hostId: listing.hostId,
+        additionalServices: normalizedAdditionalServices,
       },
     })
 
-    // Send confirmation email
-    const guestEmailForConfirmation = booking.contactEmail || booking.guest?.email
-    if (booking.status === 'CONFIRMED' && guestEmailForConfirmation) {
-      await sendBookingConfirmationEmail({
-        guestName: booking.guest?.name || booking.contactName || 'Guest',
-        guestEmail: guestEmailForConfirmation,
-        listingTitle: booking.listing.title,
-        listingAddress: `${booking.listing.city}, ${booking.listing.country}`,
-        checkIn: booking.checkIn,
-        checkOut: booking.checkOut,
-        nights: booking.nights,
-        guests: {
-          adults: booking.adults,
-          children: booking.children,
-          infants: booking.infants,
+    if (hasAdditionalServices) {
+      await notifyUser(listing.hostId, {
+        type: NotificationType.SYSTEM,
+        title: 'Dịch vụ bổ sung mới',
+        message: `Khách ${contactName} đã chọn ${serviceSummary.join(', ')} cho kỳ nghỉ này. Vui lòng xác nhận và chuẩn bị trước check-in.`,
+        link: `/host/bookings/${booking.id}`,
+        data: {
+          bookingId: booking.id,
+          additionalServices: normalizedAdditionalServices,
         },
-        totalPrice: booking.totalPrice,
-        currency: booking.currency,
-        bookingId: booking.id,
-        hostName: booking.host.name || 'Host',
-        hostEmail: booking.host.email || '',
-      }).catch(error => {
-        console.error('Failed to send booking confirmation email:', error)
       })
+
+      await notifyAdmins({
+        type: NotificationType.SYSTEM,
+        title: 'Đơn dịch vụ bổ sung',
+        message: `Đơn ${bookingRef} có ${normalizedAdditionalServices.length} dịch vụ cần xử lý.`,
+        link: `/admin/bookings?filter=services&highlight=${booking.id}`,
+        data: {
+          bookingId: booking.id,
+          services: normalizedAdditionalServices,
+        },
+      })
+
+      if (booking.guestId) {
+        await notifyUser(booking.guestId, {
+          type: NotificationType.SYSTEM,
+          title: 'Đã nhận yêu cầu dịch vụ',
+          message: `LuxeStay đã ghi nhận ${serviceSummary.length} dịch vụ bổ sung cho chuyến đi. Concierge sẽ cập nhật trạng thái khi host xác nhận.`,
+          link: `/trips/${booking.id}`,
+          data: {
+            bookingId: booking.id,
+            services: normalizedAdditionalServices,
+          },
+        })
+      }
     }
 
     return NextResponse.json({ booking }, { status: 201 })

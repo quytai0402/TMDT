@@ -54,6 +54,14 @@ export interface ReviewReminderData {
   checkOut: Date
 }
 
+export interface HostApplicationStatusEmailData {
+  email?: string
+  name: string
+  status: "approved" | "rejected"
+  locationName: string
+  notes?: string
+}
+
 // ============================================
 // EMAIL TEMPLATES
 // ============================================
@@ -365,6 +373,45 @@ export async function sendBookingConfirmationEmail(data: BookingConfirmationData
     console.error("Email error:", error)
     return { success: false, error }
   }
+}
+
+export async function sendHostApplicationStatusEmail(data: HostApplicationStatusEmailData) {
+  if (!resend || !data.email) {
+    return
+  }
+
+  const subject =
+    data.status === "approved"
+      ? "Yêu cầu trở thành host đã được phê duyệt"
+      : "Yêu cầu trở thành host bị từ chối"
+
+  const body = data.status === "approved"
+    ? `
+      <p>Xin chào ${data.name},</p>
+      <p>Chúc mừng! Yêu cầu trở thành host của bạn tại khu vực <strong>${data.locationName}</strong> đã được phê duyệt.</p>
+      <p>Giờ bạn có thể đăng bài và quản lý listings cho khu vực này. Đừng quên cập nhật thông tin ví để nhận thu nhập, và lưu ý lệ phí nền tảng 10% sẽ được khấu trừ tự động.</p>
+      <p>Chúc bạn có nhiều booking thành công! 🚀</p>
+      <p>Đội ngũ LuxeStay</p>
+    `
+    : `
+      <p>Xin chào ${data.name},</p>
+      <p>Rất tiếc, yêu cầu trở thành host tại khu vực <strong>${data.locationName}</strong> chưa thể phê duyệt vào lúc này.</p>
+      ${data.notes ? `<p>Lý do: ${data.notes}</p>` : ""}
+      <p>Bạn có thể cập nhật hồ sơ và gửi lại thông tin trong thời gian tới.</p>
+      <p>Đội ngũ LuxeStay</p>
+    `
+
+  await resend.emails.send({
+    from: process.env.RESEND_FROM_EMAIL || "no-reply@luxestay.vn",
+    to: data.email,
+    subject,
+    html: `
+      <!DOCTYPE html>
+      <html><body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #1f2937;">
+        ${body}
+      </body></html>
+    `,
+  })
 }
 
 export async function sendBookingCancellationEmail(data: BookingCancellationData) {

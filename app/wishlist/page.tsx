@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useWishlist } from '@/hooks/use-wishlist'
 import { ListingCard } from '@/components/listing-card'
@@ -18,7 +18,9 @@ interface Listing {
   title: string
   description: string
   propertyType: string
-  pricePerNight: number
+  basePrice?: number
+  pricePerNight?: number
+  currency?: string
   images: string[]
   city: string
   country: string
@@ -35,20 +37,28 @@ export default function WishlistPage() {
   const [listings, setListings] = useState<Listing[]>([])
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
 
-  useEffect(() => {
-    if (session?.user) {
-      loadWishlist()
-    }
-  }, [session])
-
-  const loadWishlist = async () => {
+  const loadWishlist = useCallback(async () => {
     try {
       const data = await getWishlist()
-      setListings(data)
+      const normalized = Array.isArray(data)
+        ? data.map((item: any) => ({
+            ...item,
+            basePrice: item?.basePrice ?? item?.pricePerNight ?? 0,
+            currency: item?.currency ?? "VND",
+          }))
+        : []
+
+      setListings(normalized)
     } catch (error) {
       console.error('Error loading wishlist:', error)
     }
-  }
+  }, [getWishlist])
+
+  useEffect(() => {
+    if (session?.user) {
+      void loadWishlist()
+    }
+  }, [session, loadWishlist])
 
   if (status === 'loading') {
     return (
@@ -180,7 +190,7 @@ export default function WishlistPage() {
                   id={listing.id}
                   title={listing.title}
                   location={`${listing.city}, ${listing.country}`}
-                  price={listing.pricePerNight}
+                  price={listing.basePrice ?? listing.pricePerNight ?? 0}
                   rating={4.5}
                   reviews={0}
                   image={listing.images[0]}

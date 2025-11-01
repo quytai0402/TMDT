@@ -71,6 +71,8 @@ export default function TripDetailPage() {
           name: service.name,
           quantityLabel: service.quantityLabel,
           totalPrice: Number(service.totalPrice) || 0,
+          status: (service.status || 'PENDING').toString().toUpperCase(),
+          updatedAt: service.updatedAt ?? null,
         }))
       : []
 

@@ -24,6 +24,7 @@ export function MobileMenu() {
     { icon: Home, label: "Trang chủ", href: "/" },
     { icon: Search, label: "Tìm kiếm", href: "/search" },
     { icon: LayoutDashboard, label: "Chủ đề cá nhân hoá", href: "/personas" },
+    { icon: Home, label: "Trở thành chủ nhà", href: "/become-host" },
     { icon: Heart, label: "Yêu thích", href: "/wishlist", auth: true },
     { icon: Calendar, label: "Chuyến đi", href: "/trips", auth: true },
     { icon: MessageSquare, label: "Tin nhắn", href: "/messages", auth: true },

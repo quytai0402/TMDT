@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Laptop, Monitor, Coffee, Lightbulb, Armchair, CheckCircle2, Eye } from "lucide-react"
 import Image from "next/image"
-import { useState, useEffect } from "react"
+import { useMemo, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 interface WorkspaceItem {
@@ -16,38 +16,15 @@ interface WorkspaceItem {
 }
 
 interface WorkspaceShowcaseProps {
-  listingId: string
+  workspaces: WorkspaceItem[]
+  isLoading?: boolean
 }
 
-export function WorkspaceShowcase({ listingId }: WorkspaceShowcaseProps) {
-  const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([])
-  const [loading, setLoading] = useState(true)
+export function WorkspaceShowcase({ workspaces, isLoading = false }: WorkspaceShowcaseProps) {
   const [selectedWorkspace, setSelectedWorkspace] = useState<WorkspaceItem | null>(null)
+  const normalizedWorkspaces = useMemo(() => workspaces ?? [], [workspaces])
 
-  useEffect(() => {
-    const fetchWorkspaces = async () => {
-      try {
-        setLoading(true)
-        const response = await fetch(`/api/listings/${listingId}/workspaces`)
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch workspaces')
-        }
-
-        const data = await response.json()
-        setWorkspaces(data.workspaces || [])
-      } catch (error) {
-        console.error('Error fetching workspaces:', error)
-        setWorkspaces([])
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchWorkspaces()
-  }, [listingId])
-
-  if (loading) {
+  if (isLoading) {
     return (
       <Card className="p-6">
         <div className="text-muted-foreground">Đang tải không gian làm việc...</div>
@@ -55,7 +32,7 @@ export function WorkspaceShowcase({ listingId }: WorkspaceShowcaseProps) {
     )
   }
 
-  if (workspaces.length === 0) {
+  if (normalizedWorkspaces.length === 0) {
     return null
   }
 
@@ -71,7 +48,7 @@ export function WorkspaceShowcase({ listingId }: WorkspaceShowcaseProps) {
             <div>
               <h3 className="font-semibold text-lg">Không gian làm việc</h3>
               <p className="text-sm text-muted-foreground">
-                {workspaces.length} khu vực làm việc chuyên dụng
+                {normalizedWorkspaces.length} khu vực làm việc chuyên dụng
               </p>
             </div>
           </div>
@@ -116,7 +93,7 @@ export function WorkspaceShowcase({ listingId }: WorkspaceShowcaseProps) {
         <div className="space-y-4">
           <h4 className="font-medium text-sm">Khu vực làm việc</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {workspaces.map((workspace: WorkspaceItem) => (
+            {normalizedWorkspaces.map((workspace: WorkspaceItem) => (
               <div
                 key={workspace.id}
                 className="group relative overflow-hidden rounded-lg border border-border hover:border-primary/50 transition-all cursor-pointer"
@@ -124,12 +101,14 @@ export function WorkspaceShowcase({ listingId }: WorkspaceShowcaseProps) {
               >
                 {/* Image */}
                 <div className="relative h-48 bg-muted">
-                  <Image
-                    src={workspace.image}
-                    alt={workspace.name}
-                    fill
-                    className="object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
+                  {workspace.image && (
+                    <Image
+                      src={workspace.image}
+                      alt={workspace.name}
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  )}
                   {/* Overlay */}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                     <div className="absolute bottom-3 left-3 right-3">
@@ -145,13 +124,13 @@ export function WorkspaceShowcase({ listingId }: WorkspaceShowcaseProps) {
                 <div className="p-4">
                   <h5 className="font-semibold mb-2">{workspace.name}</h5>
                   <div className="space-y-1">
-                    {workspace.features.slice(0, 2).map((feature: string, idx: number) => (
+                    {(workspace.features ?? []).slice(0, 2).map((feature: string, idx: number) => (
                       <div key={idx} className="flex items-start space-x-2 text-sm">
                         <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
                         <span className="text-muted-foreground">{feature}</span>
                       </div>
                     ))}
-                    {workspace.features.length > 2 && (
+                    {workspace.features && workspace.features.length > 2 && (
                       <p className="text-xs text-muted-foreground mt-1">
                         +{workspace.features.length - 2} tính năng khác
                       </p>
@@ -197,20 +176,22 @@ export function WorkspaceShowcase({ listingId }: WorkspaceShowcaseProps) {
               </DialogHeader>
               <div className="space-y-4">
                 {/* Image */}
-                <div className="relative h-64 rounded-lg overflow-hidden">
-                  <Image
-                    src={selectedWorkspace.image}
-                    alt={selectedWorkspace.name}
-                    fill
-                    className="object-cover"
-                  />
-                </div>
+                {selectedWorkspace.image && (
+                  <div className="relative h-64 rounded-lg overflow-hidden">
+                    <Image
+                      src={selectedWorkspace.image}
+                      alt={selectedWorkspace.name}
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                )}
 
                 {/* Features */}
                 <div>
                   <h4 className="font-medium mb-3">Tính năng</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {selectedWorkspace.features.map((feature, idx) => (
+                    {(selectedWorkspace.features ?? []).map((feature, idx) => (
                       <div key={idx} className="flex items-start space-x-2">
                         <CheckCircle2 className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
                         <span className="text-sm">{feature}</span>

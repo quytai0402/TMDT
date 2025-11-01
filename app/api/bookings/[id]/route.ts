@@ -68,8 +68,13 @@ export async function GET(
       session.user.id === booking.guestId &&
       !booking.review
 
+    const additionalServices = Array.isArray(booking.additionalServices)
+      ? booking.additionalServices
+      : []
+
     return NextResponse.json({
       ...booking,
+      additionalServices,
       guestContact,
       canReview,
     })

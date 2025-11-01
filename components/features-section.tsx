@@ -80,7 +80,7 @@ export function FeaturesSection() {
                 Bắt đầu tìm kiếm
               </a>
               <a
-                href="/host"
+                href="/become-host"
                 className="inline-flex items-center justify-center px-8 py-4 bg-white hover:bg-muted text-foreground font-semibold rounded-xl border border-border transition-colors"
               >
                 Trở thành chủ nhà

@@ -1,12 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 
 export function useWishlist() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const addToWishlist = async (listingId: string) => {
+  const addToWishlist = useCallback(async (listingId: string) => {
     setLoading(true)
     setError(null)
 
@@ -30,9 +30,9 @@ export function useWishlist() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const removeFromWishlist = async (listingId: string) => {
+  const removeFromWishlist = useCallback(async (listingId: string) => {
     setLoading(true)
     setError(null)
 
@@ -54,9 +54,9 @@ export function useWishlist() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const getWishlist = async () => {
+  const getWishlist = useCallback(async () => {
     setLoading(true)
     setError(null)
 
@@ -75,9 +75,9 @@ export function useWishlist() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  const isInWishlist = async (listingId: string) => {
+  const isInWishlist = useCallback(async (listingId: string) => {
     try {
       const response = await fetch(`/api/wishlist/${listingId}/check`)
       const data = await response.json()
@@ -85,7 +85,7 @@ export function useWishlist() {
     } catch (err) {
       return false
     }
-  }
+  }, [])
 
   return {
     addToWishlist,

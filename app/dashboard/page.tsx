@@ -23,7 +23,7 @@ export default function DashboardPage() {
     // Redirect based on role
     switch (session.user.role) {
       case 'ADMIN':
-        router.push('/admin')
+        router.push('/admin/dashboard')
         break
       case 'HOST':
         router.push('/host/dashboard')

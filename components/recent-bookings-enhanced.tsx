@@ -60,8 +60,9 @@ const statusLabels: Record<string, string> = {
 }
 
 export function RecentBookingsEnhanced({ type, limit = 5 }: RecentBookingsProps) {
-  const { getBookings, loading } = useBooking()
+  const { getBookings, updateBookingStatus, loading } = useBooking()
   const [bookings, setBookings] = useState<BookingSummary[]>([])
+  const [updating, setUpdating] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     const fetchBookings = async () => {
@@ -107,6 +108,22 @@ export function RecentBookingsEnhanced({ type, limit = 5 }: RecentBookingsProps)
         </CardContent>
       </Card>
     )
+  }
+
+  const handleConfirmBooking = async (bookingId: string) => {
+    setUpdating((prev) => ({ ...prev, [bookingId]: true }))
+    try {
+      await updateBookingStatus(bookingId, 'CONFIRMED')
+      setBookings((prev) =>
+        prev.map((booking) =>
+          booking.id === bookingId ? { ...booking, status: 'CONFIRMED' } : booking,
+        ),
+      )
+    } catch (error) {
+      console.error('Failed to update booking status:', error)
+    } finally {
+      setUpdating((prev) => ({ ...prev, [bookingId]: false }))
+    }
   }
 
   return (
@@ -177,8 +194,18 @@ export function RecentBookingsEnhanced({ type, limit = 5 }: RecentBookingsProps)
                 )}
 
                 <div className="flex gap-2">
+                  {type === 'host' && booking.status === 'PENDING' ? (
+                    <Button
+                      size="sm"
+                      variant="default"
+                      disabled={Boolean(updating[booking.id])}
+                      onClick={() => handleConfirmBooking(booking.id)}
+                    >
+                      {updating[booking.id] ? 'Đang xác nhận...' : 'Xác nhận'}
+                    </Button>
+                  ) : null}
                   <Button asChild size="sm" variant="outline">
-                    <Link href={`/trips/${booking.id}`}>
+                    <Link href={type === 'host' ? `/host/bookings/${booking.id}` : `/trips/${booking.id}`}>
                       Chi tiết
                     </Link>
                   </Button>

@@ -154,12 +154,12 @@ export function ListingsGrid() {
           <EmptyState
             icon={Home}
             title="Chưa có chỗ ở nào"
-            description="Hiện tại chưa có chỗ ở nào được đăng tải. Vui lòng đăng ký làm chủ nhà để thêm chỗ ở của bạn."
-            action={{
-              label: "Trở thành chủ nhà",
-              onClick: () => window.location.href = '/host'
-            }}
-          />
+          description="Hiện tại chưa có chỗ ở nào được đăng tải. Vui lòng đăng ký làm chủ nhà để thêm chỗ ở của bạn."
+          action={{
+            label: "Trở thành chủ nhà",
+            onClick: () => window.location.href = '/become-host'
+          }}
+        />
         </div>
       </section>
     )

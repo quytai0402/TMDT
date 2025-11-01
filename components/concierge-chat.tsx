@@ -1,61 +1,133 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { 
-  Send, 
-  Bot, 
-  User, 
-  Loader2,
-  Paperclip,
-  Smile,
+
+import {
+  Bot,
+  User,
+  Phone,
   MapPin,
-  Utensils,
-  Car,
-  Star,
   Clock,
-  Phone
+  Star,
+  Utensils,
+  Coffee,
+  Send,
+  Loader2,
 } from "lucide-react"
-import { cn } from "@/lib/utils"
+
+import { useConciergeContext } from "@/components/concierge-context-provider"
+
+interface RecommendationCard {
+  id: string
+  title: string
+  subtitle?: string
+  distanceLabel?: string
+  ratingLabel?: string
+  highlight?: string
+  actionLabel?: string
+  type: "restaurant" | "cafe" | "attraction" | "tip"
+  image?: string | null
+}
+
+type MessageType = "system" | "user" | "bot"
 
 interface Message {
   id: string
-  type: "user" | "bot" | "system"
+  type: MessageType
   content: string
   timestamp: Date
   suggestions?: string[]
-  recommendations?: any[]
+  recommendations?: RecommendationCard[]
+}
+
+interface AssistantListingContext {
+  id: string
+  title: string
+  city: string
+  nightlyRate: {
+    formatted: string
+    amount: number
+    currency: string
+  }
+  availability: {
+    status: "AVAILABLE_NOW" | "BOOKED" | "UPCOMING_BLOCKED"
+    summary: string
+    nextAvailableFrom?: string | null
+  }
+  amenities: string[]
+  recommendations: {
+    restaurants: Array<{ name: string; distanceKm?: number | null; description?: string | null }>
+    cafes: Array<{ name: string; distanceKm?: number | null; description?: string | null }>
+    attractions: Array<{ name: string; distanceKm?: number | null; description?: string | null }>
+  }
+  host: {
+    name?: string | null
+    phone?: string | null
+    responseRate?: number | null
+    responseTimeMinutes?: number | null
+    isSuperHost?: boolean
+  }
+}
+
+interface AssistantBookingContext {
+  id: string
+  status: string
+  checkIn: string
+  checkOut: string
+  nights: number
+  listing: {
+    id: string
+    title: string
+    city: string
+  }
+}
+
+interface ConciergeAssistantContext {
+  listingContext?: AssistantListingContext | null
+  latestBooking?: AssistantBookingContext | null
+  introMessage: string
+  quickReplies: string[]
+}
+
+interface ConciergeContextResponse {
+  listingContext?: AssistantListingContext | null
+  latestBooking?: AssistantBookingContext | null
+  introMessage: string
+  quickReplies: string[]
+}
+
+const SYSTEM_MESSAGE = "Concierge 24/7 đã kết nối"
+const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1482049016688-2d3e1b311543?w=400"
+
+function formatDistanceLabel(distanceKm?: number | null) {
+  if (distanceKm === null || distanceKm === undefined) return undefined
+  return distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(1)}km`
+}
+
+function matches(query: string, keywords: string[]) {
+  return keywords.some((keyword) => query.includes(keyword))
 }
 
 export function ConciergeChat() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "1",
-      type: "system",
-      content: "Concierge 24/7 đã kết nối",
-      timestamp: new Date(),
-    },
-    {
-      id: "2",
-      type: "bot",
-      content: "Xin chào! Tôi là trợ lý ảo của LuxeStay. Tôi có thể giúp bạn với:\n\n• Đề xuất nhà hàng & điểm tham quan\n• Đặt xe và vận chuyển\n• Thông tin du lịch địa phương\n• Xử lý yêu cầu đặc biệt\n\nBạn cần tôi hỗ trợ điều gì?",
-      timestamp: new Date(),
-      suggestions: [
-        "Gợi ý nhà hàng gần đây",
-        "Đặt xe ra sân bay",
-        "Địa điểm tham quan hot",
-        "Thuê xe máy",
-      ],
-    },
-  ])
+  const { context } = useConciergeContext()
+  const [assistantContext, setAssistantContext] = useState<ConciergeAssistantContext | null>(null)
+  const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isTyping, setIsTyping] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  const contextKey = useMemo(
+    () => JSON.stringify(context ?? {}),
+    [context],
+  )
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -63,157 +135,341 @@ export function ConciergeChat() {
     }
   }, [messages])
 
-  const handleSend = async () => {
-    if (!input.trim()) return
+  const fetchAssistantContext = useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const params = new URLSearchParams()
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      type: "user",
-      content: input,
-      timestamp: new Date(),
-    }
-
-    setMessages([...messages, userMessage])
-    setInput("")
-    setIsTyping(true)
-
-    // Simulate AI response
-    setTimeout(() => {
-      const botResponse = generateBotResponse(input)
-      setMessages(prev => [...prev, botResponse])
-      setIsTyping(false)
-    }, 1500)
-  }
-
-  const generateBotResponse = (query: string): Message => {
-    const lowerQuery = query.toLowerCase()
-
-    // Restaurant recommendations
-    if (lowerQuery.includes("nhà hàng") || lowerQuery.includes("ăn")) {
-      return {
-        id: Date.now().toString(),
-        type: "bot",
-        content: "Tôi tìm thấy những nhà hàng tuyệt vời gần bạn:",
-        timestamp: new Date(),
-        recommendations: [
-          {
-            id: "1",
-            type: "restaurant",
-            name: "Nhà Hàng Hải Sản Biển Đông",
-            rating: 4.8,
-            distance: "0.5 km",
-            cuisine: "Hải sản",
-            price: "200,000 - 500,000₫",
-            image: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400",
-          },
-          {
-            id: "2",
-            type: "restaurant",
-            name: "BBQ Garden Đà Lạt",
-            rating: 4.6,
-            distance: "0.8 km",
-            cuisine: "BBQ, Nướng",
-            price: "150,000 - 400,000₫",
-            image: "https://images.unsplash.com/photo-1544025162-d76694265947?w=400",
-          },
-        ],
-        suggestions: ["Đặt bàn ngay", "Xem thêm nhà hàng", "Gọi cho tôi taxi"],
+      if (context?.source === 'listing' && context.listingId) {
+        params.set('listingId', context.listingId)
+      } else if (context?.source === 'booking' && context.bookingId) {
+        params.set('bookingId', context.bookingId)
       }
-    }
 
-    // Transportation
-    if (lowerQuery.includes("xe") || lowerQuery.includes("sân bay") || lowerQuery.includes("taxi")) {
-      return {
-        id: Date.now().toString(),
-        type: "bot",
-        content: "Tôi có thể sắp xếp dịch vụ vận chuyển cho bạn:",
-        timestamp: new Date(),
-        recommendations: [
-          {
-            id: "1",
-            type: "transport",
-            name: "Đưa đón sân bay",
-            price: "500,000₫",
-            duration: "45 phút",
-            vehicle: "Sedan 4 chỗ",
-            icon: Car,
-          },
-          {
-            id: "2",
-            type: "transport",
-            name: "Thuê xe tự lái",
-            price: "800,000₫/ngày",
-            duration: "Theo ngày",
-            vehicle: "Toyota Vios",
-            icon: Car,
-          },
-        ],
-        suggestions: ["Đặt xe ngay", "Xem thêm phương tiện", "Gọi hotline"],
+      params.set('includeLatestBooking', 'true')
+
+      const response = await fetch(`/api/concierge/context?${params.toString()}`, {
+        cache: 'no-store',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to load concierge context')
       }
-    }
 
-    // Attractions
-    if (lowerQuery.includes("tham quan") || lowerQuery.includes("du lịch") || lowerQuery.includes("đi chơi")) {
-      return {
-        id: Date.now().toString(),
-        type: "bot",
-        content: "Những địa điểm HOT bạn không nên bỏ lỡ:",
-        timestamp: new Date(),
-        recommendations: [
-          {
-            id: "1",
-            type: "attraction",
-            name: "Hồ Xuân Hương",
-            rating: 4.7,
-            distance: "2 km",
-            category: "Thiên nhiên",
-            hours: "6:00 - 22:00",
-            image: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400",
-          },
-          {
-            id: "2",
-            type: "attraction",
-            name: "Vườn Hoa Đà Lạt",
-            rating: 4.5,
-            distance: "3 km",
-            category: "Công viên",
-            hours: "7:00 - 18:00",
-            image: "https://images.unsplash.com/photo-1464746133101-a2c3f88e0dd9?w=400",
-          },
-        ],
-        suggestions: ["Đặt tour", "Xem bản đồ", "Lưu vào lịch trình"],
+      const data = (await response.json()) as ConciergeContextResponse
+
+      const mapped: ConciergeAssistantContext = {
+        listingContext: data.listingContext ?? null,
+        latestBooking: data.latestBooking ?? null,
+        introMessage: data.introMessage,
+        quickReplies: data.quickReplies ?? [],
       }
-    }
 
-    // Default response
-    return {
-      id: Date.now().toString(),
-      type: "bot",
-      content: "Tôi có thể giúp bạn với:\n\n• Gợi ý nhà hàng & quán ăn\n• Đặt xe và tour du lịch\n• Thông tin địa điểm tham quan\n• Dịch vụ đặc biệt khác\n\nVui lòng cho tôi biết cụ thể hơn bạn cần gì nhé!",
-      timestamp: new Date(),
-      suggestions: [
-        "Nhà hàng gần đây",
-        "Đặt xe sân bay",
-        "Địa điểm hot",
-        "Thuê xe",
-      ],
+      setAssistantContext(mapped)
+      setMessages([
+        {
+          id: 'system',
+          type: 'system',
+          content: SYSTEM_MESSAGE,
+          timestamp: new Date(),
+        },
+        {
+          id: 'intro',
+          type: 'bot',
+          content: mapped.introMessage,
+          suggestions: mapped.quickReplies,
+          timestamp: new Date(),
+        },
+      ])
+    } catch (error) {
+      console.error('Failed to fetch concierge context:', error)
+      setAssistantContext(null)
+      setMessages([
+        {
+          id: 'system',
+          type: 'system',
+          content: SYSTEM_MESSAGE,
+          timestamp: new Date(),
+        },
+        {
+          id: 'intro-fallback',
+          type: 'bot',
+          content:
+            'Xin chào! Tôi đang sẵn sàng hỗ trợ bạn với thông tin đặt phòng, đề xuất nhà hàng và các dịch vụ bổ sung.',
+          suggestions: [
+            'Kiểm tra tình trạng phòng',
+            'Gợi ý nhà hàng quanh tôi',
+            'Đặt xe sân bay',
+          ],
+          timestamp: new Date(),
+        },
+      ])
+    } finally {
+      setIsLoading(false)
     }
-  }
+  }, [context?.bookingId, context?.listingId, context?.source])
 
-  const handleSuggestionClick = (suggestion: string) => {
-    setInput(suggestion)
-    handleSend()
-  }
+  useEffect(() => {
+    void fetchAssistantContext()
+  }, [fetchAssistantContext, contextKey])
+
+  const craftBotResponse = useCallback(
+    async (query: string): Promise<Message> => {
+      const lowerQuery = query.toLowerCase()
+      const timestamp = new Date()
+
+      const listing = assistantContext?.listingContext
+      const booking = assistantContext?.latestBooking
+
+      // Listing-specific responses
+      if (listing) {
+        if (matches(lowerQuery, ['trống', 'còn phòng', 'availability', 'available', 'có phòng'])) {
+          const details = listing.availability.nextAvailableFrom
+            ? `${listing.availability.summary} Lịch trống gần nhất từ ${listing.availability.nextAvailableFrom}.`
+            : listing.availability.summary
+
+          return {
+            id: `availability-${timestamp.getTime()}`,
+            type: 'bot',
+            content: details,
+            timestamp,
+            suggestions: ['Đặt giữ phòng', 'Thêm bữa sáng', 'Gửi yêu cầu cho host'],
+          }
+        }
+
+        if (matches(lowerQuery, ['bữa sáng', 'breakfast'])) {
+          const hasBreakfast = listing.amenities.some((amenity) =>
+            amenity.toLowerCase().includes('bữa sáng') || amenity.toLowerCase().includes('breakfast'),
+          )
+
+          const content = hasBreakfast
+            ? 'Căn hộ có phục vụ bữa sáng tiêu chuẩn. Concierge có thể đặt trước hoặc tùy biến thực đơn nếu bạn báo trước tối thiểu 6 giờ.'
+            : 'Hiện căn hộ chưa bao gồm bữa sáng. Tôi có thể đặt suất ăn sáng giao tận nơi hoặc gợi ý quán ăn sáng trong bán kính 10 phút di chuyển.'
+
+          return {
+            id: `breakfast-${timestamp.getTime()}`,
+            type: 'bot',
+            content,
+            timestamp,
+            suggestions: [
+              'Đặt bữa sáng giao tận phòng',
+              'Gợi ý quán ăn sáng gần đây',
+              'Thêm vào ghi chú check-in',
+            ],
+          }
+        }
+
+        if (matches(lowerQuery, ['nhà hàng', 'ăn', 'đồ ăn', 'restaurant', 'food'])) {
+          const restaurants = listing.recommendations.restaurants
+
+          if (restaurants.length) {
+            const recommendations: RecommendationCard[] = restaurants.map((item, idx) => ({
+              id: `${listing.id}-restaurant-${idx}`,
+              title: item.name,
+              subtitle: item.description ?? 'Được khách LuxeStay đánh giá cao',
+              distanceLabel: formatDistanceLabel(item.distanceKm),
+              highlight: 'Nhà hàng',
+              type: 'restaurant',
+              image: FALLBACK_IMAGE,
+            }))
+
+            return {
+              id: `restaurants-${timestamp.getTime()}`,
+              type: 'bot',
+              content: `Một vài nhà hàng nổi bật quanh ${listing.city}:`,
+              timestamp,
+              recommendations,
+              suggestions: ['Đặt bàn', 'Gợi ý thêm món ăn địa phương', 'Đặt xe đưa đón'],
+            }
+          }
+        }
+
+        if (matches(lowerQuery, ['cafe', 'cà phê', 'coffee'])) {
+          const cafes = listing.recommendations.cafes
+
+          if (cafes.length) {
+            const recommendations: RecommendationCard[] = cafes.map((item, idx) => ({
+              id: `${listing.id}-cafe-${idx}`,
+              title: item.name,
+              subtitle: item.description ?? 'Không gian lý tưởng cho làm việc',
+              distanceLabel: formatDistanceLabel(item.distanceKm),
+              highlight: 'Quán cà phê',
+              type: 'cafe',
+              image: FALLBACK_IMAGE,
+            }))
+
+            return {
+              id: `cafes-${timestamp.getTime()}`,
+              type: 'bot',
+              content: `Các quán cà phê được khách lưu trú tại ${listing.city} yêu thích:`,
+              timestamp,
+              recommendations,
+              suggestions: ['Đặt chỗ làm việc', 'Gợi ý đồ uống signature'],
+            }
+          }
+        }
+
+        if (matches(lowerQuery, ['tham quan', 'đi chơi', 'đi đâu', 'attraction', 'tour'])) {
+          const attractions = listing.recommendations.attractions
+
+          if (attractions.length) {
+            const recommendations: RecommendationCard[] = attractions.map((item, idx) => ({
+              id: `${listing.id}-attraction-${idx}`,
+              title: item.name,
+              subtitle: item.description ?? 'Địa điểm hot trong khu vực',
+              distanceLabel: formatDistanceLabel(item.distanceKm),
+              highlight: 'Điểm tham quan',
+              type: 'attraction',
+              image: FALLBACK_IMAGE,
+            }))
+
+            return {
+              id: `attractions-${timestamp.getTime()}`,
+              type: 'bot',
+              content: `Bạn có thể cân nhắc ghé những điểm sau trong lịch trình:`,
+              timestamp,
+              recommendations,
+              suggestions: ['Đặt vé tham quan', 'Đặt xe đưa đón', 'Lên lịch trình chi tiết'],
+            }
+          }
+        }
+
+        if (matches(lowerQuery, ['host', 'chủ nhà', 'liên hệ'])) {
+          const host = listing.host
+          const parts = [
+            host.name ? `Chủ nhà hiện tại là ${host.name}.` : 'Chủ nhà rất thân thiện và phản hồi nhanh.',
+          ]
+
+          if (host.isSuperHost) {
+            parts.push('Đây là SuperHost được xếp hạng cao trên LuxeStay.')
+          }
+
+          if (host.responseRate !== null && host.responseRate !== undefined) {
+            parts.push(`Tỷ lệ phản hồi ${Math.round((host.responseRate ?? 0) * 100)}%.`)
+          }
+
+          if (host.responseTimeMinutes) {
+            parts.push(`Thời gian phản hồi trung bình ${host.responseTimeMinutes} phút.`)
+          }
+
+          if (host.phone) {
+            parts.push('Tôi có thể kết nối trực tiếp hoặc nhắn với host giúp bạn.')
+          }
+
+          return {
+            id: `host-${timestamp.getTime()}`,
+            type: 'bot',
+            content: parts.join(' '),
+            timestamp,
+            suggestions: ['Nhắn tin cho host', 'Thêm yêu cầu đặc biệt'],
+          }
+        }
+
+        if (matches(lowerQuery, ['giá', 'bao nhiêu', 'price'])) {
+          return {
+            id: `price-${timestamp.getTime()}`,
+            type: 'bot',
+            content: `Giá niêm yết hiện tại là ${listing.nightlyRate.formatted}/đêm (chưa gồm phí dịch vụ). Tôi có thể kiểm tra giúp bạn các ưu đãi hoặc gói dài ngày nếu cần.`,
+            timestamp,
+            suggestions: ['Kiểm tra ưu đãi', 'Giữ phòng ngay'],
+          }
+        }
+
+        if (matches(lowerQuery, ['xe', 'sân bay', 'đưa đón', 'transfer'])) {
+          return {
+            id: `transport-${timestamp.getTime()}`,
+            type: 'bot',
+            content:
+              'Concierge có thể đặt xe đón tiễn sân bay hoặc thuê xe riêng theo giờ. Bạn chỉ cần cho tôi biết thời gian và số lượng hành khách.',
+            timestamp,
+            suggestions: ['Đặt xe 4 chỗ', 'Đặt xe 7 chỗ', 'Xem thêm gói di chuyển'],
+          }
+        }
+      }
+
+      // Booking specific queries
+      if (booking) {
+        if (matches(lowerQuery, ['lịch sử', 'booking', 'đặt phòng', 'lần trước'])) {
+          const checkIn = new Date(booking.checkIn)
+          const checkOut = new Date(booking.checkOut)
+
+          return {
+            id: `booking-${timestamp.getTime()}`,
+            type: 'bot',
+            content: `Bạn đã đặt ${booking.listing.title} (${booking.listing.city}) từ ${checkIn.toLocaleDateString('vi-VN')} đến ${checkOut.toLocaleDateString('vi-VN')} (${booking.nights} đêm). Tôi có thể hỗ trợ cập nhật hoặc thêm dịch vụ cho lịch này.`,
+            timestamp,
+            suggestions: ['Thêm dịch vụ cho chuyến này', 'Nhắn với host', 'Đổi lịch trình'],
+          }
+        }
+      }
+
+      // Default fallback
+      return {
+        id: `default-${timestamp.getTime()}`,
+        type: 'bot',
+        content:
+          'Tôi có thể hỗ trợ đặt dịch vụ, kiểm tra tình trạng phòng hoặc gợi ý ăn uống cho bạn. Bạn cứ cho tôi biết nhu cầu cụ thể nhé!',
+        timestamp,
+        suggestions: assistantContext?.quickReplies ?? undefined,
+      }
+    },
+    [assistantContext],
+  )
+
+  const handleSend = useCallback(
+    async (preset?: string) => {
+      const messageText = (preset ?? input).trim()
+      if (!messageText) return
+
+      const userMessage: Message = {
+        id: `user-${Date.now()}`,
+        type: 'user',
+        content: messageText,
+        timestamp: new Date(),
+      }
+
+      setMessages((prev) => [...prev, userMessage])
+      setInput("")
+      setIsTyping(true)
+
+      try {
+        const response = await craftBotResponse(messageText)
+        setMessages((prev) => [...prev, response])
+      } catch (error) {
+        console.error('Failed to craft concierge response:', error)
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `error-${Date.now()}`,
+            type: 'bot',
+            content: 'Xin lỗi, tôi đang gặp trục trặc. Bạn có thể thử lại sau ít phút hoặc gọi hotline 1900 xxxx giúp tôi nhé.',
+            timestamp: new Date(),
+          },
+        ])
+      } finally {
+        setIsTyping(false)
+      }
+    },
+    [craftBotResponse, input],
+  )
+
+  const handleSuggestionClick = useCallback(
+    (suggestion: string) => {
+      void handleSend(suggestion)
+    },
+    [handleSend],
+  )
 
   return (
     <Card className="flex flex-col h-[600px] shadow-lg">
-      {/* Header */}
       <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-primary/10 to-blue-500/10">
         <div className="flex items-center space-x-3">
           <div className="relative">
             <Avatar className="w-10 h-10">
-              <AvatarImage src="https://api.dicebear.com/7.x/bottts/svg?seed=concierge" />
-              <AvatarFallback><Bot /></AvatarFallback>
+              <AvatarImage src="https://api.dicebear.com/7.x/bottts/svg?seed=luxe-concierge" />
+              <AvatarFallback>
+                <Bot />
+              </AvatarFallback>
             </Avatar>
             <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-background" />
           </div>
@@ -221,7 +477,7 @@ export function ConciergeChat() {
             <h3 className="font-semibold">Concierge 24/7</h3>
             <p className="text-xs text-muted-foreground flex items-center">
               <span className="w-2 h-2 bg-green-500 rounded-full mr-1.5 animate-pulse" />
-              Đang online
+              {isLoading ? 'Đang đồng bộ bối cảnh...' : 'Đang online'}
             </p>
           </div>
         </div>
@@ -231,12 +487,11 @@ export function ConciergeChat() {
         </Button>
       </div>
 
-      {/* Messages */}
       <ScrollArea className="flex-1 p-4" ref={scrollRef}>
         <div className="space-y-4">
-          {messages.map(message => (
+          {messages.map((message) => (
             <div key={message.id}>
-              {message.type === "system" && (
+              {message.type === 'system' && (
                 <div className="text-center">
                   <Badge variant="outline" className="text-xs">
                     {message.content}
@@ -244,7 +499,7 @@ export function ConciergeChat() {
                 </div>
               )}
 
-              {message.type === "bot" && (
+              {message.type === 'bot' && (
                 <div className="flex items-start space-x-3">
                   <Avatar className="w-8 h-8 flex-shrink-0">
                     <AvatarFallback className="bg-primary/10">
@@ -256,93 +511,59 @@ export function ConciergeChat() {
                       <p className="text-sm whitespace-pre-line">{message.content}</p>
                     </div>
 
-                    {/* Recommendations */}
-                    {message.recommendations && (
+                    {message.recommendations && message.recommendations.length > 0 && (
                       <div className="space-y-2">
-                        {message.recommendations.map(rec => (
-                          <Card key={rec.id} className="p-3 hover:shadow-md transition-shadow cursor-pointer">
-                            {rec.type === "restaurant" && (
-                              <div className="flex items-start space-x-3">
-                                <img
-                                  src={rec.image}
-                                  alt={rec.name}
-                                  className="w-20 h-20 rounded-lg object-cover"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <h4 className="font-semibold text-sm mb-1">{rec.name}</h4>
-                                  <div className="flex items-center space-x-2 text-xs text-muted-foreground mb-1">
-                                    <div className="flex items-center">
-                                      <Star className="w-3 h-3 fill-yellow-500 text-yellow-500 mr-1" />
-                                      <span>{rec.rating}</span>
-                                    </div>
-                                    <span>•</span>
-                                    <div className="flex items-center">
-                                      <MapPin className="w-3 h-3 mr-1" />
-                                      <span>{rec.distance}</span>
-                                    </div>
-                                  </div>
-                                  <p className="text-xs text-muted-foreground">{rec.cuisine}</p>
-                                  <p className="text-xs font-medium mt-1">{rec.price}</p>
+                        {message.recommendations.map((rec) => (
+                          <Card
+                            key={rec.id}
+                            className="p-3 hover:shadow-md transition-shadow cursor-pointer"
+                          >
+                            <div className="flex items-start space-x-3">
+                              <img
+                                src={rec.image ?? FALLBACK_IMAGE}
+                                alt={rec.title}
+                                className="w-20 h-20 rounded-lg object-cover flex-shrink-0"
+                              />
+                              <div className="flex-1 min-w-0 space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <h4 className="font-semibold text-sm truncate">{rec.title}</h4>
+                                  {rec.highlight && (
+                                    <Badge variant="outline" className="text-xs">
+                                      {rec.highlight}
+                                    </Badge>
+                                  )}
                                 </div>
-                                <Button size="sm" variant="outline">Đặt bàn</Button>
-                              </div>
-                            )}
-
-                            {rec.type === "transport" && (
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-3">
-                                  <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center">
-                                    <Car className="w-5 h-5 text-blue-600" />
-                                  </div>
-                                  <div>
-                                    <h4 className="font-semibold text-sm">{rec.name}</h4>
-                                    <p className="text-xs text-muted-foreground">{rec.vehicle}</p>
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <p className="font-bold text-sm text-primary">{rec.price}</p>
-                                  <p className="text-xs text-muted-foreground">{rec.duration}</p>
+                                {rec.subtitle && (
+                                  <p className="text-xs text-muted-foreground line-clamp-2">
+                                    {rec.subtitle}
+                                  </p>
+                                )}
+                                <div className="flex items-center gap-2 text-[11px] text-muted-foreground flex-wrap">
+                                  {rec.distanceLabel && (
+                                    <span className="flex items-center gap-1">
+                                      <MapPin className="w-3 h-3" />
+                                      {rec.distanceLabel}
+                                    </span>
+                                  )}
+                                  {rec.ratingLabel && (
+                                    <span className="flex items-center gap-1">
+                                      <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                                      {rec.ratingLabel}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
-                            )}
-
-                            {rec.type === "attraction" && (
-                              <div className="flex items-start space-x-3">
-                                <img
-                                  src={rec.image}
-                                  alt={rec.name}
-                                  className="w-20 h-20 rounded-lg object-cover"
-                                />
-                                <div className="flex-1">
-                                  <h4 className="font-semibold text-sm mb-1">{rec.name}</h4>
-                                  <div className="flex items-center space-x-2 text-xs text-muted-foreground">
-                                    <div className="flex items-center">
-                                      <Star className="w-3 h-3 fill-yellow-500 text-yellow-500 mr-1" />
-                                      <span>{rec.rating}</span>
-                                    </div>
-                                    <span>•</span>
-                                    <span>{rec.distance}</span>
-                                    <span>•</span>
-                                    <span>{rec.category}</span>
-                                  </div>
-                                  <div className="flex items-center text-xs text-muted-foreground mt-1">
-                                    <Clock className="w-3 h-3 mr-1" />
-                                    {rec.hours}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
+                            </div>
                           </Card>
                         ))}
                       </div>
                     )}
 
-                    {/* Suggestions */}
                     {message.suggestions && (
                       <div className="flex flex-wrap gap-2">
                         {message.suggestions.map((suggestion, idx) => (
                           <Button
-                            key={idx}
+                            key={`${message.id}-suggestion-${idx}`}
                             variant="outline"
                             size="sm"
                             onClick={() => handleSuggestionClick(suggestion)}
@@ -355,37 +576,38 @@ export function ConciergeChat() {
                     )}
 
                     <p className="text-xs text-muted-foreground">
-                      {message.timestamp.toLocaleTimeString("vi-VN", { 
-                        hour: "2-digit", 
-                        minute: "2-digit" 
+                      {message.timestamp.toLocaleTimeString('vi-VN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
                       })}
                     </p>
                   </div>
                 </div>
               )}
 
-              {message.type === "user" && (
+              {message.type === 'user' && (
                 <div className="flex items-start space-x-3 justify-end">
                   <div className="flex-1 flex flex-col items-end space-y-1">
                     <div className="bg-primary text-primary-foreground rounded-lg p-3 max-w-[80%]">
                       <p className="text-sm">{message.content}</p>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {message.timestamp.toLocaleTimeString("vi-VN", { 
-                        hour: "2-digit", 
-                        minute: "2-digit" 
+                      {message.timestamp.toLocaleTimeString('vi-VN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
                       })}
                     </p>
                   </div>
                   <Avatar className="w-8 h-8 flex-shrink-0">
-                    <AvatarFallback><User className="w-4 h-4" /></AvatarFallback>
+                    <AvatarFallback>
+                      <User className="w-4 h-4" />
+                    </AvatarFallback>
                   </Avatar>
                 </div>
               )}
             </div>
           ))}
 
-          {/* Typing indicator */}
           {isTyping && (
             <div className="flex items-start space-x-3">
               <Avatar className="w-8 h-8">
@@ -395,9 +617,9 @@ export function ConciergeChat() {
               </Avatar>
               <div className="bg-muted rounded-lg p-3">
                 <div className="flex space-x-1">
-                  <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                  <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                  <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
               </div>
             </div>
@@ -405,29 +627,41 @@ export function ConciergeChat() {
         </div>
       </ScrollArea>
 
-      {/* Input */}
-      <div className="p-4 border-t">
-        <div className="flex items-center space-x-2">
-          <Button variant="ghost" size="sm">
-            <Paperclip className="w-4 h-4" />
-          </Button>
-          <Button variant="ghost" size="sm">
-            <Smile className="w-4 h-4" />
-          </Button>
-          <Input
-            placeholder="Nhập tin nhắn..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleSend()}
-            className="flex-1"
-          />
-          <Button onClick={handleSend} disabled={!input.trim() || isTyping}>
-            {isTyping ? (
+      <div className="p-4 border-t space-y-3">
+        <div className="flex items-center space-x-3">
+          <div className="flex-1">
+            <Input
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder={isLoading ? 'Đang chuẩn bị dữ liệu...' : 'Nhập yêu cầu của bạn (ví dụ: nhà hàng tối nay, đặt xe sân bay...)'}
+              disabled={isLoading}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  void handleSend()
+                }
+              }}
+            />
+          </div>
+          <Button onClick={() => void handleSend()} disabled={isLoading}>
+            {isLoading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <Send className="w-4 h-4" />
             )}
           </Button>
+        </div>
+
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <div className="flex items-center space-x-2">
+            <Utensils className="w-4 h-4" />
+            <span>Nhà hàng</span>
+            <Coffee className="w-4 h-4" />
+            <span>Cà phê</span>
+            <Clock className="w-4 h-4" />
+            <span>Dịch vụ 24/7</span>
+          </div>
+          <span>Chat được ghi lại để concierge follow-up</span>
         </div>
       </div>
     </Card>

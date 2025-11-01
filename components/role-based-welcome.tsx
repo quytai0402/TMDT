@@ -173,7 +173,7 @@ export function RoleBasedWelcome() {
                   </p>
                   <div className="flex flex-wrap gap-3 pt-2">
                     <Button 
-                      onClick={() => router.push('/admin')}
+                      onClick={() => router.push('/admin/dashboard')}
                       className="bg-purple-600 hover:bg-purple-700"
                     >
                       <Shield className="w-4 h-4 mr-2" />

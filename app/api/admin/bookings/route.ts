@@ -31,6 +31,11 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "20", 10)
     const status = searchParams.get("status") || ""
     const search = searchParams.get("search") || ""
+    const cityParam = searchParams.get("city")?.trim()
+    const stateParam = searchParams.get("state")?.trim()
+    const hostIdParam = searchParams.get("hostId")?.trim()
+    const hasServicesFilter = (searchParams.get("hasServices") || "all").toLowerCase()
+    const serviceStatusFilter = (searchParams.get("serviceStatus") || "all").toUpperCase()
     const normalizedSearch = search.replace(/\D/g, "")
 
     const skip = (page - 1) * limit
@@ -40,6 +45,20 @@ export async function GET(request: NextRequest) {
 
     if (status && status !== "all") {
       where.status = status
+    }
+
+    if (hostIdParam) {
+      where.hostId = hostIdParam
+    }
+
+    const listingFilters: Prisma.ListingWhereInput = {}
+
+    if (cityParam) {
+      listingFilters.city = { equals: cityParam, mode: "insensitive" }
+    }
+
+    if (stateParam) {
+      listingFilters.state = { equals: stateParam, mode: "insensitive" }
     }
 
     if (search) {
@@ -75,6 +94,10 @@ export async function GET(request: NextRequest) {
       where.OR = orConditions
     }
 
+    if (Object.keys(listingFilters).length > 0) {
+      where.listing = { is: listingFilters }
+    }
+
     // Get bookings
     const [bookings, totalCount] = await Promise.all([
       prisma.booking.findMany({
@@ -88,6 +111,7 @@ export async function GET(request: NextRequest) {
               id: true,
               name: true,
               email: true,
+              phone: true,
               image: true,
             },
           },
@@ -96,6 +120,8 @@ export async function GET(request: NextRequest) {
               id: true,
               title: true,
               address: true,
+              city: true,
+              state: true,
               images: true,
               host: {
                 select: {
@@ -168,7 +194,54 @@ export async function GET(request: NextRequest) {
       })
     )
 
-    const formattedBookings = bookings.map((booking) => {
+    const serviceMetrics = {
+      total: 0,
+      pending: 0,
+      confirmed: 0,
+      completed: 0,
+    }
+
+    const formattedBookings = bookings.reduce((acc: any[], booking) => {
+      const rawServices = Array.isArray(booking.additionalServices)
+        ? booking.additionalServices.map((service: any) => {
+            const status = (service?.status || 'PENDING').toString().toUpperCase()
+            return {
+              id: service.id,
+              name: service.name,
+              status,
+              quantity: service.quantity ?? null,
+              quantityLabel: service.quantityLabel ?? null,
+              totalPrice: Number(service.totalPrice) || 0,
+              updatedAt: service.updatedAt ?? null,
+            }
+          })
+        : []
+
+      if (rawServices.length) {
+        serviceMetrics.total += rawServices.length
+        serviceMetrics.pending += rawServices.filter((service) => service.status === 'PENDING').length
+        serviceMetrics.confirmed += rawServices.filter((service) => service.status === 'CONFIRMED').length
+        serviceMetrics.completed += rawServices.filter((service) => service.status === 'COMPLETED').length
+      }
+
+      const hasServices = rawServices.length > 0
+
+      if (hasServicesFilter === 'with' && !hasServices) {
+        return acc
+      }
+
+      if (hasServicesFilter === 'without' && hasServices) {
+        return acc
+      }
+
+      if (
+        serviceStatusFilter !== 'ALL' &&
+        serviceStatusFilter &&
+        !rawServices.some((service) => service.status === serviceStatusFilter)
+      ) {
+        return acc
+      }
+
       const rawPhone = booking.contactPhone || booking.guest?.phone || null
       const normalized = booking.contactPhoneNormalized || normalizePhone(rawPhone)
       const historyKey = normalized || rawPhone || undefined
@@ -181,7 +254,7 @@ export async function GET(request: NextRequest) {
         (booking.children || 0) +
         (booking.infants || 0)
 
-      return {
+      acc.push({
         id: booking.id,
         bookingRef: booking.id.slice(-8).toUpperCase(),
         checkIn: booking.checkIn,
@@ -210,17 +283,21 @@ export async function GET(request: NextRequest) {
               totalSpent: guestHistory.totalSpent,
             }
           : null,
-      }
-    })
+        additionalServices: rawServices,
+      })
+
+      return acc
+    }, [])
 
     return NextResponse.json({
       bookings: formattedBookings,
       pagination: {
         page,
         limit,
-        totalCount,
-        totalPages: Math.ceil(totalCount / limit),
+        totalCount: hasServicesFilter === 'all' && serviceStatusFilter === 'ALL' ? totalCount : formattedBookings.length,
+        totalPages: Math.ceil((hasServicesFilter === 'all' && serviceStatusFilter === 'ALL' ? totalCount : formattedBookings.length) / limit) || 1,
       },
+      services: serviceMetrics,
     })
   } catch (error) {
     console.error("Admin bookings error:", error)

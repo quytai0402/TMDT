@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
+import { PayoutStatus } from "@prisma/client"
 
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { computeBookingFinancials } from "@/lib/finance"
 
 function startOfDay(date: Date) {
   const d = new Date(date)
@@ -18,8 +20,6 @@ function startOfYear(date: Date) {
   return new Date(date.getFullYear(), 0, 1)
 }
 
-const PLATFORM_FEE_RATE = 0.1
-
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
@@ -32,88 +32,125 @@ export async function GET() {
     const todayStart = startOfDay(now)
     const monthStart = startOfMonth(now)
     const yearStart = startOfYear(now)
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
 
-    const [completedPayments, monthlyBookings, yearlyBookings, topListings] = await Promise.all([
-      prisma.payment.findMany({
-        where: { status: "COMPLETED" },
-        select: {
-          amount: true,
-          paidAt: true,
-        },
-      }),
-      prisma.booking.findMany({
-        where: {
-          status: { in: ["CONFIRMED", "COMPLETED"] },
-          createdAt: { gte: monthStart },
-        },
-        select: {
-          id: true,
-          totalPrice: true,
-        },
-      }),
-      prisma.booking.findMany({
-        where: {
-          status: { in: ["CONFIRMED", "COMPLETED"] },
-          createdAt: { gte: yearStart },
-        },
-        select: {
-          id: true,
-          totalPrice: true,
-          createdAt: true,
-        },
-      }),
-      prisma.listing.findMany({
-        where: {
-          bookings: {
-            some: {
-              status: { in: ["CONFIRMED", "COMPLETED"] },
-              createdAt: { gte: yearStart },
+    const [completedBookings, monthlyBookings, yearlyBookings, topListings, payoutRequests] =
+      await Promise.all([
+        prisma.booking.findMany({
+          where: { status: "COMPLETED" },
+          select: {
+            completedAt: true,
+            totalPrice: true,
+            serviceFee: true,
+            platformCommission: true,
+            hostEarnings: true,
+          },
+        }),
+        prisma.booking.findMany({
+          where: {
+            status: "COMPLETED",
+            completedAt: { gte: monthStart },
+          },
+          select: {
+            completedAt: true,
+            totalPrice: true,
+            serviceFee: true,
+            platformCommission: true,
+            hostEarnings: true,
+          },
+        }),
+        prisma.booking.findMany({
+          where: {
+            status: "COMPLETED",
+            completedAt: { gte: yearStart },
+          },
+          select: {
+            completedAt: true,
+            totalPrice: true,
+            serviceFee: true,
+            platformCommission: true,
+            hostEarnings: true,
+          },
+        }),
+        prisma.listing.findMany({
+          where: {
+            bookings: {
+              some: {
+                status: "COMPLETED",
+                completedAt: { gte: yearStart },
+              },
             },
           },
-        },
-        select: {
-          id: true,
-          title: true,
-          city: true,
-          bookings: {
-            where: {
-              status: { in: ["CONFIRMED", "COMPLETED"] },
-              createdAt: { gte: yearStart },
-            },
-            select: {
-              totalPrice: true,
+          select: {
+            id: true,
+            title: true,
+            city: true,
+            bookings: {
+              where: {
+                status: "COMPLETED",
+                completedAt: { gte: yearStart },
+              },
+              select: {
+                totalPrice: true,
+              },
             },
           },
-        },
-      }),
-    ])
+        }),
+        prisma.hostPayout.findMany({
+          where: {
+            status: {
+              in: [PayoutStatus.PENDING, PayoutStatus.APPROVED],
+            },
+          },
+          include: {
+            host: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+          orderBy: { requestedAt: "asc" },
+          take: 25,
+        }),
+      ])
 
-    let totalRevenue = 0
-    let todayRevenue = 0
-    let monthRevenue = 0
+    let grossTotal = 0
+    let commissionTotal = 0
+    let todayGross = 0
+    let monthGross = 0
+    let todayCommission = 0
+    let monthCommission = 0
 
-    for (const payment of completedPayments) {
-      totalRevenue += payment.amount
+    for (const booking of completedBookings) {
+      const { commission, hostShare } = computeBookingFinancials(booking)
+      const gross = commission + hostShare
+      grossTotal += gross
+      commissionTotal += commission
 
-      if (payment.paidAt && payment.paidAt >= todayStart) {
-        todayRevenue += payment.amount
+      if (booking.completedAt && booking.completedAt >= todayStart) {
+        todayGross += gross
+        todayCommission += commission
       }
 
-      if (payment.paidAt && payment.paidAt >= monthStart) {
-        monthRevenue += payment.amount
+      if (booking.completedAt && booking.completedAt >= monthStart) {
+        monthGross += gross
+        monthCommission += commission
       }
     }
 
-    const monthlyRevenueByDay = Array.from({ length: 31 }, (_, index) => ({
+    const monthlyRevenueByDay = Array.from({ length: daysInMonth }, (_, index) => ({
       day: index + 1,
       revenue: 0,
     }))
 
     for (const booking of monthlyBookings) {
-      const created = new Date(booking.id.slice(0, 8) ? booking.createdAt : monthStart)
-      const dayIndex = created.getDate() - 1
+      if (!booking.completedAt) continue
+      const { commission } = computeBookingFinancials(booking)
+      const dayIndex = booking.completedAt.getDate() - 1
       if (monthlyRevenueByDay[dayIndex]) {
-        monthlyRevenueByDay[dayIndex].revenue += booking.totalPrice ?? 0
+        monthlyRevenueByDay[dayIndex].revenue += commission
       }
     }
 
@@ -124,9 +161,10 @@ export async function GET() {
     }))
 
     for (const booking of yearlyBookings) {
-      const created = new Date(booking.createdAt)
-      const monthIndex = created.getMonth()
-      yearlyRevenueByMonth[monthIndex].revenue += booking.totalPrice ?? 0
+      if (!booking.completedAt) continue
+      const { commission } = computeBookingFinancials(booking)
+      const monthIndex = booking.completedAt.getMonth()
+      yearlyRevenueByMonth[monthIndex].revenue += commission
       yearlyRevenueByMonth[monthIndex].bookings += 1
     }
 
@@ -146,25 +184,29 @@ export async function GET() {
 
     const response = {
       revenue: {
-        total: totalRevenue,
-        today: todayRevenue,
-        month: monthRevenue,
-        commission: totalRevenue * PLATFORM_FEE_RATE,
-        net: totalRevenue * (1 - PLATFORM_FEE_RATE),
+        total: grossTotal,
+        today: todayGross,
+        month: monthGross,
+        commission: commissionTotal,
+        todayCommission,
+        monthCommission,
+        net: grossTotal - commissionTotal,
       },
       bookings: {
         monthTotal: monthlyBookings.length,
         yearTotal: yearlyBookings.length,
         avgBookingValue:
           yearlyBookings.length > 0
-            ? yearlyBookings.reduce((sum, booking) => sum + (booking.totalPrice ?? 0), 0) /
-              yearlyBookings.length
+            ? yearlyBookings.reduce((sum, booking) => {
+                const { commission, hostShare } = computeBookingFinancials(booking)
+                return sum + commission + hostShare
+              }, 0) / yearlyBookings.length
             : 0,
         chartByDay: monthlyRevenueByDay,
         chartByMonth: yearlyRevenueByMonth,
       },
       topListings: listingsSummary,
-      payoutRequests: [],
+      payoutRequests,
     }
 
     return NextResponse.json(response)

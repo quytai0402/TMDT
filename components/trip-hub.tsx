@@ -4,6 +4,12 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 
+const SERVICE_STATUS_BADGES: Record<string, { label: string; variant: "outline" | "secondary" | "default" }> = {
+  PENDING: { label: "Concierge đang nhận", variant: "outline" },
+  CONFIRMED: { label: "Đang chuẩn bị", variant: "secondary" },
+  COMPLETED: { label: "Sẵn sàng", variant: "default" },
+}
+
 interface TripHubProps {
   trip: {
     id: string
@@ -41,6 +47,8 @@ interface TripHubProps {
       name: string
       quantityLabel?: string
       totalPrice: number
+      status?: string
+      updatedAt?: string | null
     }>
     servicesTotal?: number
     arrivalGuide: Array<{
@@ -240,15 +248,28 @@ export function TripHub({ trip }: TripHubProps) {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {trip.services.map((service) => (
-                  <div key={service.id} className="flex items-center justify-between rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
-                    <div>
-                      <p className="font-semibold text-primary-600">{service.name}</p>
-                      {service.quantityLabel && <p className="text-xs text-muted-foreground">{service.quantityLabel}</p>}
+                {trip.services.map((service) => {
+                  const status = service.status ? service.status.toUpperCase() : 'PENDING'
+                  const statusInfo = SERVICE_STATUS_BADGES[status] ?? SERVICE_STATUS_BADGES.PENDING
+
+                  return (
+                    <div key={service.id} className="flex items-center justify-between rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+                      <div className="space-y-1">
+                        <p className="font-semibold text-primary-600">{service.name}</p>
+                        {service.quantityLabel && <p className="text-xs text-muted-foreground">{service.quantityLabel}</p>}
+                        {service.updatedAt && (
+                          <p className="text-xs text-muted-foreground">
+                            Cập nhật {new Date(service.updatedAt).toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
+                        <p className="text-sm font-semibold text-primary">{service.totalPrice.toLocaleString("vi-VN")}₫</p>
+                      </div>
                     </div>
-                    <p className="text-sm font-semibold text-primary">{service.totalPrice.toLocaleString("vi-VN")}₫</p>
-                  </div>
-                ))}
+                  )
+                })}
                 <div className="flex items-center justify-between border-t border-primary/20 pt-3 text-sm font-semibold text-primary">
                   <span>Tổng dịch vụ</span>
                   <span>{(trip.servicesTotal || 0).toLocaleString("vi-VN")}₫</span>

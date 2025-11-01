@@ -77,9 +77,13 @@ export async function GET(request: NextRequest) {
         id: plan.id,
         name: plan.name,
         slug: plan.slug,
-        price: plan.price,
-        billingCycle: plan.billingCycle,
-        perks: plan.perks,
+        monthlyPrice: Number(plan.monthlyPrice ?? 0),
+        annualPrice: Number(plan.annualPrice ?? 0),
+        billingCycle: "MONTHLY",
+        perks: [
+          ...(Array.isArray(plan.features) ? plan.features : []),
+          ...(Array.isArray(plan.exclusiveFeatures) ? plan.exclusiveFeatures : []),
+        ],
         description: plan.description,
         stats,
       })),
@@ -90,7 +94,11 @@ export async function GET(request: NextRequest) {
         status: member.membershipStatus,
         startedAt: member.membershipStartedAt,
         expiresAt: member.membershipExpiresAt,
-        features: member.membershipFeatures,
+        features: Array.isArray(member.membershipFeatures)
+          ? member.membershipFeatures
+          : typeof member.membershipFeatures === "string"
+            ? [member.membershipFeatures]
+            : [],
         plan: member.membershipPlan,
       })),
     })

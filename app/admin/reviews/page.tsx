@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { AdminLayout } from '@/components/admin-layout'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -8,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Search, Star, Flag, Eye, Trash2, Loader2 } from 'lucide-react'
+import { Search, Star, Flag, Eye, Trash2, Loader2, CheckCircle2 } from 'lucide-react'
 
 interface Review {
   id: string
@@ -36,10 +37,13 @@ const DEFAULT_STATS: ReviewStats = {
 
 export default function AdminReviewsPage() {
   const [searchQuery, setSearchQuery] = useState("")
+  const router = useRouter()
   const [reviews, setReviews] = useState<Review[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [stats, setStats] = useState<ReviewStats>(DEFAULT_STATS)
+  const [processingId, setProcessingId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const fetchReviews = useCallback(async () => {
     try {
@@ -62,6 +66,59 @@ export default function AdminReviewsPage() {
   useEffect(() => {
     fetchReviews()
   }, [fetchReviews])
+
+  const handleStatusChange = useCallback(
+    async (reviewId: string, status: 'APPROVED' | 'PENDING' | 'FLAGGED') => {
+      try {
+        setProcessingId(reviewId)
+        const res = await fetch('/api/admin/reviews', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reviewId, status }),
+        })
+
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Không thể cập nhật đánh giá')
+        }
+
+        await fetchReviews()
+      } catch (error) {
+        console.error('Failed to update review status:', error)
+      } finally {
+        setProcessingId(null)
+      }
+    },
+    [fetchReviews],
+  )
+
+  const handleDelete = useCallback(
+    async (reviewId: string) => {
+      try {
+        setDeletingId(reviewId)
+        const res = await fetch('/api/admin/reviews', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reviewId }),
+        })
+
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error || 'Không thể xóa đánh giá')
+        }
+
+        setReviews((prev) => prev.filter((review) => review.id !== reviewId))
+        await fetchReviews()
+      } catch (error) {
+        console.error('Failed to delete review:', error)
+      } finally {
+        setDeletingId(null)
+      }
+    },
+    [fetchReviews],
+  )
+
+  const filteredReviews = useMemo(() => reviews, [reviews])
 
   return (
     <AdminLayout>
@@ -140,12 +197,12 @@ export default function AdminReviewsPage() {
                   <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   </div>
-                ) : reviews.length === 0 ? (
+                ) : filteredReviews.length === 0 ? (
                   <div className="text-center py-12 text-muted-foreground">
                     Không có đánh giá nào
                   </div>
                 ) : (
-                  reviews.map((review) => (
+                  filteredReviews.map((review) => (
                     <div key={review.id} className="p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-3">
@@ -186,11 +243,44 @@ export default function AdminReviewsPage() {
                           {new Date(review.createdAt).toLocaleDateString('vi-VN')}
                         </p>
                         <div className="flex items-center gap-2">
-                          <Button size="sm" variant="ghost">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => router.push(`/listing/${review.listing.id}`)}
+                          >
                             <Eye className="h-4 w-4 mr-1" />
                             Xem chi tiết
                           </Button>
-                          <Button size="sm" variant="ghost" className="text-red-600">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={processingId === review.id}
+                            onClick={() =>
+                              handleStatusChange(
+                                review.id,
+                                review.flagged ? 'APPROVED' : 'FLAGGED',
+                              )
+                            }
+                          >
+                            <Flag className="h-4 w-4 mr-1" />
+                            {review.flagged ? 'Bỏ báo cáo' : 'Báo cáo'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={processingId === review.id}
+                            onClick={() => handleStatusChange(review.id, 'APPROVED')}
+                          >
+                            <CheckCircle2 className="h-4 w-4 mr-1" />
+                            Duyệt
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-600"
+                            disabled={deletingId === review.id}
+                            onClick={() => handleDelete(review.id)}
+                          >
                             <Trash2 className="h-4 w-4 mr-1" />
                             Xóa
                           </Button>

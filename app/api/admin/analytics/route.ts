@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { computeBookingFinancials } from '@/lib/finance'
 
 export async function GET(req: NextRequest) {
   try {
@@ -24,8 +25,8 @@ export async function GET(req: NextRequest) {
       totalListings,
       activeListings,
       totalBookings,
-      completedBookings,
-      totalRevenue,
+      completedBookingsCount,
+      commissionAggregate,
       newUsers,
       newListings,
       newBookings,
@@ -36,9 +37,12 @@ export async function GET(req: NextRequest) {
       prisma.listing.count({ where: { status: 'ACTIVE' } }),
       prisma.booking.count(),
       prisma.booking.count({ where: { status: 'COMPLETED' } }),
-      prisma.payment.aggregate({
+      prisma.booking.aggregate({
         where: { status: 'COMPLETED' },
-        _sum: { amount: true },
+        _sum: {
+          platformCommission: true,
+          serviceFee: true,
+        },
       }),
       prisma.user.count({
         where: { createdAt: { gte: startDate } },
@@ -87,26 +91,30 @@ export async function GET(req: NextRequest) {
     const bookingGrowth = previousBookings > 0 ? ((newBookings - previousBookings) / previousBookings) * 100 : 0
 
     // Revenue by period (simplified for MongoDB)
-    const payments = await prisma.payment.findMany({
+    const commissionBookings = await prisma.booking.findMany({
       where: {
         status: 'COMPLETED',
-        paidAt: { gte: startDate },
+        completedAt: { gte: startDate },
       },
       select: {
-        amount: true,
-        paidAt: true,
+        completedAt: true,
+        platformCommission: true,
+        serviceFee: true,
+        totalPrice: true,
+        hostEarnings: true,
       },
     })
 
-    const revenueByDay = payments.reduce((acc: any[], payment) => {
-      if (!payment.paidAt) return acc
-      const date = payment.paidAt.toISOString().split('T')[0]
+    const revenueByDay = commissionBookings.reduce((acc: any[], booking) => {
+      if (!booking.completedAt) return acc
+      const date = booking.completedAt.toISOString().split('T')[0]
+      const { commission } = computeBookingFinancials(booking)
       const existing = acc.find(item => item.date === date)
       if (existing) {
-        existing.revenue += payment.amount
+        existing.revenue += commission
         existing.transactions++
       } else {
-        acc.push({ date, revenue: payment.amount, transactions: 1 })
+        acc.push({ date, revenue: commission, transactions: 1 })
       }
       return acc
     }, [])
@@ -151,8 +159,11 @@ export async function GET(req: NextRequest) {
         totalListings,
         activeListings,
         totalBookings,
-        completedBookings,
-        totalRevenue: totalRevenue._sum.amount || 0,
+        completedBookings: completedBookingsCount,
+        totalRevenue:
+          (commissionAggregate._sum.platformCommission ?? 0) > 0
+            ? commissionAggregate._sum.platformCommission ?? 0
+            : commissionAggregate._sum.serviceFee ?? 0,
       },
       growth: {
         period: parseInt(period),

@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
+import { useConciergeContext } from "@/components/concierge-context-provider"
 
 const SESSION_STORAGE_KEY = "luxestay_live_chat_session"
 const POLL_INTERVAL_MS = 4000
@@ -121,12 +122,14 @@ export function LiveChatWidget() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
+  const { context: conciergeContext } = useConciergeContext()
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const sessionIdRef = useRef<string | null>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const isOpenRef = useRef<boolean>(false)
   const isMinimizedRef = useRef<boolean>(false)
+  const contextMessageKeyRef = useRef<string | null>(null)
 
   const scrollToBottom = useCallback(() => {
     if (isMinimizedRef.current) {
@@ -247,7 +250,15 @@ export function LiveChatWidget() {
       const response = await fetch("/api/live-chat/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify(
+          conciergeContext
+            ? {
+                metadata: {
+                  conciergeContext,
+                },
+              }
+            : {},
+        ),
       })
 
       if (!response.ok) {
@@ -265,7 +276,7 @@ export function LiveChatWidget() {
     } finally {
       setLoading(false)
     }
-  }, [startPolling, updateFromApi])
+  }, [conciergeContext, startPolling, updateFromApi])
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -287,6 +298,68 @@ export function LiveChatWidget() {
       createSession()
     }
   }, [createSession, isOpen, loading])
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    if (!conciergeContext) {
+      contextMessageKeyRef.current = null
+      return
+    }
+
+    const { updatedAt, ...rest } = conciergeContext
+    const contextKey = JSON.stringify(rest)
+
+    if (contextMessageKeyRef.current === contextKey) {
+      return
+    }
+
+    const params = new URLSearchParams()
+
+    if (conciergeContext.source === 'listing' && conciergeContext.listingId) {
+      params.set('listingId', conciergeContext.listingId)
+    } else if (conciergeContext.source === 'booking' && conciergeContext.bookingId) {
+      params.set('bookingId', conciergeContext.bookingId)
+    }
+
+    params.set('includeLatestBooking', 'true')
+
+    const controller = new AbortController()
+
+    fetch(`/api/concierge/context?${params.toString()}`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) return null
+        return (await res.json()) as { introMessage?: string }
+      })
+      .then((data) => {
+        if (!data?.introMessage) return
+
+        setMessages((prev) => {
+          const exists = prev.some((message) => message.sender === 'bot' && message.content === data.introMessage)
+          if (exists) return prev
+          return [
+            ...prev,
+            {
+              id: `context-${Date.now()}`,
+              content: data.introMessage,
+              sender: 'bot',
+              timestamp: new Date(),
+            },
+          ]
+        })
+
+        contextMessageKeyRef.current = contextKey
+      })
+      .catch((error) => {
+        if (error.name === 'AbortError') return
+        console.warn('Unable to fetch concierge intro message:', error)
+      })
+
+    return () => controller.abort()
+  }, [conciergeContext, isOpen])
 
   const handleSendMessage = useCallback(async () => {
     if (!inputMessage.trim() || loading) return

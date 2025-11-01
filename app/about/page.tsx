@@ -162,7 +162,7 @@ export default function AboutPage() {
                 Khám phá ngay
               </a>
               <a
-                href="/host/listings"
+                href="/become-host"
                 className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-white/10 backdrop-blur-sm text-white font-semibold text-lg border-2 border-white/30 hover:bg-white/20 transition-all"
               >
                 Trở thành chủ nhà

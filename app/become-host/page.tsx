@@ -13,6 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, ShieldCheck } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 interface RegionOption {
   slug: string
@@ -40,7 +42,8 @@ export default function BecomeHostPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [regions, setRegions] = useState<RegionOption[]>([])
-  const [loading, setLoading] = useState(true)
+  const [regionsLoading, setRegionsLoading] = useState(true)
+  const [applicationLoading, setApplicationLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
@@ -53,52 +56,81 @@ export default function BecomeHostPage() {
     maintenanceAcknowledged: false,
   })
 
+  const [registerForm, setRegisterForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    password: "",
+    confirmPassword: "",
+    locationSlug: "",
+    introduction: "",
+    experience: "",
+    maintenanceAcknowledged: false,
+  })
+  const [registerSubmitting, setRegisterSubmitting] = useState(false)
+  const [registerError, setRegisterError] = useState<string | null>(null)
+  const [registerSuccess, setRegisterSuccess] = useState<string | null>(null)
+
   useEffect(() => {
-    if (status === "loading") return
-    if (!session?.user) {
-      setLoading(false)
-      return
-    }
-
-    const loadData = async () => {
+    const loadRegions = async () => {
       try {
-        setLoading(true)
-        const [regionsRes, applicationRes] = await Promise.all([
-          fetch("/api/locations/regions", { cache: "no-store" }),
-          fetch("/api/host/applications", { cache: "no-store" }),
-        ])
-
-        if (regionsRes.ok) {
-          const { regions } = await regionsRes.json()
-          setRegions(regions)
+        setRegionsLoading(true)
+        const response = await fetch("/api/locations/regions", { cache: "no-store" })
+        if (!response.ok) {
+          throw new Error("Failed to load regions")
         }
-
-        if (applicationRes.ok) {
-          const { application } = await applicationRes.json()
-          if (application) {
-            setExistingApplication(application)
-            setForm((prev) => ({
-              ...prev,
-              locationSlug: application.locationSlug,
-              introduction: application.introduction ?? "",
-              experience: application.experience ?? "",
-            }))
-          }
-        }
+        const payload = await response.json()
+        const options: RegionOption[] = Array.isArray(payload?.regions) ? payload.regions : []
+        setRegions(
+          options.sort((a, b) => a.name.localeCompare(b.name, "vi", { sensitivity: "base" })),
+        )
       } catch (err) {
-        console.error("Become host load error:", err)
-        setError("Không thể tải dữ liệu. Vui lòng thử lại sau.")
+        console.error("Load regions error:", err)
       } finally {
-        setLoading(false)
+        setRegionsLoading(false)
       }
     }
 
-    void loadData()
+    void loadRegions()
+  }, [])
+
+  useEffect(() => {
+    if (status !== "authenticated" || !session?.user) return
+
+    const loadApplication = async () => {
+      try {
+        setApplicationLoading(true)
+        const response = await fetch("/api/host/applications", { cache: "no-store" })
+        if (!response.ok) return
+        const { application } = await response.json()
+        if (application) {
+          setExistingApplication(application)
+          setForm((prev) => ({
+            ...prev,
+            locationSlug: application.locationSlug,
+            introduction: application.introduction ?? "",
+            experience: application.experience ?? "",
+          }))
+        }
+      } catch (err) {
+        console.error("Load host application error:", err)
+        setError("Không thể tải thông tin hồ sơ host hiện tại.")
+      } finally {
+        setApplicationLoading(false)
+      }
+    }
+
+    void loadApplication()
   }, [session, status])
 
   const selectedRegion = useMemo(
     () => regions.find((region) => region.slug === form.locationSlug),
     [regions, form.locationSlug],
+  )
+
+  const selectedRegisterRegion = useMemo(
+    () => regions.find((region) => region.slug === registerForm.locationSlug),
+    [regions, registerForm.locationSlug],
   )
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -144,6 +176,70 @@ export default function BecomeHostPage() {
     }
   }
 
+  const handleRegister = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setRegisterError(null)
+    setRegisterSuccess(null)
+
+    if (!registerForm.locationSlug) {
+      setRegisterError("Vui lòng chọn khu vực homestay.")
+      return
+    }
+
+    if (!registerForm.maintenanceAcknowledged) {
+      setRegisterError("Bạn cần đồng ý với chính sách phí duy trì và lệ phí nền tảng.")
+      return
+    }
+
+    if (registerForm.password !== registerForm.confirmPassword) {
+      setRegisterError("Mật khẩu xác nhận không khớp.")
+      return
+    }
+
+    try {
+      setRegisterSubmitting(true)
+      const response = await fetch("/api/host/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: registerForm.name,
+          email: registerForm.email,
+          phone: registerForm.phone,
+          password: registerForm.password,
+          introduction: registerForm.introduction,
+          experience: registerForm.experience,
+          locationSlug: registerForm.locationSlug,
+          locationName: selectedRegisterRegion?.name || registerForm.locationSlug,
+          maintenanceAcknowledged: registerForm.maintenanceAcknowledged,
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data.error || "Không thể đăng ký host.")
+      }
+
+      setRegisterSuccess(
+        data.message || "Đăng ký thành công. Vui lòng đăng nhập bằng tài khoản vừa tạo để tiếp tục.",
+      )
+      setRegisterForm({
+        name: "",
+        email: "",
+        phone: "",
+        password: "",
+        confirmPassword: "",
+        locationSlug: "",
+        introduction: "",
+        experience: "",
+        maintenanceAcknowledged: false,
+      })
+    } catch (err) {
+      setRegisterError((err as Error).message)
+    } finally {
+      setRegisterSubmitting(false)
+    }
+  }
+
   if (status === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -157,12 +253,166 @@ export default function BecomeHostPage() {
       <div className="min-h-screen flex flex-col">
         <Header />
         <main className="flex-1 bg-muted/30">
-          <div className="container mx-auto px-4 lg:px-8 py-16 flex flex-col items-center text-center gap-4">
-            <h1 className="font-serif text-4xl font-bold text-foreground">Trở thành chủ nhà LuxeStay</h1>
-            <p className="max-w-2xl text-muted-foreground">
-              Đăng nhập để đăng ký trở thành host, tham gia mạng lưới homestay cao cấp và bắt đầu kiếm thu nhập bền vững.
-            </p>
-            <Button onClick={() => router.push("/login")}>Đăng nhập để tiếp tục</Button>
+          <div className="container mx-auto px-4 lg:px-8 py-12">
+            <div className="max-w-3xl mx-auto space-y-6">
+              <div className="text-center space-y-3">
+                <h1 className="font-serif text-4xl font-bold text-foreground">Trở thành chủ nhà LuxeStay</h1>
+                <p className="text-muted-foreground">
+                  Tạo tài khoản host mới và gửi hồ sơ để đội ngũ LuxeStay duyệt trong vòng 24-48 giờ. Bạn sẽ nhận được
+                  email hướng dẫn sau khi được phê duyệt.
+                </p>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Đăng ký tài khoản host</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <form className="space-y-5 text-left" onSubmit={handleRegister}>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="register-name">Họ và tên</Label>
+                        <Input
+                          id="register-name"
+                          value={registerForm.name}
+                          onChange={(event) => setRegisterForm((prev) => ({ ...prev, name: event.target.value }))}
+                          placeholder="Nguyễn Minh Anh"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="register-email">Email</Label>
+                        <Input
+                          id="register-email"
+                          type="email"
+                          value={registerForm.email}
+                          onChange={(event) => setRegisterForm((prev) => ({ ...prev, email: event.target.value }))}
+                          placeholder="host@example.com"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="register-phone">Số điện thoại</Label>
+                        <Input
+                          id="register-phone"
+                          value={registerForm.phone}
+                          onChange={(event) => setRegisterForm((prev) => ({ ...prev, phone: event.target.value }))}
+                          placeholder="0987 654 321"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="register-location">Khu vực homestay</Label>
+                        <Select
+                          value={registerForm.locationSlug}
+                          onValueChange={(value) => setRegisterForm((prev) => ({ ...prev, locationSlug: value }))}
+                          disabled={regionsLoading}
+                        >
+                          <SelectTrigger id="register-location">
+                            <SelectValue placeholder={regionsLoading ? "Đang tải..." : "Chọn tỉnh/thành phố"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {regions.map((region) => (
+                              <SelectItem key={region.slug} value={region.slug}>
+                                {region.name}
+                                {region.country ? ` • ${region.country}` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="register-password">Mật khẩu</Label>
+                        <Input
+                          id="register-password"
+                          type="password"
+                          value={registerForm.password}
+                          onChange={(event) => setRegisterForm((prev) => ({ ...prev, password: event.target.value }))}
+                          placeholder="Tối thiểu 8 ký tự"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="register-confirm">Xác nhận mật khẩu</Label>
+                        <Input
+                          id="register-confirm"
+                          type="password"
+                          value={registerForm.confirmPassword}
+                          onChange={(event) =>
+                            setRegisterForm((prev) => ({ ...prev, confirmPassword: event.target.value }))
+                          }
+                          placeholder="Nhập lại mật khẩu"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Giới thiệu homestay</Label>
+                      <Textarea
+                        rows={4}
+                        value={registerForm.introduction}
+                        onChange={(event) =>
+                          setRegisterForm((prev) => ({ ...prev, introduction: event.target.value }))
+                        }
+                        placeholder="Mô tả vị trí, tiện nghi và trải nghiệm mà homestay của bạn mang lại."
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Kinh nghiệm & đội ngũ</Label>
+                      <Textarea
+                        rows={3}
+                        value={registerForm.experience}
+                        onChange={(event) =>
+                          setRegisterForm((prev) => ({ ...prev, experience: event.target.value }))
+                        }
+                        placeholder="Bạn đã vận hành homestay bao lâu? Có đội ngũ hỗ trợ nào không?"
+                      />
+                    </div>
+
+                    <div className="flex items-start gap-2 rounded-md border border-dashed border-primary/40 bg-primary/5 p-4">
+                      <Checkbox
+                        id="register-maintenance"
+                        checked={registerForm.maintenanceAcknowledged}
+                        onCheckedChange={(checked) =>
+                          setRegisterForm((prev) => ({ ...prev, maintenanceAcknowledged: checked === true }))
+                        }
+                      />
+                      <Label htmlFor="register-maintenance" className="text-sm leading-6 text-muted-foreground">
+                        Tôi đồng ý với phí duy trì nền tảng <strong>299.000đ/tháng</strong> và lệ phí dịch vụ{" "}
+                        <strong>10%/mỗi kỳ lưu trú</strong>. LuxeStay sẽ khấu trừ tự động trước khi thanh toán về ví
+                        host.
+                      </Label>
+                    </div>
+
+                    {registerError && <p className="text-sm text-red-600">{registerError}</p>}
+                    {registerSuccess && (
+                      <p className="text-sm text-green-600">
+                        {registerSuccess}{" "}
+                        <Button variant="link" className="px-1" onClick={() => router.push("/login")}>
+                          Đăng nhập ngay
+                        </Button>
+                      </p>
+                    )}
+
+                    <div className="flex items-center justify-between">
+                      <Button type="submit" disabled={registerSubmitting || regionsLoading}>
+                        {registerSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Đăng ký host
+                      </Button>
+                      <div className="text-sm text-muted-foreground">
+                        Đã có tài khoản?{" "}
+                        <Button variant="link" className="px-1" onClick={() => router.push("/login")}>
+                          Đăng nhập
+                        </Button>
+                      </div>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </main>
         <Footer />
@@ -219,7 +469,7 @@ export default function BecomeHostPage() {
                     <Select
                       value={form.locationSlug}
                       onValueChange={(value) => setForm((prev) => ({ ...prev, locationSlug: value }))}
-                      disabled={loading}
+                      disabled={applicationLoading}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Chọn tỉnh/thành phố" />

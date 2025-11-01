@@ -52,10 +52,10 @@ model User {
   accounts               Account[]
   sessions               Session[]
   listings               Listing[]
-  bookingsAsGuest        Booking[]           @relation("GuestBookings")
-  bookingsAsHost         Booking[]           @relation("HostBookings")
-  reviewsWritten         Review[]            @relation("ReviewsWritten")
-  reviewsReceived        Review[]            @relation("ReviewsReceived")
+  bookingsAsGuest        Booking[]             @relation("GuestBookings")
+  bookingsAsHost         Booking[]             @relation("HostBookings")
+  reviewsWritten         Review[]              @relation("ReviewsWritten")
+  reviewsReceived        Review[]              @relation("ReviewsReceived")
   messages               Message[]
   notifications          Notification[]
   wishlists              Wishlist[]
@@ -73,16 +73,18 @@ model User {
   comments               Comment[]
   experiences            Experience[]
   experienceBookings     ExperienceBooking[]
-  experienceReviews      ExperienceReview[]  @relation("ExperienceReviewsWritten")
+  experienceReviews      ExperienceReview[]    @relation("ExperienceReviewsWritten")
   userQuests             UserQuest[]
-  conciergePlansHosted   ConciergePlan[]     @relation("HostConciergePlans")
-  conciergePlansAsGuest  ConciergePlan[]     @relation("GuestConciergePlans")
-  conciergePlansAssigned ConciergePlan[]     @relation("AgentConciergePlans")
-  membershipPlan         MembershipPlan?     @relation(fields: [membershipPlanId], references: [id], onDelete: SetNull)
-  following              UserFollow[]        @relation("UserFollowing")
-  followers              UserFollow[]        @relation("UserFollowers")
+  conciergePlansHosted   ConciergePlan[]       @relation("HostConciergePlans")
+  conciergePlansAsGuest  ConciergePlan[]       @relation("GuestConciergePlans")
+  conciergePlansAssigned ConciergePlan[]       @relation("AgentConciergePlans")
+  membershipPlan         MembershipPlan?       @relation(fields: [membershipPlanId], references: [id], onDelete: SetNull)
+  following              UserFollow[]          @relation("UserFollowing")
+  followers              UserFollow[]          @relation("UserFollowers")
   hostPayouts            HostPayout[]
   hostApplications       HostApplication[]
+  promotionsCreated      Promotion[]           @relation("HostPromotions")
+  promotionRedemptions   PromotionRedemption[]
 
   @@index([referralCode], map: "users_referralCode_idx")
   @@map("users")
@@ -266,6 +268,8 @@ model MembershipPlan {
   isPopular         Boolean  @default(false)
   features          String[]
   exclusiveFeatures String[]
+  bookingDiscountRate      Float   @default(0)
+  applyDiscountToServices  Boolean @default(false)
   displayOrder      Int      @default(0)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -361,14 +365,17 @@ model RewardCatalogItem {
   terms             String?
   metadata          Json?
   badgeId           String?               @db.ObjectId
+  promotionId       String?               @db.ObjectId
 
   badge       RewardBadge?       @relation(fields: [badgeId], references: [id], onDelete: SetNull)
+  promotion   Promotion?         @relation(fields: [promotionId], references: [id], onDelete: SetNull)
   redemptions RewardRedemption[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([category, isActive])
+  @@index([promotionId])
   @@map("reward_catalog_items")
 }
 
@@ -675,8 +682,11 @@ model Booking {
   cleaningFee             Float  @default(0)
   serviceFee              Float  @default(0)
   discount                Float  @default(0)
+  membershipDiscount      Float  @default(0)
+  promotionDiscount       Float  @default(0)
   additionalServices      Json?
   additionalServicesTotal Float  @default(0)
+  appliedPromotions       Json?
   totalPrice              Float
   currency                String @default("VND")
 
@@ -709,15 +719,16 @@ model Booking {
   completedAt DateTime?
 
   // Relations
-  listing         Listing          @relation(fields: [listingId], references: [id], onDelete: Restrict)
-  guest           User?            @relation("GuestBookings", fields: [guestId], references: [id], onDelete: SetNull)
-  host            User             @relation("HostBookings", fields: [hostId], references: [id], onDelete: Restrict)
-  payment         Payment?
-  review          Review?
-  messages        Message[]
-  serviceBookings ServiceBooking[]
-  conciergePlans  ConciergePlan[]
-  hostPayout      HostPayout?      @relation("PayoutBookings", fields: [hostPayoutRequestId], references: [id], onDelete: SetNull)
+  listing              Listing               @relation(fields: [listingId], references: [id], onDelete: Restrict)
+  guest                User?                 @relation("GuestBookings", fields: [guestId], references: [id], onDelete: SetNull)
+  host                 User                  @relation("HostBookings", fields: [hostId], references: [id], onDelete: Restrict)
+  payment              Payment?
+  review               Review?
+  messages             Message[]
+  serviceBookings      ServiceBooking[]
+  conciergePlans       ConciergePlan[]
+  hostPayout           HostPayout?           @relation("PayoutBookings", fields: [hostPayoutRequestId], references: [id], onDelete: SetNull)
+  promotionRedemptions PromotionRedemption[] @relation("BookingPromotionRedemptions")
 
   @@index([contactPhoneNormalized])
   @@map("bookings")
@@ -1114,6 +1125,15 @@ model Promotion {
   maxUses         Int?
   usedCount       Int    @default(0)
 
+  maxUsesPerUser         Int?
+  pointCost              Int?            @default(0)
+  source                 PromotionSource @default(ADMIN)
+  hostId                 String?         @db.ObjectId
+  stackWithMembership    Boolean         @default(true)
+  stackWithPromotions    Boolean         @default(false)
+  allowedMembershipTiers LoyaltyTier[]   @default([])
+  metadata               Json?
+
   // Targeting
   userIds       String[]       @db.ObjectId
   listingIds    String[]       @db.ObjectId
@@ -1123,10 +1143,37 @@ model Promotion {
   validUntil DateTime
   isActive   Boolean  @default(true)
 
+  host        User?                 @relation("HostPromotions", fields: [hostId], references: [id], onDelete: SetNull)
+  redemptions PromotionRedemption[]
+
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  RewardCatalogItem RewardCatalogItem[]
+
+  @@map("promotions")
+}
+
+model PromotionRedemption {
+  id               String                    @id @default(auto()) @map("_id") @db.ObjectId
+  promotionId      String                    @db.ObjectId
+  userId           String                    @db.ObjectId
+  status           PromotionRedemptionStatus @default(ACTIVE)
+  redeemedAt       DateTime                  @default(now())
+  expiresAt        DateTime?
+  appliedBookingId String?                   @db.ObjectId
+  pointsSpent      Int?                      @default(0)
+  metadata         Json?
+
+  promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  booking   Booking?  @relation("BookingPromotionRedemptions", fields: [appliedBookingId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@map("promotions")
+  @@index([userId, status])
+  @@index([promotionId, status])
+  @@map("promotion_redemptions")
 }
 
 model AuditLog {
@@ -1238,6 +1285,13 @@ enum RewardRedemptionStatus {
   REJECTED
   CANCELLED
   FULFILLED
+}
+
+enum PromotionRedemptionStatus {
+  ACTIVE
+  USED
+  EXPIRED
+  CANCELLED
 }
 
 enum RewardCatalogCategory {
@@ -1463,6 +1517,12 @@ enum PromotionType {
   FLASH_SALE
   LOYALTY_REWARD
   GENERAL
+}
+
+enum PromotionSource {
+  ADMIN
+  HOST
+  LOYALTY_EXCHANGE
 }
 
 enum DiscountType {

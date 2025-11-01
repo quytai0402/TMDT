@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutDashboard, Home, Calendar, MessageCircle, BarChart3, Settings, Plus, DollarSign, Zap, BookOpen, ClipboardList, Wallet } from "lucide-react"
+import { LayoutDashboard, Home, Calendar, MessageCircle, BarChart3, Settings, Plus, DollarSign, Zap, BookOpen, ClipboardList, Wallet, TicketPercent } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 const menuItems = [
@@ -16,6 +16,7 @@ const menuItems = [
   { icon: Wallet, label: "Ví host", href: "/host/payouts" },
   { icon: Zap, label: "Tự động hóa", href: "/host/automation" },
   { icon: BookOpen, label: "Tài nguyên", href: "/host/resources" },
+  { icon: TicketPercent, label: "Coupon", href: "/host/coupons" },
   { icon: Settings, label: "Cài đặt", href: "/host/settings" },
 ]
 

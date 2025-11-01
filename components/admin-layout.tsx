@@ -33,6 +33,7 @@ import {
   Crown,
   ChevronRight,
   LogOut,
+  TicketPercent,
 } from "lucide-react"
 import { NotificationCenter } from "@/components/notification-center"
 
@@ -100,6 +101,11 @@ const NAV_ITEMS: NavItem[] = [
     title: "Membership",
     href: "/admin/memberships",
     icon: Crown,
+  },
+  {
+    title: "Voucher",
+    href: "/admin/vouchers",
+    icon: TicketPercent,
   },
   {
     title: "Báo cáo",

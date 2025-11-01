@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -50,6 +51,7 @@ interface Booking {
   guestEmail: string
   listingTitle: string
   listingCity: string
+  listingState?: string | null
   checkIn: string
   checkOut: string
   guests: number
@@ -64,6 +66,8 @@ interface Booking {
     totalSpent: number
   } | null
   additionalServices: ServiceRequest[]
+  hostId?: string | null
+  hostName?: string | null
 }
 
 const statusConfig: Record<BookingStatus, { label: string; color: string; icon: typeof CheckCircle2 }> = {
@@ -98,6 +102,8 @@ const mapBooking = (raw: any): Booking => {
     (raw.children || 0) +
     (raw.infants || 0)
 
+  const host = raw.listing?.host ?? null
+
   return {
     id: raw.id,
     bookingRef: raw.bookingRef || (typeof raw.id === "string" ? raw.id.slice(-8).toUpperCase() : ""),
@@ -106,6 +112,7 @@ const mapBooking = (raw: any): Booking => {
     guestEmail: raw.guestEmail || raw.guest?.email || "",
     listingTitle: raw.listing?.title || "—",
     listingCity: raw.listing?.city || "",
+    listingState: raw.listing?.state || "",
     checkIn: raw.checkIn,
     checkOut: raw.checkOut,
     guests: guestsCount,
@@ -117,6 +124,8 @@ const mapBooking = (raw: any): Booking => {
     isGuestBooking: Boolean(raw.isGuestBooking ?? raw.guestType === "WALK_IN"),
     guestHistory: raw.guestHistory || null,
     additionalServices: services,
+    hostId: host?.id ?? null,
+    hostName: host?.name || host?.email || null,
   }
 }
 
@@ -131,6 +140,12 @@ export function AdminBookingsDashboard() {
   const [serviceFilter, setServiceFilter] = useState<"all" | "with" | "without">("all")
   const [serviceStatusFilter, setServiceStatusFilter] = useState<"ALL" | ServiceStatus>("ALL")
   const [serviceUpdating, setServiceUpdating] = useState<Record<string, boolean>>({})
+  const [regionFilter, setRegionFilter] = useState<string>("all")
+  const [hostFilter, setHostFilter] = useState<string>("all")
+  const [regionOptions, setRegionOptions] = useState<
+    Array<{ value: string; label: string; city: string; state?: string | null }>
+  >([])
+  const [hostOptions, setHostOptions] = useState<Array<{ id: string; name: string; email?: string | null }>>([])
 
   const fetchBookings = useCallback(async () => {
     try {
@@ -139,6 +154,16 @@ export function AdminBookingsDashboard() {
       if (statusFilter !== "ALL") params.set("status", statusFilter)
       if (serviceFilter) params.set("hasServices", serviceFilter)
       if (serviceStatusFilter !== "ALL") params.set("serviceStatus", serviceStatusFilter)
+      if (regionFilter !== "all") {
+        const [encodedCity, encodedState] = regionFilter.split("|")
+        const city = encodedCity ? decodeURIComponent(encodedCity) : ""
+        const state = encodedState ? decodeURIComponent(encodedState) : ""
+        if (city) params.set("city", city)
+        if (state) params.set("state", state)
+      }
+      if (hostFilter !== "all") {
+        params.set("hostId", hostFilter)
+      }
 
       const response = await fetch(`/api/admin/bookings?${params.toString()}`, {
         cache: "no-store",
@@ -151,13 +176,42 @@ export function AdminBookingsDashboard() {
       const data = await response.json()
       const mapped = Array.isArray(data.bookings) ? data.bookings.map(mapBooking) : []
       setBookings(mapped)
+
+      const regionPayload = Array.isArray(data.filters?.regions) ? data.filters.regions : []
+      const mappedRegions = regionPayload
+        .filter((region: any) => region?.city)
+        .map((region: any) => {
+          const value = `${encodeURIComponent(region.city)}|${region.state ? encodeURIComponent(region.state) : ""}`
+          return {
+            value,
+            label: region.label ?? region.city,
+            city: region.city,
+            state: region.state ?? null,
+          }
+        })
+        .sort((a: any, b: any) => a.label.localeCompare(b.label, "vi", { sensitivity: "base" }))
+      setRegionOptions(mappedRegions)
+      if (regionFilter !== "all" && !mappedRegions.some((region: any) => region.value === regionFilter)) {
+        setRegionFilter("all")
+      }
+
+      const hostPayload = Array.isArray(data.filters?.hosts) ? data.filters.hosts : []
+      const mappedHosts = hostPayload.map((host: any) => ({
+        id: host.id,
+        name: host.name || host.email || "Host",
+        email: host.email ?? null,
+      }))
+      setHostOptions(mappedHosts)
+      if (hostFilter !== "all" && !mappedHosts.some((host: any) => host.id === hostFilter)) {
+        setHostFilter("all")
+      }
     } catch (error) {
       console.error("Error fetching bookings:", error)
       setBookings([])
     } finally {
       setLoading(false)
     }
-  }, [serviceFilter, serviceStatusFilter, statusFilter])
+  }, [hostFilter, regionFilter, serviceFilter, serviceStatusFilter, statusFilter])
 
   useEffect(() => {
     void fetchBookings()
@@ -382,7 +436,7 @@ export function AdminBookingsDashboard() {
                 </Button>
               ))}
             </div>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap items-center">
               {([
                 { value: 'ALL', label: 'Trạng thái dịch vụ' },
                 { value: 'PENDING', label: 'Chờ xử lý' },
@@ -398,6 +452,32 @@ export function AdminBookingsDashboard() {
                   {option.label}
                 </Button>
               ))}
+              <Select value={regionFilter} onValueChange={setRegionFilter}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Lọc theo khu vực" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả khu vực</SelectItem>
+                  {regionOptions.map((region) => (
+                    <SelectItem key={region.value} value={region.value}>
+                      {region.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={hostFilter} onValueChange={setHostFilter}>
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="Lọc theo host" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tất cả host</SelectItem>
+                  {hostOptions.map((host) => (
+                    <SelectItem key={host.id} value={host.id}>
+                      {host.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>
@@ -452,7 +532,12 @@ export function AdminBookingsDashboard() {
                   <TableCell>
                     <div className="flex flex-col">
                       <span className="font-medium">{booking.listingTitle}</span>
-                      <span className="text-xs text-muted-foreground">{booking.listingCity}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {[booking.listingCity, booking.listingState].filter(Boolean).join(", ")}
+                      </span>
+                      {booking.hostName && (
+                        <span className="text-[11px] text-muted-foreground">Host: {booking.hostName}</span>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>

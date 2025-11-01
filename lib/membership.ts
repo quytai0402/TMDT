@@ -15,6 +15,8 @@ export type MembershipDetails = {
     icon: string | null
     features: string[]
     exclusiveFeatures: string[]
+    bookingDiscountRate: number
+    applyDiscountToServices: boolean
   } | null
 }
 
@@ -35,6 +37,8 @@ export async function getMembershipForUser(userId: string): Promise<MembershipDe
           icon: true,
           features: true,
           exclusiveFeatures: true,
+          bookingDiscountRate: true,
+          applyDiscountToServices: true,
         },
       },
     },
@@ -80,6 +84,8 @@ export async function getMembershipForUser(userId: string): Promise<MembershipDe
           icon: user.membershipPlan.icon,
           features: user.membershipPlan.features,
           exclusiveFeatures: user.membershipPlan.exclusiveFeatures,
+          bookingDiscountRate: user.membershipPlan.bookingDiscountRate,
+          applyDiscountToServices: user.membershipPlan.applyDiscountToServices,
         }
       : null,
   }

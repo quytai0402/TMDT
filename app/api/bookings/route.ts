@@ -6,8 +6,7 @@ import { calculateNights, calculateServiceFee, calculateTotalPrice, calculateDis
 import { sendBookingConfirmationEmail } from '@/lib/email'
 import { notifyAdmins, notifyUser } from '@/lib/notifications'
 import { z } from 'zod'
-import { Prisma } from '@prisma/client'
-import { NotificationType } from '@prisma/client'
+import { Prisma, MembershipStatus, NotificationType } from '@prisma/client'
 
 const createBookingSchema = z
   .object({
@@ -247,6 +246,17 @@ export async function POST(req: NextRequest) {
             name: true,
             email: true,
             phone: true,
+            membershipStatus: true,
+            membershipExpiresAt: true,
+            membershipPlan: {
+              select: {
+                id: true,
+                slug: true,
+                name: true,
+                bookingDiscountRate: true,
+                applyDiscountToServices: true,
+              },
+            },
           },
         })
       : null
@@ -719,7 +729,52 @@ export async function POST(req: NextRequest) {
       : calculateServiceFee(listing.basePrice, nights)
     const additionalServiceFee = hasCustomServiceFee ? 0 : additionalServicesTotal * 0.1
     const serviceFeeAmount = baseServiceFee + additionalServiceFee
-    const totalPrice = accommodationSubtotal + cleaningFeeAmount + serviceFeeAmount + additionalServicesTotal
+
+    const membershipPlanInfo = guestUser?.membershipPlan
+    const membershipIsActive =
+      !!guestUser &&
+      guestUser.membershipStatus === MembershipStatus.ACTIVE &&
+      (!guestUser.membershipExpiresAt || guestUser.membershipExpiresAt >= now)
+
+    const membershipDiscountRate = membershipIsActive
+      ? Math.max(0, Number(membershipPlanInfo?.bookingDiscountRate ?? 0))
+      : 0
+
+    const applyMembershipToServices =
+      membershipIsActive && membershipPlanInfo?.applyDiscountToServices ? true : false
+
+    const discountableSubtotal =
+      accommodationSubtotal + (applyMembershipToServices ? additionalServicesTotal : 0)
+
+    const membershipDiscountPercent = membershipDiscountRate > 0 ? membershipDiscountRate / 100 : 0
+    const membershipDiscountAmount =
+      membershipDiscountPercent > 0
+        ? Math.min(Math.round(discountableSubtotal * membershipDiscountPercent), discountableSubtotal)
+        : 0
+
+    const promotionDiscountAmount = 0
+    const appliedPromotions: Array<Record<string, unknown>> = []
+
+    if (membershipDiscountAmount > 0) {
+      appliedPromotions.push({
+        type: 'MEMBERSHIP',
+        rate: membershipDiscountRate,
+        amount: membershipDiscountAmount,
+        appliesToServices: applyMembershipToServices,
+        plan: membershipPlanInfo
+          ? {
+              id: membershipPlanInfo.id,
+              name: membershipPlanInfo.name,
+              slug: membershipPlanInfo.slug,
+            }
+          : null,
+      })
+    }
+
+    const totalBeforeDiscounts =
+      accommodationSubtotal + cleaningFeeAmount + serviceFeeAmount + additionalServicesTotal
+    const totalDiscount = membershipDiscountAmount + promotionDiscountAmount
+    const totalPrice = Math.max(0, totalBeforeDiscounts - totalDiscount)
 
     // Create booking
     const booking = await prisma.booking.create({
@@ -742,8 +797,12 @@ export async function POST(req: NextRequest) {
         basePrice: listing.basePrice,
         cleaningFee: cleaningFeeAmount,
         serviceFee: serviceFeeAmount,
+        discount: totalDiscount,
+        membershipDiscount: membershipDiscountAmount,
+        promotionDiscount: promotionDiscountAmount,
         additionalServices: normalizedAdditionalServices,
         additionalServicesTotal,
+        appliedPromotions: appliedPromotions.length ? appliedPromotions : undefined,
         totalPrice,
         status: 'PENDING',
         instantBook: listing.instantBookable,

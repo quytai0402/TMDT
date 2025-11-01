@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import type { Prisma } from "@prisma/client"
+import type { Prisma, ListingStatus } from "@prisma/client"
 
 // GET /api/admin/listings - Get all listings with filters
 export async function GET(request: NextRequest) {
@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       select: { role: true },
     })
 
-    if (user?.role !== "ADMIN") {
+    if (user?.role !== "ADMIN" && user?.role !== "SUPER_ADMIN") {
       return NextResponse.json({ error: "Forbidden - Admin only" }, { status: 403 })
     }
 
@@ -43,7 +43,18 @@ export async function GET(request: NextRequest) {
     }
 
     if (status && status !== "all") {
-      where.status = status
+      const normalized = status.toUpperCase()
+      const statusMap: Record<string, ListingStatus> = {
+        PENDING: "PENDING_REVIEW",
+        REVIEW: "PENDING_REVIEW",
+        REJECTED: "INACTIVE",
+        APPROVED: "ACTIVE",
+      }
+      const candidate = statusMap[normalized] ?? (normalized as ListingStatus)
+      const validStatuses = new Set<ListingStatus>(Object.values(ListingStatus))
+      if (validStatuses.has(candidate)) {
+        where.status = candidate
+      }
     }
 
     // Get listings
@@ -120,7 +131,7 @@ export async function PATCH(request: NextRequest) {
       select: { role: true },
     })
 
-    if (admin?.role !== "ADMIN") {
+    if (admin?.role !== "ADMIN" && admin?.role !== "SUPER_ADMIN") {
       return NextResponse.json({ error: "Forbidden - Admin only" }, { status: 403 })
     }
 
@@ -134,7 +145,18 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    if (!["ACTIVE", "INACTIVE", "PENDING", "REJECTED"].includes(status)) {
+    const statusMap: Record<string, ListingStatus> = {
+      PENDING: "PENDING_REVIEW",
+      REVIEW: "PENDING_REVIEW",
+      REJECTED: "INACTIVE",
+      APPROVED: "ACTIVE",
+    }
+
+    const normalized = String(status).toUpperCase()
+    const candidate = statusMap[normalized] ?? (normalized as ListingStatus)
+    const validStatuses = new Set<ListingStatus>(Object.values(ListingStatus))
+
+    if (!validStatuses.has(candidate)) {
       return NextResponse.json(
         { error: "Invalid status" },
         { status: 400 }
@@ -143,7 +165,7 @@ export async function PATCH(request: NextRequest) {
 
     const updatedListing = await prisma.listing.update({
       where: { id: listingId },
-      data: { status },
+      data: { status: candidate },
     })
 
     return NextResponse.json({
@@ -174,7 +196,7 @@ export async function DELETE(request: NextRequest) {
       select: { role: true },
     })
 
-    if (admin?.role !== "ADMIN") {
+    if (admin?.role !== "ADMIN" && admin?.role !== "SUPER_ADMIN") {
       return NextResponse.json({ error: "Forbidden - Admin only" }, { status: 403 })
     }
 

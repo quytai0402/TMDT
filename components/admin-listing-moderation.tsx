@@ -67,14 +67,17 @@ const SUMMARY_TARGETS: Array<{ label: string; value: StatusKey; icon: React.Comp
 
 const statusBadge = (status?: string | null) => {
   switch (status) {
-    case "ACTIVE":
-      return { className: "bg-green-100 text-green-700", label: "Đang hoạt động" }
+    case "PENDING_REVIEW":
     case "PENDING":
       return { className: "bg-yellow-100 text-yellow-700", label: "Chờ duyệt" }
+    case "ACTIVE":
+      return { className: "bg-green-100 text-green-700", label: "Đang hoạt động" }
+    case "INACTIVE":
+      return { className: "bg-red-100 text-red-700", label: "Bị từ chối" }
     case "REJECTED":
       return { className: "bg-red-100 text-red-700", label: "Bị từ chối" }
-    case "INACTIVE":
-      return { className: "bg-gray-100 text-gray-700", label: "Tạm dừng" }
+    case "BLOCKED":
+      return { className: "bg-orange-100 text-orange-700", label: "Đang bị khóa" }
     default:
       return { className: "bg-blue-100 text-blue-700", label: status ?? "Không xác định" }
   }
@@ -232,9 +235,13 @@ export function ListingModeration() {
         throw new Error("Không thể cập nhật trạng thái listing")
       }
 
+      const payload = await response.json()
+      const updatedStatus =
+        payload?.listing?.status ?? (nextStatus === "REJECTED" ? "INACTIVE" : nextStatus)
+
       setListings((prev) =>
         prev.map((listing) =>
-          listing.id === listingId ? { ...listing, status: nextStatus } : listing,
+          listing.id === listingId ? { ...listing, status: updatedStatus } : listing,
         ),
       )
 

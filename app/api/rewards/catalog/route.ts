@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
+import { Prisma } from "@prisma/client"
+
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
@@ -28,38 +30,54 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get("limit") || "20")
 
     // Build filter
-    const where: any = {}
+    const where: Prisma.RewardCatalogItemWhereInput = {}
     
     if (category) {
-      where.category = category
+      where.category = category as any
     }
     
     if (minPoints || maxPoints) {
       where.pointsCost = {}
-      if (minPoints) where.pointsCost.gte = parseInt(minPoints)
-      if (maxPoints) where.pointsCost.lte = parseInt(maxPoints)
+      if (minPoints) where.pointsCost.gte = parseInt(minPoints, 10)
+      if (maxPoints) where.pointsCost.lte = parseInt(maxPoints, 10)
     }
     
     if (available === "true") {
-      where.isAvailable = true
+      where.isActive = true
       where.OR = [
-        { stock: { gt: 0 } },
-        { stock: null }
+        { quantityAvailable: null },
+        { quantityAvailable: { gt: 0 } },
       ]
     }
 
     // Get total count
-    const total = await (prisma as any).rewardCatalogItem.count({ where })
+    const total = await prisma.rewardCatalogItem.count({ where })
 
     // Get catalog items with pagination
-    const items = await (prisma as any).rewardCatalogItem.findMany({
+    const items = await prisma.rewardCatalogItem.findMany({
       where,
       orderBy: [
-        { featured: 'desc' },
-        { pointsCost: 'asc' }
+        { pointsCost: "asc" },
+        { createdAt: "desc" },
       ],
       skip: (page - 1) * limit,
-      take: limit
+      take: limit,
+      include: {
+        promotion: {
+          select: {
+            id: true,
+            code: true,
+            source: true,
+            discountType: true,
+            discountValue: true,
+            maxDiscount: true,
+            validFrom: true,
+            validUntil: true,
+            pointCost: true,
+            isActive: true,
+          },
+        },
+      },
     })
 
     // Get user's points for affordability check
@@ -72,10 +90,26 @@ export async function GET(request: Request) {
     })
 
     // Mark which items user can afford
-    const itemsWithAffordability = items.map((item: any) => ({
-      ...item,
+    const itemsWithAffordability = items.map((item) => ({
+      id: item.id,
+      slug: item.slug,
+      name: item.name,
+      description: item.description,
+      category: item.category,
+      pointsCost: item.pointsCost,
+      cashValue: item.cashValue,
+      quantityAvailable: item.quantityAvailable,
+      maxPerUser: item.maxPerUser,
+      startAt: item.startAt,
+      endAt: item.endAt,
+      isActive: item.isActive,
+      image: item.image,
+      terms: item.terms,
+      metadata: item.metadata,
+      badgeId: item.badgeId,
+      promotion: item.promotion,
       canAfford: user ? user.loyaltyPoints >= item.pointsCost : false,
-      userPoints: user?.loyaltyPoints || 0
+      userPoints: user?.loyaltyPoints || 0,
     }))
 
     return NextResponse.json({

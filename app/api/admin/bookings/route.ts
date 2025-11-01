@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
       select: { role: true },
     })
 
-    if (user?.role !== "ADMIN") {
+    if (user?.role !== "ADMIN" && user?.role !== "SUPER_ADMIN") {
       return NextResponse.json({ error: "Forbidden - Admin only" }, { status: 403 })
     }
 
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get bookings
-    const [bookings, totalCount] = await Promise.all([
+    const [bookings, totalCount, hostCandidates, regionListings] = await Promise.all([
       prisma.booking.findMany({
         where,
         skip,
@@ -143,6 +143,26 @@ export async function GET(request: NextRequest) {
         },
       }),
       prisma.booking.count({ where }),
+      prisma.user.findMany({
+        where: {
+          role: "HOST",
+          listings: { some: {} },
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+        orderBy: [{ name: "asc" }, { email: "asc" }],
+        take: 300,
+      }),
+      prisma.listing.findMany({
+        select: {
+          city: true,
+          state: true,
+          country: true,
+        },
+      }),
     ])
 
     const phoneInfoMap = new Map<
@@ -289,6 +309,38 @@ export async function GET(request: NextRequest) {
       return acc
     }, [])
 
+    const regionMap = new Map<
+      string,
+      { city: string; state: string | null; country: string | null }
+    >()
+
+    for (const listing of regionListings) {
+      if (!listing.city) continue
+      const key = `${listing.city}|${listing.state ?? ""}`
+      if (!regionMap.has(key)) {
+        regionMap.set(key, {
+          city: listing.city,
+          state: listing.state ?? null,
+          country: listing.country ?? null,
+        })
+      }
+    }
+
+    const regionOptions = Array.from(regionMap.values())
+      .map((region) => ({
+        city: region.city,
+        state: region.state,
+        country: region.country,
+        label: [region.city, region.state].filter(Boolean).join(", ") || region.city,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, "vi", { sensitivity: "base" }))
+
+    const hostOptions = hostCandidates.map((host) => ({
+      id: host.id,
+      name: host.name || host.email || "Host chưa cập nhật tên",
+      email: host.email,
+    }))
+
     return NextResponse.json({
       bookings: formattedBookings,
       pagination: {
@@ -298,6 +350,10 @@ export async function GET(request: NextRequest) {
         totalPages: Math.ceil((hasServicesFilter === 'all' && serviceStatusFilter === 'ALL' ? totalCount : formattedBookings.length) / limit) || 1,
       },
       services: serviceMetrics,
+      filters: {
+        regions: regionOptions,
+        hosts: hostOptions,
+      },
     })
   } catch (error) {
     console.error("Admin bookings error:", error)
@@ -323,7 +379,7 @@ export async function PATCH(request: NextRequest) {
       select: { role: true },
     })
 
-    if (admin?.role !== "ADMIN") {
+    if (admin?.role !== "ADMIN" && admin?.role !== "SUPER_ADMIN") {
       return NextResponse.json({ error: "Forbidden - Admin only" }, { status: 403 })
     }
 
@@ -377,7 +433,7 @@ export async function DELETE(request: NextRequest) {
       select: { role: true },
     })
 
-    if (admin?.role !== "ADMIN") {
+    if (admin?.role !== "ADMIN" && admin?.role !== "SUPER_ADMIN") {
       return NextResponse.json({ error: "Forbidden - Admin only" }, { status: 403 })
     }
 

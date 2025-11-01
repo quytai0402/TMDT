@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
       totalBookings,
       completedBookingsCount,
       commissionAggregate,
+      paymentsAggregate,
       newUsers,
       newListings,
       newBookings,
@@ -42,6 +43,12 @@ export async function GET(req: NextRequest) {
         _sum: {
           platformCommission: true,
           serviceFee: true,
+        },
+      }),
+      prisma.payment.aggregate({
+        where: { status: 'COMPLETED' },
+        _sum: {
+          amount: true,
         },
       }),
       prisma.user.count({
@@ -181,7 +188,7 @@ export async function GET(req: NextRequest) {
         },
       },
       revenue: {
-        total: totalRevenue._sum.amount || 0,
+        total: paymentsAggregate._sum.amount ?? 0,
         byDay: revenueByDay,
       },
       topListings,

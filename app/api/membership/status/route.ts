@@ -81,10 +81,12 @@ export async function GET() {
       },
     })
 
+    const redemptionStatusFilter = { in: ['FULFILLED', 'APPROVED'] } as const
+
     const freeNightRedemptions = await prisma.rewardRedemption.count({
       where: {
         userId: user.id,
-        status: 'COMPLETED',
+        status: redemptionStatusFilter,
         reward: {
           slug: { contains: 'free-night', mode: 'insensitive' },
         },
@@ -94,7 +96,7 @@ export async function GET() {
     const upgradeRedemptions = await prisma.rewardRedemption.count({
       where: {
         userId: user.id,
-        status: 'COMPLETED',
+        status: redemptionStatusFilter,
         reward: {
           category: 'UPGRADE',
         },

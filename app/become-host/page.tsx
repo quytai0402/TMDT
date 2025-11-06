@@ -81,6 +81,7 @@ export default function BecomeHostPage() {
     experience: "",
     maintenanceAcknowledged: false,
   })
+  const [introTemplate, setIntroTemplate] = useState<string | undefined>(undefined)
 
   const [registerForm, setRegisterForm] = useState({
     name: "",
@@ -93,6 +94,7 @@ export default function BecomeHostPage() {
     experience: "",
     maintenanceAcknowledged: false,
   })
+  const [registerIntroTemplate, setRegisterIntroTemplate] = useState<string | undefined>(undefined)
   const [registerSubmitting, setRegisterSubmitting] = useState(false)
   const [registerError, setRegisterError] = useState<string | null>(null)
   const [registerSuccess, setRegisterSuccess] = useState<string | null>(null)
@@ -111,22 +113,32 @@ export default function BecomeHostPage() {
   )
 
   const handleIntroTemplateSelect = (value: string) => {
+    if (value === "__custom") {
+      setIntroTemplate(undefined)
+      return
+    }
     const template = HOST_POSITIONING_OPTIONS.find((option) => option.value === value)
     if (!template) return
+    setIntroTemplate(value)
     setForm((prev) => ({
       ...prev,
-      introduction: prev.introduction || template.intro,
-      experience: prev.experience || template.experience,
+      introduction: template.intro,
+      experience: template.experience,
     }))
   }
 
   const handleRegisterIntroTemplateSelect = (value: string) => {
+    if (value === "__custom") {
+      setRegisterIntroTemplate(undefined)
+      return
+    }
     const template = HOST_POSITIONING_OPTIONS.find((option) => option.value === value)
     if (!template) return
+    setRegisterIntroTemplate(value)
     setRegisterForm((prev) => ({
       ...prev,
-      introduction: prev.introduction || template.intro,
-      experience: prev.experience || template.experience,
+      introduction: template.intro,
+      experience: template.experience,
     }))
   }
 
@@ -410,16 +422,17 @@ export default function BecomeHostPage() {
                     <div className="space-y-2">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <Label>Giới thiệu homestay</Label>
-                        <Select onValueChange={handleRegisterIntroTemplateSelect}>
+                        <Select value={registerIntroTemplate} onValueChange={handleRegisterIntroTemplateSelect}>
                           <SelectTrigger className="w-full sm:w-56 text-xs">
                             <SelectValue placeholder="Chọn mẫu mô tả nhanh" />
                           </SelectTrigger>
-                          <SelectContent>
-                            {HOST_POSITIONING_OPTIONS.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
+                        <SelectContent>
+                          <SelectItem value="__custom">Tự nhập mô tả</SelectItem>
+                          {HOST_POSITIONING_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
                           </SelectContent>
                         </Select>
                       </div>
@@ -576,7 +589,6 @@ export default function BecomeHostPage() {
                           <SelectItem key={region.slug} value={region.slug}>
                             {region.name}
                             {region.country ? ` • ${region.country}` : ""}
-                            <span className="text-xs text-muted-foreground ml-2">{region.listingCount} listing</span>
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -586,11 +598,12 @@ export default function BecomeHostPage() {
                   <div className="space-y-2">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <label className="text-sm font-medium text-foreground">Giới thiệu ngắn gọn về chỗ nghỉ</label>
-                      <Select onValueChange={handleIntroTemplateSelect}>
+                      <Select value={introTemplate} onValueChange={handleIntroTemplateSelect}>
                         <SelectTrigger className="w-full sm:w-56 text-xs">
                           <SelectValue placeholder="Chọn mẫu mô tả nhanh" />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="__custom">Tự nhập mô tả</SelectItem>
                           {HOST_POSITIONING_OPTIONS.map((option) => (
                             <SelectItem key={option.value} value={option.value}>
                               {option.label}
@@ -631,14 +644,14 @@ export default function BecomeHostPage() {
                   </div>
 
                   {form.maintenanceAcknowledged ? (
-                    <div className="rounded-2xl border border-dashed border-primary/40 bg-white/80 p-4 flex flex-col gap-4 sm:flex-row sm:items-center">
-                      <Image
-                        src={HOST_PAYMENT_QR}
-                        alt="Mã QR thanh toán phí duy trì host"
-                        width={180}
-                        height={180}
-                        className="rounded-xl border border-primary/20 bg-white p-2"
-                      />
+                      <div className="rounded-2xl border border-dashed border-primary/40 bg-white/80 p-4 flex flex-col gap-4 sm:flex-row sm:items-center">
+                        <Image
+                          src={hostQrUrl}
+                          alt="Mã QR thanh toán phí duy trì host"
+                          width={180}
+                          height={180}
+                          className="rounded-xl border border-primary/20 bg-white p-2"
+                        />
                       <div className="space-y-2 text-sm">
                         <p className="font-semibold text-foreground">
                           Quét VietQR để thanh toán phí {HOST_MAINTENANCE_FEE.toLocaleString("vi-VN")}đ/tháng

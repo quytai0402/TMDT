@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { pusherServer } from '@/lib/pusher'
+import { notifyUser } from '@/lib/notifications'
 
 const objectIdRegex = /^[a-f\d]{24}$/i
 const isValidObjectId = (value: string) => objectIdRegex.test(value)
@@ -222,6 +223,28 @@ export async function POST(
     } catch (pusherError) {
       console.error('Pusher error:', pusherError)
       // Don't fail the request if Pusher fails
+    }
+
+    if (otherParticipantId) {
+      const otherUser = await prisma.user.findUnique({
+        where: { id: otherParticipantId },
+        select: { role: true, name: true },
+      })
+
+      const link =
+        otherUser?.role === 'HOST'
+          ? `/host/messages?conversation=${conversationId}`
+          : `/messages?conversation=${conversationId}`
+
+      await notifyUser(otherParticipantId, {
+        type: 'MESSAGE_RECEIVED',
+        title: `${message.sender?.name ?? 'Khách LuxeStay'} vừa gửi tin nhắn`,
+        message: content.slice(0, 140),
+        link,
+        data: {
+          conversationId,
+        },
+      })
     }
 
     return NextResponse.json({

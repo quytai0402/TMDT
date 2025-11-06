@@ -18,6 +18,9 @@ interface CollectionHeroProps {
     avatar: string
     title: string
   }
+  membersOnly?: boolean
+  requiredLabel?: string | null
+  locked?: boolean
 }
 
 export function CollectionHero({
@@ -28,7 +31,10 @@ export function CollectionHero({
   listingsCount,
   location,
   tags,
-  curator
+  curator,
+  membersOnly = false,
+  requiredLabel = null,
+  locked = false,
 }: CollectionHeroProps) {
   return (
     <div className="relative">
@@ -46,11 +52,19 @@ export function CollectionHero({
         {/* Overlay Content */}
         <div className="absolute inset-0 flex flex-col justify-end p-8 md:p-12">
           <div className="space-y-4 text-white max-w-3xl">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge className="bg-white/20 backdrop-blur-sm text-white border-white/30">
                 <Sparkles className="h-3 w-3 mr-1" />
                 Curated Collection
               </Badge>
+              {membersOnly && (
+                <Badge
+                  className={`backdrop-blur-sm border-white/30 ${locked ? "bg-amber-300 text-slate-900" : "bg-emerald-400/80 text-slate-900"}`}
+                >
+                  {locked ? "Đang khóa" : "Dành riêng cho hội viên"}
+                  {requiredLabel ? ` • ${requiredLabel}` : ""}
+                </Badge>
+              )}
               {location && (
                 <Badge className="bg-white/20 backdrop-blur-sm text-white border-white/30">
                   <MapPin className="h-3 w-3 mr-1" />

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { calculateNights, calculateServiceFee, calculateTotalPrice, calculateDistance } from '@/lib/helpers'
+import { getLoyaltyDiscountConfig } from '@/lib/loyalty-discounts'
 import { sendBookingConfirmationEmail } from '@/lib/email'
 import { notifyAdmins, notifyUser } from '@/lib/notifications'
 import { z } from 'zod'
@@ -337,6 +338,7 @@ export async function POST(req: NextRequest) {
             name: true,
             email: true,
             phone: true,
+            loyaltyTier: true,
             membershipStatus: true,
             membershipExpiresAt: true,
             membershipPlan: {
@@ -824,17 +826,35 @@ export async function POST(req: NextRequest) {
     const serviceFeeAmount = baseServiceFee + additionalServiceFee
 
     const membershipPlanInfo = guestUser?.membershipPlan
+    const loyaltyTier = guestUser?.loyaltyTier ?? null
     const membershipIsActive =
       !!guestUser &&
       guestUser.membershipStatus === MembershipStatus.ACTIVE &&
       (!guestUser.membershipExpiresAt || guestUser.membershipExpiresAt >= now)
 
-    const membershipDiscountRate = membershipIsActive
-      ? Math.max(0, Number(membershipPlanInfo?.bookingDiscountRate ?? 0))
-      : 0
+    let membershipDiscountRate = 0
+    let applyMembershipToServices = false
+    let promotionPlanMeta: Record<string, unknown> | null = null
 
-    const applyMembershipToServices =
-      membershipIsActive && membershipPlanInfo?.applyDiscountToServices ? true : false
+    if (membershipIsActive && membershipPlanInfo) {
+      membershipDiscountRate = Math.max(0, Number(membershipPlanInfo?.bookingDiscountRate ?? 0))
+      applyMembershipToServices = Boolean(membershipPlanInfo?.applyDiscountToServices)
+      promotionPlanMeta = {
+        id: membershipPlanInfo.id,
+        name: membershipPlanInfo.name,
+        slug: membershipPlanInfo.slug,
+      }
+    } else if (loyaltyTier) {
+      const loyaltyConfig = getLoyaltyDiscountConfig(loyaltyTier)
+      if (loyaltyConfig.rate > 0) {
+        membershipDiscountRate = loyaltyConfig.rate
+        applyMembershipToServices = loyaltyConfig.applyToServices
+        promotionPlanMeta = {
+          name: loyaltyConfig.label ?? `Hạng ${loyaltyTier}`,
+          slug: loyaltyTier.toLowerCase(),
+        }
+      }
+    }
 
     const discountableSubtotal =
       accommodationSubtotal + (applyMembershipToServices ? additionalServicesTotal : 0)
@@ -854,13 +874,7 @@ export async function POST(req: NextRequest) {
         rate: membershipDiscountRate,
         amount: membershipDiscountAmount,
         appliesToServices: applyMembershipToServices,
-        plan: membershipPlanInfo
-          ? {
-              id: membershipPlanInfo.id,
-              name: membershipPlanInfo.name,
-              slug: membershipPlanInfo.slug,
-            }
-          : null,
+        plan: promotionPlanMeta,
       })
     }
 

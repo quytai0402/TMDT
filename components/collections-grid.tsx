@@ -68,10 +68,13 @@ export function CollectionsGrid() {
         entry.count += 1
       } else {
         const labelMap: Record<string, string> = {
-          experience: "Trải nghiệm",
-          location: "Địa điểm",
+          healing: "Chữa lành",
+          island: "Đảo biển",
+          weekend: "Cuối tuần",
+          heritage: "Heritage",
+          culture: "Văn hoá",
           workation: "Workation",
-          special: "Đặc biệt",
+          secret: "Secret Collection",
         }
         map.set(collection.category, {
           value: collection.category,
@@ -81,7 +84,7 @@ export function CollectionsGrid() {
       }
     })
 
-    const categoryOrder = ["experience", "location", "workation", "special"]
+    const categoryOrder = ["healing", "island", "weekend", "culture", "heritage", "workation", "secret"]
 
     const sortedCategories = Array.from(map.values()).sort((a, b) => {
       const aIndex = categoryOrder.indexOf(a.value)
@@ -184,21 +187,13 @@ export function CollectionsGrid() {
           {renderCollections(collections)}
         </TabsContent>
 
-        <TabsContent value="experience">
-          {renderCollections(collections.filter((c) => c.category === "experience"))}
-        </TabsContent>
-
-        <TabsContent value="location">
-          {renderCollections(collections.filter((c) => c.category === "location"))}
-        </TabsContent>
-
-        <TabsContent value="workation">
-          {renderCollections(collections.filter((c) => c.category === "workation"))}
-        </TabsContent>
-
-        <TabsContent value="special">
-          {renderCollections(collections.filter((c) => c.category === "special"))}
-        </TabsContent>
+        {categories
+          .filter((category) => category.value !== "all")
+          .map((category) => (
+            <TabsContent key={category.value} value={category.value}>
+              {renderCollections(collections.filter((collection) => collection.category === category.value))}
+            </TabsContent>
+          ))}
       </Tabs>
     </div>
   )

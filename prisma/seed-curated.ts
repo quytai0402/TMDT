@@ -2,11 +2,27 @@ import {
   AmenityCategory,
   BookingStatus,
   CancellationPolicy,
+  ConciergePlanStatus,
+  DiscountType,
   ExperienceCategory,
   ExperienceStatus,
+  GuideStatus,
+  GuideSubscriptionStatus,
+  HostPayoutStatus,
   ListingStatus,
   LoyaltyTier,
+  MembershipBillingCycle,
+  MembershipPaymentMethod,
+  MembershipPurchaseStatus,
+  MembershipStatus,
+  PaymentGateway,
+  PaymentMethodType,
+  PaymentStatus,
+  PayoutStatus,
+  Prisma,
   PrismaClient,
+  PromotionSource,
+  PromotionType,
   PropertyType,
   RoomType,
   ServiceCategory,
@@ -76,6 +92,33 @@ type ExperienceSeed = {
   membersOnly?: boolean
 }
 
+type GuideExperienceSeed = {
+  title: string
+  description: string
+  category: ExperienceCategory
+  city: string
+  state?: string
+  location: string
+  latitude?: number
+  longitude?: number
+  image: string
+  images: string[]
+  price: number
+  duration: string
+  groupSize: string
+  minGuests: number
+  maxGuests: number
+  includedItems: string[]
+  notIncluded: string[]
+  requirements: string[]
+  languages: string[]
+  tags: string[]
+  featured?: boolean
+  averageRating: number
+  totalReviews: number
+  membersOnly?: boolean
+}
+
 type ServiceSeed = {
   name: string
   description: string
@@ -118,6 +161,60 @@ type LocationSeed = {
   services: ServiceSeed[]
 }
 
+type ListingReference = {
+  city: string
+  title: string
+}
+
+type CuratorSeed = {
+  name: string
+  title?: string
+  avatar?: string
+}
+
+type CuratedCollectionSeed = {
+  slug: string
+  title: string
+  subtitle: string
+  description: string
+  heroImage: string
+  cardImage: string
+  tags: string[]
+  location?: string
+  category: string
+  listingRefs: ListingReference[]
+  featured?: boolean
+  curator?: CuratorSeed
+}
+
+type HostCouponSeed = {
+  hostKey: string
+  code: string
+  name: string
+  description?: string
+  discountType: DiscountType
+  discountValue: number
+  maxDiscount?: number
+  minBookingValue?: number
+  maxUses?: number
+  maxUsesPerUser?: number
+  stackWithMembership?: boolean
+  stackWithPromotions?: boolean
+  listingRefs?: ListingReference[]
+  allowedMembershipTiers?: LoyaltyTier[]
+  durationDays?: number
+  metadata?: Record<string, unknown>
+}
+
+type SeededBookingRecord = {
+  id: string
+  listingId: string
+  hostId: string
+  guestId: string | null
+  totalPrice: number
+  hostShare: number
+}
+
 type GuestSeed = {
   email: string
   name: string
@@ -143,6 +240,12 @@ type ReviewTemplate = {
   aiSentiment?: 'positive' | 'neutral' | 'negative'
   aiKeywords?: string[]
 }
+
+const PRIMARY_HOST_EMAIL = 'host@host.com'
+const GUIDE_ACCOUNT_EMAIL = 'huongdanvien@luxestay.com'
+const PRIMARY_ADMIN_EMAIL = 'admin@admin.com'
+const PRIMARY_GUEST_EMAIL = 'user@user.com'
+const PROMOTION_CODES = ['WELCOME10', 'WEEKDAY15', 'CITYCHEF500K', 'DALATRELAX12', 'SUNSETISLAND15', 'HOIANHERITAGE10']
 
 const GUEST_SEEDS: GuestSeed[] = [
   {
@@ -316,10 +419,10 @@ const LOCATIONS: LocationSeed[] = [
     longitude: 108.4583,
     host: {
       name: 'Trần Thanh Thảo',
-      email: 'host.dalat@luxestay.vn',
+      email: PRIMARY_HOST_EMAIL,
       phone: '0905123456',
       image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=600&q=80',
-      bio: 'Thảo là host bản địa Đà Lạt với hơn 6 năm kinh nghiệm vận hành homestay xanh giữa rừng thông.',
+      bio: 'Thảo là host chính thức của bộ sưu tập LuxeStay Signature, phụ trách thiết kế hành trình trọn gói cho các đoàn cao cấp tại Đà Lạt.',
       languages: ['Tiếng Việt', 'English'],
       isSuperHost: true,
     },
@@ -2490,6 +2593,398 @@ const REVIEW_LIBRARY: Record<string, ReviewTemplate[]> = {
   ],
 }
 
+const GUIDE_EXPERIENCE_SEEDS: GuideExperienceSeed[] = [
+  {
+    title: 'Saigon Night Flavor Curated Tour',
+    description:
+      'Hành trình 4 giờ khám phá 6 điểm ăn uống bản địa, bao gồm quán cocktail ẩn và khu chợ đêm yêu thích của người Sài Gòn. Tùy chỉnh theo khẩu vị và chế độ ăn của từng nhóm.',
+    category: ExperienceCategory.FOOD_DRINK,
+    city: 'TP.HCM',
+    state: 'Hồ Chí Minh',
+    location: 'Quận 1 & Quận 3',
+    latitude: 10.7798,
+    longitude: 106.6957,
+    image: 'https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=1200&q=80',
+    images: [
+      'https://images.unsplash.com/photo-1481833761820-0509d3217039?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1200&q=80',
+    ],
+    price: 980000,
+    duration: '4 giờ',
+    groupSize: 'Nhóm riêng 2-8 khách',
+    minGuests: 2,
+    maxGuests: 8,
+    includedItems: ['6 món signature', 'Cocktail thủ công', 'Ảnh Polaroid', 'Bảo hiểm du lịch'],
+    notIncluded: ['Chi phí di chuyển riêng', 'Mua sắm cá nhân'],
+    requirements: ['Tối thiểu 18 tuổi', 'Không dị ứng hải sản (nếu không báo trước)', 'Trang phục thoải mái'],
+    languages: ['Tiếng Việt', 'English'],
+    tags: ['nightlife', 'street food', 'mixology', 'private tour'],
+    featured: true,
+    averageRating: 4.95,
+    totalReviews: 58,
+  },
+  {
+    title: 'Dalat Forest Retreat Planning',
+    description:
+      'Gói concierge thiết kế lịch trình retreat 2 ngày với yoga, private chef brunch và picnic giữa rừng thông. Bao gồm điều phối viên onsite.',
+    category: ExperienceCategory.WELLNESS,
+    city: 'Đà Lạt',
+    state: 'Lâm Đồng',
+    location: 'Đồi Robin & Hồ Tuyền Lâm',
+    latitude: 11.911,
+    longitude: 108.455,
+    image: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=1200&q=80',
+    images: [
+      'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1516826432051-327e965e3a5c?auto=format&fit=crop&w=1200&q=80',
+    ],
+    price: 1450000,
+    duration: '6 giờ',
+    groupSize: 'Nhóm 4-12 khách',
+    minGuests: 4,
+    maxGuests: 12,
+    includedItems: ['Thiết kế lịch trình cá nhân hóa', 'Coach yoga & thiền', 'Private chef brunch', 'Picnic setup'],
+    notIncluded: ['Chi phí lưu trú', 'Di chuyển đến Đà Lạt'],
+    requirements: ['Đặt trước 7 ngày', 'Thông tin chế độ ăn uống', 'Sẵn sàng di chuyển ngoài trời nhẹ'],
+    languages: ['Tiếng Việt', 'English'],
+    tags: ['wellness', 'retreat', 'team building', 'forest'],
+    featured: true,
+    averageRating: 4.9,
+    totalReviews: 34,
+    membersOnly: true,
+  },
+]
+
+const PRIMARY_HOST_ADDITIONAL_LISTINGS = [
+  {
+    title: 'Skyline Loft Saigon',
+    description:
+      'Căn hộ loft kính toàn phần nhìn thẳng Bitexco, quầy bar riêng và bể sục trong nhà. Phù hợp cho cặp đôi hoặc khách công tác muốn ở trung tâm.',
+    propertyType: PropertyType.APARTMENT,
+    roomType: RoomType.ENTIRE_PLACE,
+    maxGuests: 4,
+    bedrooms: 2,
+    beds: 2,
+    bathrooms: 2,
+    address: '29 Nguyễn Đình Chiểu, Quận 1, TP.HCM',
+    city: 'TP.HCM',
+    state: 'Hồ Chí Minh',
+    country: 'Vietnam',
+    latitude: 10.7893,
+    longitude: 106.7007,
+    neighborhood: 'Quận 1',
+    basePrice: 4200000,
+    cleaningFee: 300000,
+    serviceFee: 160000,
+    images: [
+      'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=1200&q=80',
+    ],
+    amenityNames: ['High-speed Wifi', 'Smart TV', 'Balcony View', 'Workspace Desk', 'Full Kitchen', 'Smart Lock'],
+    verifiedAmenities: ['View Bitexco 270°', 'Bể sục riêng tư', 'Lễ tân 24/7'],
+    featured: true,
+    instantBookable: true,
+    allowEvents: false,
+    allowChildren: true,
+    allowPets: false,
+    averageRating: 4.93,
+    totalReviews: 64,
+    totalBookings: 148,
+  },
+  {
+    title: 'Hội An Riverside Pavilion',
+    description:
+      'Biệt thự gỗ giữa vườn tre nhìn ra sông Hoài, hồ plunge pool nước ấm và khu bếp mở để tổ chức private dinner.',
+    propertyType: PropertyType.VILLA,
+    roomType: RoomType.ENTIRE_PLACE,
+    maxGuests: 8,
+    bedrooms: 3,
+    beds: 4,
+    bathrooms: 3,
+    address: '86 Nguyễn Phúc Chu, Hội An',
+    city: 'Hội An',
+    state: 'Quảng Nam',
+    country: 'Vietnam',
+    latitude: 15.8794,
+    longitude: 108.335,
+    neighborhood: 'Phố cổ Hội An',
+    basePrice: 5200000,
+    cleaningFee: 350000,
+    serviceFee: 210000,
+    images: [
+      'https://images.unsplash.com/photo-1470246973918-29a93221c455?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1505691723518-36a5ac3be353?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1521783988139-893354fcd0d5?auto=format&fit=crop&w=1200&q=80',
+    ],
+    amenityNames: ['Outdoor Pool', 'Outdoor BBQ', 'Balcony View', 'Full Kitchen', 'High-speed Wifi', 'Smart Lock'],
+    verifiedAmenities: ['Private chef on demand', 'Chèo thuyền kayak miễn phí'],
+    allowEvents: true,
+    allowChildren: true,
+    averageRating: 4.96,
+    totalReviews: 52,
+    totalBookings: 132,
+  },
+  {
+    title: 'Đà Nẵng Ocean Penthouse',
+    description:
+      'Penthouse 2 tầng trên đường Võ Nguyên Giáp với hồ jacuzzi ngoài trời, phòng gym riêng và rạp chiếu mini.',
+    propertyType: PropertyType.APARTMENT,
+    roomType: RoomType.ENTIRE_PLACE,
+    maxGuests: 6,
+    bedrooms: 3,
+    beds: 4,
+    bathrooms: 3,
+    address: '325 Võ Nguyên Giáp, Đà Nẵng',
+    city: 'Đà Nẵng',
+    state: 'Đà Nẵng',
+    country: 'Vietnam',
+    latitude: 16.0584,
+    longitude: 108.2477,
+    neighborhood: 'Mỹ Khê',
+    basePrice: 6100000,
+    cleaningFee: 320000,
+    serviceFee: 230000,
+    images: [
+      'https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=1200&q=80',
+    ],
+    amenityNames: ['High-speed Wifi', 'Smart TV', 'Workspace Desk', 'Outdoor BBQ', 'Balcony View', 'Washer & Dryer'],
+    verifiedAmenities: ['Sky jacuzzi', 'Hệ thống âm thanh Dolby Atmos'],
+    featured: true,
+    instantBookable: true,
+    allowEvents: true,
+    allowChildren: true,
+    allowPets: false,
+    averageRating: 4.9,
+    totalReviews: 47,
+    totalBookings: 118,
+  },
+]
+
+const CURATED_COLLECTION_SEEDS: CuratedCollectionSeed[] = [
+  {
+    slug: 'healing-da-lat-forest',
+    title: 'Chữa lành giữa đồi thông Đà Lạt',
+    subtitle: 'Tái tạo năng lượng với trà chiều, spa bản địa và khí hậu se lạnh.',
+    description:
+      'Bộ sưu tập chọn lọc những căn villa & cabin ẩn mình giữa rừng thông Đà Lạt, phù hợp cho hành trình chữa lành cùng gia đình hoặc nhóm bạn thân. Tận hưởng liệu trình spa từ thảo mộc địa phương, lớp thiền sáng và bữa tối ấm cúng bên bếp lửa.',
+    heroImage: 'https://images.unsplash.com/photo-1470246973918-29a93221c455?auto=format&fit=crop&w=1600&q=80',
+    cardImage: 'https://images.unsplash.com/photo-1475856034135-1c1ded0d3f7d?auto=format&fit=crop&w=1200&q=80',
+    tags: ['Miễn phí', 'Wellness', 'Rừng thông'],
+    location: 'Đà Lạt, Lâm Đồng',
+    category: 'healing',
+    featured: true,
+    listingRefs: [
+      { city: 'Đà Lạt', title: 'Le Rêve Garden Villa Đà Lạt' },
+      { city: 'Đà Lạt', title: 'Laluna Pine Retreat' },
+      { city: 'Đà Lạt', title: 'Hillside Cabin Dalat Mist' },
+    ],
+    curator: {
+      name: 'Trần Thanh Thảo',
+      title: 'Wellness Curator',
+      avatar: 'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=256&q=80',
+    },
+  },
+  {
+    slug: 'phu-quoc-island-signature',
+    title: 'Signature biển Phú Quốc',
+    subtitle: 'Hồ bơi vô cực, hoàng hôn Sunset Town và private chef trên đảo Ngọc.',
+    description:
+      'LuxeStay lựa chọn những villa và loft ven biển nổi bật nhất Phú Quốc với tầm nhìn bãi Sao & Sunset Town. Dịch vụ quản gia 24/7, thực đơn hải sản theo ngày và trải nghiệm chèo kayak bình minh dành cho tín đồ biển.',
+    heroImage: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1600&q=80',
+    cardImage: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=1200&q=80',
+    tags: ['Miễn phí', 'Biển', 'Sunset'],
+    location: 'Phú Quốc, Kiên Giang',
+    category: 'island',
+    featured: true,
+    listingRefs: [
+      { city: 'Phú Quốc', title: 'Azure Tide Beachfront Villa' },
+      { city: 'Phú Quốc', title: 'Palm Breeze Ocean Loft' },
+      { city: 'Phú Quốc', title: 'Lagoon Breeze Beach Bungalow' },
+    ],
+    curator: {
+      name: 'Ngô Đức Anh',
+      title: 'Island Host',
+      avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=256&q=80',
+    },
+  },
+  {
+    slug: 'vung-tau-weekend-escape',
+    title: 'Trốn phố cuối tuần Vũng Tàu',
+    subtitle: 'Di chuyển 120 phút, nhận ngay villa sân vườn & BBQ ngoài trời.',
+    description:
+      'Bộ sưu tập lý tưởng cho nhóm bạn và gia đình muốn đổi gió cuối tuần. Các căn villa có hồ plunge pool, phòng karaoke và khoảng sân rộng để tổ chức BBQ tối. Gói dịch vụ kèm chef và xe đưa đón từ Sài Gòn theo yêu cầu.',
+    heroImage: 'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1600&q=80',
+    cardImage: 'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?auto=format&fit=crop&w=1200&q=80',
+    tags: ['Miễn phí', 'Gần Sài Gòn', 'BBQ'],
+    location: 'Vũng Tàu, Bà Rịa - Vũng Tàu',
+    category: 'weekend',
+    listingRefs: [
+      { city: 'Vũng Tàu', title: 'Marina Bay Luxury Villa' },
+      { city: 'Vũng Tàu', title: 'Lan Rừng Beach House' },
+      { city: 'Vũng Tàu', title: 'The Lighthouse Studio' },
+    ],
+    curator: {
+      name: 'Phạm Mỹ Duyên',
+      title: 'Weekend Planner',
+      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=256&q=80',
+    },
+  },
+  {
+    slug: 'ha-noi-heritage-luxury',
+    title: 'Heritage Hà Nội cho thành viên',
+    subtitle: 'Khám phá phố cổ với concierge riêng & cocktail speakeasy.',
+    description:
+      'Bộ sưu tập boutique loft và penthouse nằm tại trung tâm Hà Nội, phù hợp hội viên cần chuyến công tác kết hợp trải nghiệm văn hoá. Gói kèm private tour phố cổ, mixology workshop và vé mời show nghệ thuật truyền thống.',
+    heroImage: 'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?auto=format&fit=crop&w=1600&q=80',
+    cardImage: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80',
+    tags: ['Members+', 'Heritage', 'Boutique'],
+    location: 'Hà Nội',
+    category: 'heritage',
+    featured: true,
+    listingRefs: [
+      { city: 'Hà Nội', title: 'Old Quarter Boutique Loft' },
+      { city: 'Hà Nội', title: 'French Quarter Heritage Home' },
+      { city: 'Hà Nội', title: 'Modern Skyline Penthouse' },
+    ],
+    curator: {
+      name: 'Nguyễn Hải Minh',
+      title: 'Membership Concierge',
+      avatar: 'https://images.unsplash.com/photo-1556157382-97eda2d62296?auto=format&fit=crop&w=256&q=80',
+    },
+  },
+  {
+    slug: 'hoi-an-lantern-collection',
+    title: 'Sống chậm bên phố cổ Hội An',
+    subtitle: 'Đạp xe giữa làng gốm, thưởng thực cao lầu và thả đèn hoa đăng.',
+    description:
+      'Những căn villa và bungalow bên sông Hoài được thiết kế với vật liệu thủ công, hồ plunge pool và khu bếp mở. Lý tưởng cho hội travel blogger hoặc gia đình muốn thưởng thức văn hoá Hội An với lịch trình tinh gọn do LuxeStay gợi ý.',
+    heroImage: 'https://images.unsplash.com/photo-1526481280695-3c4693f9ff44?auto=format&fit=crop&w=1600&q=80',
+    cardImage: 'https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=1200&q=80',
+    tags: ['Miễn phí', 'Culture', 'Slow travel'],
+    location: 'Hội An, Quảng Nam',
+    category: 'culture',
+    listingRefs: [
+      { city: 'Hội An', title: 'Ancient Lantern Riverside Villa' },
+      { city: 'Hội An', title: 'Old Town Heritage Loft' },
+      { city: 'Hội An', title: 'Hội An Riverside Pavilion' },
+    ],
+    curator: {
+      name: 'Huỳnh Gia Huy',
+      title: 'Local Experience Designer',
+      avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=256&q=80',
+    },
+  },
+  {
+    slug: 'da-nang-workation-luxe',
+    title: 'Workation hạng sang Đà Nẵng',
+    subtitle: 'WiFi 300Mbps, phòng họp mini & yoga sunrise dành cho hội viên.',
+    description:
+      'Dành cho team remote và doanh nhân cần vừa làm việc vừa nghỉ dưỡng. Các căn penthouse & loft tại Mỹ Khê với workspace khép kín, coffee bar và dịch vụ IT on-demand. Tặng kèm lớp yoga bình minh và pass Co-working space trong 3 ngày.',
+    heroImage: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=1600&q=80',
+    cardImage: 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?auto=format&fit=crop&w=1200&q=80',
+    tags: ['Members+', 'Workation', 'Sea view'],
+    location: 'Đà Nẵng',
+    category: 'workation',
+    listingRefs: [
+      { city: 'Đà Nẵng', title: 'Skyline Marina Suite' },
+      { city: 'Đà Nẵng', title: 'Đà Nẵng Ocean Penthouse' },
+      { city: 'Đà Nẵng', title: 'My Khe Beachfront Loft' },
+    ],
+    curator: {
+      name: 'Phan Bảo Trân',
+      title: 'Corporate Travel Lead',
+      avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=256&q=80',
+    },
+  },
+  {
+    slug: 'luxestay-secret-collection',
+    title: 'LuxeStay Secret Collection',
+    subtitle: 'Diamond member truy cập bộ sưu tập bí mật với concierge 24/7.',
+    description:
+      'Những căn penthouse và villa hiếm với lịch mở bán giới hạn, bao gồm Skyline Loft Saigon, Azure Tide và Ocean Penthouse Đà Nẵng. Hội viên Diamond nhận concierge riêng, xe đưa đón hạng sang và gói private chef 5 món.',
+    heroImage: 'https://images.unsplash.com/photo-1505691723518-36a5ac3be353?auto=format&fit=crop&w=1600&q=80',
+    cardImage: 'https://images.unsplash.com/photo-1505691938895-1758d7feb511?auto=format&fit=crop&w=1200&q=80',
+    tags: ['Members+', 'Diamond', 'Secret'],
+    location: 'Vietnam',
+    category: 'secret',
+    featured: true,
+    listingRefs: [
+      { city: 'TP.HCM', title: 'Skyline Loft Saigon' },
+      { city: 'Phú Quốc', title: 'Azure Tide Beachfront Villa' },
+      { city: 'Đà Nẵng', title: 'Đà Nẵng Ocean Penthouse' },
+      { city: 'Đà Lạt', title: 'Le Rêve Garden Villa Đà Lạt' },
+    ],
+    curator: {
+      name: 'LuxeStay Concierge Team',
+      title: 'Diamond Specialist',
+      avatar: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=256&q=80',
+    },
+  },
+]
+
+const HOST_COUPON_SEEDS: HostCouponSeed[] = [
+  {
+    hostKey: 'da-lat',
+    code: 'DALATRELAX12',
+    name: 'Đà Lạt Retreat -12%',
+    description: 'Giảm 12% khi lưu trú tối thiểu 3 đêm tại bộ sưu tập chữa lành Đà Lạt. Tặng kèm set trà chiều cho hội viên.',
+    discountType: DiscountType.PERCENTAGE,
+    discountValue: 12,
+    maxDiscount: 1200000,
+    minBookingValue: 3500000,
+    stackWithMembership: true,
+    stackWithPromotions: false,
+    listingRefs: [
+      { city: 'Đà Lạt', title: 'Le Rêve Garden Villa Đà Lạt' },
+      { city: 'Đà Lạt', title: 'Laluna Pine Retreat' },
+    ],
+    allowedMembershipTiers: [LoyaltyTier.BRONZE, LoyaltyTier.SILVER, LoyaltyTier.GOLD, LoyaltyTier.DIAMOND],
+    durationDays: 75,
+    metadata: { perk: 'Set trà chiều & trang trí kỷ niệm' },
+  },
+  {
+    hostKey: 'phu-quoc',
+    code: 'SUNSETISLAND15',
+    name: 'Sunset Island đặc quyền',
+    description: 'Ưu đãi 15% dành cho booking weekday tại Sunset Town & bãi Sao. Áp dụng riêng cho hội viên Gold trở lên.',
+    discountType: DiscountType.PERCENTAGE,
+    discountValue: 15,
+    maxDiscount: 2000000,
+    minBookingValue: 4500000,
+    stackWithMembership: true,
+    stackWithPromotions: false,
+    listingRefs: [
+      { city: 'Phú Quốc', title: 'Palm Breeze Ocean Loft' },
+      { city: 'Phú Quốc', title: 'Azure Tide Beachfront Villa' },
+    ],
+    allowedMembershipTiers: [LoyaltyTier.GOLD, LoyaltyTier.DIAMOND],
+    durationDays: 90,
+    metadata: { perk: 'Tặng sunset cocktail & xe buggy' },
+  },
+  {
+    hostKey: 'hoi-an',
+    code: 'HOIANHERITAGE10',
+    name: 'Hội An Heritage -10%',
+    description: 'Giảm 10% cho đêm lưu trú trong tuần và free workshop đèn lồng cho gia đình.',
+    discountType: DiscountType.PERCENTAGE,
+    discountValue: 10,
+    maxDiscount: 1000000,
+    minBookingValue: 2800000,
+    stackWithMembership: true,
+    stackWithPromotions: true,
+    listingRefs: [
+      { city: 'Hội An', title: 'Ancient Lantern Riverside Villa' },
+      { city: 'Hội An', title: 'Hội An Riverside Pavilion' },
+    ],
+    allowedMembershipTiers: [LoyaltyTier.SILVER, LoyaltyTier.GOLD, LoyaltyTier.DIAMOND],
+    durationDays: 60,
+    metadata: { perk: 'Workshop làm đèn lồng' },
+  },
+]
+
 const MEMBERSHIP_PLAN_SEEDS = [
   {
     slug: 'silver',
@@ -2673,7 +3168,13 @@ function toSlug(value: string) {
     .replace(/(^-|-$)+/g, '')
 }
 
-async function resetDatabase() {
+async function resetDatabase(shouldReset: boolean) {
+  if (!shouldReset) {
+    console.log('ℹ️ Bỏ qua bước xóa database (dùng --reset hoặc SEED_RESET=true nếu muốn xóa toàn bộ).')
+    await resetClient.$disconnect()
+    return
+  }
+
   console.log('🧨 Đang xóa toàn bộ dữ liệu cũ...')
   try {
     await resetClient.$runCommandRaw({ dropDatabase: 1 })
@@ -2690,7 +3191,168 @@ async function resetDatabase() {
   }
 }
 
-async function seedData() {
+async function purgeCuratedData(prisma: PrismaClient) {
+  console.log('🧹 Đang làm sạch dữ liệu curated hiện có...')
+
+  const hostEmails = LOCATIONS.map((location) => location.host.email)
+  const additionalHostEmails = PRIMARY_HOST_ADDITIONAL_LISTINGS.map(() => PRIMARY_HOST_EMAIL)
+  const curatedUserEmails = Array.from(
+    new Set([
+      PRIMARY_ADMIN_EMAIL,
+      PRIMARY_GUEST_EMAIL,
+      GUIDE_ACCOUNT_EMAIL,
+      ...hostEmails,
+      ...additionalHostEmails,
+      ...GUEST_SEEDS.map((guest) => guest.email),
+    ]),
+  )
+
+  const userRecords = await prisma.user.findMany({
+    where: { email: { in: curatedUserEmails } },
+    select: { id: true, email: true },
+  })
+  const curatedUserIds = userRecords.map((user) => user.id)
+
+  const listingSlugs: string[] = []
+  for (const location of LOCATIONS) {
+    for (const listingSeed of location.listings) {
+      listingSlugs.push(`${toSlug(location.city)}-${toSlug(listingSeed.title)}`)
+    }
+  }
+  for (const listingSeed of PRIMARY_HOST_ADDITIONAL_LISTINGS) {
+    listingSlugs.push(`${toSlug(listingSeed.city)}-${toSlug(listingSeed.title)}`)
+  }
+
+  const listingRecords = await prisma.listing.findMany({
+    where: { slug: { in: listingSlugs } },
+    select: { id: true },
+  })
+  const curatedListingIds = listingRecords.map((listing) => listing.id)
+
+  const experienceTitles = [
+    ...LOCATIONS.flatMap((location) => location.experiences.map((exp) => exp.title)),
+    ...GUIDE_EXPERIENCE_SEEDS.map((exp) => exp.title),
+  ]
+
+  const experienceRecords = await prisma.experience.findMany({
+    where: { title: { in: experienceTitles } },
+    select: { id: true },
+  })
+  const curatedExperienceIds = experienceRecords.map((exp) => exp.id)
+
+  if (curatedUserIds.length > 0) {
+    const conversationIds = await prisma.conversation.findMany({
+      where: { participants: { hasSome: curatedUserIds } },
+      select: { id: true },
+    })
+
+    if (conversationIds.length > 0) {
+      await prisma.conversation.deleteMany({
+        where: { id: { in: conversationIds.map((conv) => conv.id) } },
+      })
+    }
+
+    await prisma.notification.deleteMany({
+      where: { userId: { in: curatedUserIds } },
+    })
+    await prisma.transaction.deleteMany({
+      where: { userId: { in: curatedUserIds } },
+    })
+    await prisma.membershipPurchase.deleteMany({
+      where: { userId: { in: curatedUserIds } },
+    })
+    await prisma.hostPayout.deleteMany({
+      where: { hostId: { in: curatedUserIds } },
+    })
+    await prisma.hostPayoutAccount.deleteMany({
+      where: { hostId: { in: curatedUserIds } },
+    })
+  }
+
+  const reviewConditions: Prisma.ReviewWhereInput[] = []
+  if (curatedUserIds.length > 0) {
+    reviewConditions.push({ reviewerId: { in: curatedUserIds } })
+    reviewConditions.push({ revieweeId: { in: curatedUserIds } })
+  }
+  if (curatedListingIds.length > 0) {
+    reviewConditions.push({ listingId: { in: curatedListingIds } })
+  }
+  if (reviewConditions.length > 0) {
+    await prisma.review.deleteMany({
+      where: { OR: reviewConditions },
+    })
+  }
+
+  const bookingConditions: Prisma.BookingWhereInput[] = []
+  if (curatedUserIds.length > 0) {
+    bookingConditions.push({ guestId: { in: curatedUserIds } })
+    bookingConditions.push({ hostId: { in: curatedUserIds } })
+  }
+  if (curatedListingIds.length > 0) {
+    bookingConditions.push({ listingId: { in: curatedListingIds } })
+  }
+  if (bookingConditions.length > 0) {
+    await prisma.booking.deleteMany({
+      where: { OR: bookingConditions },
+    })
+  }
+
+  if (curatedExperienceIds.length > 0) {
+    await prisma.experience.deleteMany({
+      where: { id: { in: curatedExperienceIds } },
+    })
+  }
+
+  if (curatedListingIds.length > 0) {
+    await prisma.neighborhoodGuide.deleteMany({
+      where: { listingId: { in: curatedListingIds } },
+    })
+    await prisma.listing.deleteMany({
+      where: { id: { in: curatedListingIds } },
+    })
+  }
+
+  await prisma.service.deleteMany({
+    where: { name: { in: LOCATIONS.flatMap((location) => location.services.map((service) => service.name)) } },
+  })
+
+  await prisma.amenity.deleteMany({
+    where: { name: { in: AMENITIES.map((amenity) => amenity.name) } },
+  })
+
+  await prisma.promotion.deleteMany({
+    where: { code: { in: PROMOTION_CODES } },
+  })
+
+  await prisma.curatedCollection.deleteMany({
+    where: { slug: { in: CURATED_COLLECTION_SEEDS.map((collection) => collection.slug) } },
+  })
+
+  await prisma.rewardTier.deleteMany({
+    where: { tier: { in: REWARD_TIER_SEEDS.map((tier) => tier.tier) } },
+  })
+
+  await prisma.rewardBadge.deleteMany({
+    where: { slug: { in: REWARD_BADGE_SEEDS.map((badge) => badge.slug) } },
+  })
+
+  await prisma.membershipPlan.deleteMany({
+    where: { slug: { in: MEMBERSHIP_PLAN_SEEDS.map((plan) => plan.slug) } },
+  })
+
+  if (curatedUserIds.length > 0) {
+    await prisma.hostProfile.deleteMany({
+      where: { userId: { in: curatedUserIds } },
+    })
+    await prisma.user.deleteMany({
+      where: { id: { in: curatedUserIds } },
+    })
+  }
+
+  console.log('✅ Đã làm sạch dữ liệu curated cũ.')
+}
+
+async function seedData(options: { shouldReset: boolean }) {
   const prisma = new PrismaClient()
   let totalListings = 0
   let totalExperiences = 0
@@ -2698,32 +3360,43 @@ async function seedData() {
 
   try {
     console.log('🌱 Bắt đầu seed dữ liệu curated cho LuxeStay...')
-    const hashedPassword = await bcrypt.hash('Stay@2024', 10)
+    if (!options.shouldReset) {
+      await purgeCuratedData(prisma)
+    }
+    const defaultPasswordHash = await bcrypt.hash('Stay@2024', 10)
+    const adminPasswordHash = await bcrypt.hash('admin', 10)
+    const hostPasswordHash = await bcrypt.hash('host', 10)
+    const guidePasswordHash = await bcrypt.hash('hdv', 10)
+    const memberPasswordHash = await bcrypt.hash('user', 10)
 
-    await prisma.user.create({
+    console.log('🔐 Thiết lập tài khoản quản trị & hệ thống...')
+    const systemAdmin = await prisma.user.create({
       data: {
-        email: 'admin@luxestay.vn',
-        name: 'LuxeStay Admin',
-        password: hashedPassword,
+        email: PRIMARY_ADMIN_EMAIL,
+        name: 'LuxeStay System Admin',
+        password: adminPasswordHash,
         role: UserRole.ADMIN,
         isHost: true,
         isSuperHost: false,
         emailVerified: new Date(),
         phone: '0900000000',
-        image: 'https://api.dicebear.com/7.x/adventurer/svg?seed=Admin',
-        bio: 'Tài khoản quản trị viên hệ thống LuxeStay.',
+        image: 'https://api.dicebear.com/7.x/adventurer/svg?seed=LuxestayAdmin',
+        bio: 'Tài khoản quản trị viên chính để điều phối dữ liệu và phê duyệt nội dung.',
         languages: ['Tiếng Việt', 'English'],
       },
     })
 
     console.log('🧳 Tạo khách hàng trải nghiệm thực tế...')
     const guestRecords: any[] = []
+    const listingSlugLookup = new Map<string, { id: string; hostId: string; city: string }>()
+    const seededBookings: SeededBookingRecord[] = []
+    const hostFinancials = new Map<string, { earnings: number; available: number }>()
     for (const guestSeed of GUEST_SEEDS) {
       const guest = await prisma.user.create({
         data: {
           email: guestSeed.email,
           name: guestSeed.name,
-          password: hashedPassword,
+          password: defaultPasswordHash,
           role: UserRole.GUEST,
           emailVerified: new Date(),
           phone: guestSeed.phone,
@@ -2788,15 +3461,48 @@ async function seedData() {
       })),
     })
 
+    const membershipPlans = await prisma.membershipPlan.findMany({
+      where: { slug: { in: MEMBERSHIP_PLAN_SEEDS.map((plan) => plan.slug) } },
+    })
+    const membershipPlanMap = new Map(membershipPlans.map((plan) => [plan.slug, plan]))
+
+    console.log('🙋‍♀️ Thêm tài khoản khách đăng nhập sẵn cho QA...')
+    const diamondPlan = membershipPlanMap.get('diamond')
+    const membershipStart = new Date()
+    const membershipExpire = new Date(membershipStart)
+    membershipExpire.setMonth(membershipExpire.getMonth() + 12)
+    const loginReadyGuest = await prisma.user.create({
+      data: {
+        email: PRIMARY_GUEST_EMAIL,
+        name: 'Khách LuxeStay Demo',
+        password: memberPasswordHash,
+        role: UserRole.GUEST,
+        emailVerified: new Date(),
+        phone: '0988009900',
+        image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=LuxestayGuest',
+        languages: ['Tiếng Việt', 'English'],
+        loyaltyTier: LoyaltyTier.DIAMOND,
+        loyaltyPoints: 4820,
+        membershipPlanId: diamondPlan?.id ?? null,
+        membershipStatus: diamondPlan ? MembershipStatus.ACTIVE : MembershipStatus.PENDING,
+        membershipStartedAt: diamondPlan ? membershipStart : null,
+        membershipExpiresAt: diamondPlan ? membershipExpire : null,
+        membershipFeatures: diamondPlan?.features ?? [],
+      },
+    })
+    guestRecords.push(loginReadyGuest)
+
     console.log('👥 Tạo host cho từng địa điểm...')
     const hostMap = new Map<string, string>()
+    const hostUsers: Array<{ id: string; city: string; name: string }> = []
     const hostStats = new Map<string, { totalRating: number; reviewCount: number }>()
     for (const location of LOCATIONS) {
+      const isPrimaryHost = location.host.email === PRIMARY_HOST_EMAIL
       const host = await prisma.user.create({
         data: {
           email: location.host.email,
           name: location.host.name,
-          password: hashedPassword,
+          password: isPrimaryHost ? hostPasswordHash : defaultPasswordHash,
           role: UserRole.HOST,
           isHost: true,
           isSuperHost: location.host.isSuperHost ?? false,
@@ -2822,8 +3528,127 @@ async function seedData() {
           phoneVerified: true,
         },
       })
+      await prisma.hostPayoutAccount.upsert({
+        where: { hostId: host.id },
+        update: {
+          bankName: 'Techcombank',
+          bankBranch: 'Hội sở Hà Nội',
+          accountNumber: '0123456789',
+          accountName: host.name,
+          notes: 'Tài khoản demo seed',
+        },
+        create: {
+          hostId: host.id,
+          bankName: 'Techcombank',
+          bankBranch: 'Hội sở Hà Nội',
+          accountNumber: '0123456789',
+          accountName: host.name,
+          notes: 'Tài khoản demo seed',
+        },
+      })
       hostMap.set(location.key, host.id)
       hostStats.set(host.id, { totalRating: 0, reviewCount: 0 })
+      hostUsers.push({ id: host.id, city: location.city, name: location.host.name })
+    }
+
+    console.log('🧭 Thiết lập hướng dẫn viên chuyên nghiệp & concierge...')
+    const primaryHostId = hostMap.get('da-lat') ?? hostMap.values().next().value
+    if (!primaryHostId) {
+      throw new Error('Không tìm thấy host nòng cốt để gán cho guide profile.')
+    }
+
+    const guideUser = await prisma.user.create({
+      data: {
+        email: GUIDE_ACCOUNT_EMAIL,
+        name: 'Huỳnh Gia Huy',
+        password: guidePasswordHash,
+        role: UserRole.HOST,
+        isHost: true,
+        isGuide: true,
+        emailVerified: new Date(),
+        phone: '0977001122',
+        image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=600&q=80',
+        bio: 'Lead concierge & hướng dẫn viên chính của LuxeStay, chuyên thiết kế trải nghiệm ẩm thực và wellness cao cấp.',
+        languages: ['Tiếng Việt', 'English'],
+        isVerified: true,
+      },
+    })
+
+    const guideSubscriptionStart = new Date()
+    const guideSubscriptionExpire = new Date(guideSubscriptionStart.getTime())
+    guideSubscriptionExpire.setMonth(guideSubscriptionExpire.getMonth() + 6)
+
+    const guideProfile = await prisma.guideProfile.create({
+      data: {
+        userId: guideUser.id,
+        hostUserId: primaryHostId,
+        displayName: 'LuxeStay City Concierge',
+        tagline: 'Thiết kế trải nghiệm linh hoạt cho khách VIP & doanh nghiệp',
+        bio: 'Đội ngũ concierge của Huy đã điều phối hơn 500 hành trình bespoke, kết hợp homestay signature với trải nghiệm bản địa.',
+        languages: ['Tiếng Việt', 'English'],
+        serviceAreas: ['TP.HCM', 'Đà Lạt', 'Hội An'],
+        specialties: ['Ẩm thực', 'Wellness', 'Team building', 'Nightlife'],
+        yearsExperience: 8,
+        pricingStructure: {
+          basePackage: 950000,
+          customizationFee: 350000,
+          currency: 'VND',
+        },
+        status: GuideStatus.APPROVED,
+        subscriptionStatus: GuideSubscriptionStatus.ACTIVE,
+        subscriptionStarted: guideSubscriptionStart,
+        subscriptionExpires: guideSubscriptionExpire,
+        monthlyFee: 499000,
+        adminCommissionRate: 0.12,
+        averageRating: 4.92,
+        totalReviews: 92,
+        totalBookings: 310,
+        totalEarnings: 185000000,
+        totalPayouts: 162000000,
+        spotlight: true,
+        featuredHighlights: [
+          'Concierge riêng 24/7 cho đoàn doanh nghiệp',
+          'Đối tác chiến lược với 20+ đầu bếp và nghệ nhân địa phương',
+          'Kịch bản linh hoạt theo ngân sách & khẩu vị'
+        ],
+      },
+    })
+
+    for (const experienceSeed of GUIDE_EXPERIENCE_SEEDS) {
+      await prisma.experience.create({
+        data: {
+          hostId: guideUser.id,
+          guideProfileId: guideProfile.id,
+          title: experienceSeed.title,
+          description: experienceSeed.description,
+          category: experienceSeed.category,
+          city: experienceSeed.city,
+          state: experienceSeed.state ?? null,
+          location: experienceSeed.location,
+          latitude: experienceSeed.latitude ?? null,
+          longitude: experienceSeed.longitude ?? null,
+          image: experienceSeed.image,
+          images: experienceSeed.images,
+          price: experienceSeed.price,
+          duration: experienceSeed.duration,
+          groupSize: experienceSeed.groupSize,
+          minGuests: experienceSeed.minGuests,
+          maxGuests: experienceSeed.maxGuests,
+          includedItems: experienceSeed.includedItems,
+          notIncluded: experienceSeed.notIncluded,
+          requirements: experienceSeed.requirements,
+          languages: experienceSeed.languages,
+          tags: experienceSeed.tags,
+          status: ExperienceStatus.ACTIVE,
+          isVerified: true,
+          featured: experienceSeed.featured ?? false,
+          isMembersOnly: experienceSeed.membersOnly ?? false,
+          averageRating: experienceSeed.averageRating,
+          totalReviews: experienceSeed.totalReviews,
+          totalBookings: Math.max(experienceSeed.totalReviews * 2, 40),
+        },
+      })
+      totalExperiences++
     }
 
     console.log('🛠️ Tạo danh sách tiện nghi chuẩn hóa...')
@@ -2843,6 +3668,68 @@ async function seedData() {
     )
 
     const amenityMap = new Map(amenityRecords.map((record) => [record.name, record]))
+
+    if (primaryHostId) {
+      console.log('🏡 Thêm bộ sưu tập signature cho host demo...')
+      for (const signature of PRIMARY_HOST_ADDITIONAL_LISTINGS) {
+        const amenityIds = signature.amenityNames
+          .map((name) => {
+            const amenity = amenityMap.get(name)
+            if (!amenity) {
+              console.warn(`⚠️ Amenity "${name}" chưa được định nghĩa.`)
+            }
+            return amenity?.id
+          })
+          .filter((id): id is string => Boolean(id))
+
+        const slug = `${toSlug(signature.city)}-${toSlug(signature.title)}`
+        const listing = await prisma.listing.create({
+          data: {
+            hostId: primaryHostId,
+            title: signature.title,
+            description: signature.description,
+            propertyType: signature.propertyType,
+            roomType: signature.roomType,
+            maxGuests: signature.maxGuests,
+            bedrooms: signature.bedrooms,
+            beds: signature.beds,
+            bathrooms: signature.bathrooms,
+            country: signature.country,
+            city: signature.city,
+            state: signature.state ?? null,
+            address: signature.address,
+            latitude: signature.latitude,
+            longitude: signature.longitude,
+            neighborhood: signature.neighborhood ?? null,
+            basePrice: signature.basePrice,
+            cleaningFee: signature.cleaningFee,
+            serviceFee: signature.serviceFee,
+            images: signature.images,
+            amenities: amenityIds,
+            verifiedAmenities: signature.verifiedAmenities,
+            status: ListingStatus.ACTIVE,
+            slug,
+            featured: signature.featured ?? false,
+            isSecret: false,
+            instantBookable: signature.instantBookable ?? true,
+            allowPets: signature.allowPets ?? false,
+            allowSmoking: signature.allowSmoking ?? false,
+            allowEvents: signature.allowEvents ?? false,
+            allowChildren: signature.allowChildren ?? true,
+            cancellationPolicy: CancellationPolicy.MODERATE,
+            checkInTime: '14:00',
+            checkOutTime: '11:00',
+            houseRules: 'Không hút thuốc trong nhà. Giữ yên tĩnh sau 22:00.',
+            averageRating: signature.averageRating,
+            totalReviews: signature.totalReviews,
+            totalBookings: signature.totalBookings,
+            publishedAt: new Date(),
+          },
+        })
+        listingSlugLookup.set(slug, { id: listing.id, hostId: primaryHostId, city: signature.city })
+        totalListings++
+      }
+    }
 
     console.log('🏘️ Seed listings, experiences, services theo từng thành phố...')
     for (const location of LOCATIONS) {
@@ -2864,6 +3751,7 @@ async function seedData() {
           })
           .filter((id): id is string => Boolean(id))
 
+        const slug = `${toSlug(location.city)}-${toSlug(listingSeed.title)}`
         const listing = await prisma.listing.create({
           data: {
             hostId,
@@ -2893,7 +3781,7 @@ async function seedData() {
             amenities: amenityIds,
             verifiedAmenities: listingSeed.verifiedAmenities,
             status: ListingStatus.ACTIVE,
-            slug: `${toSlug(location.city)}-${toSlug(listingSeed.title)}`,
+            slug,
             featured: listingSeed.featured ?? false,
             isSecret: listingSeed.isSecret ?? listingSeed.basePrice >= 3500000,
             instantBookable: listingSeed.instantBookable ?? false,
@@ -2913,6 +3801,7 @@ async function seedData() {
         })
 
         listingsForLocation.push(listing)
+        listingSlugLookup.set(slug, { id: listing.id, hostId, city: location.city })
         totalListings++
       }
 
@@ -3009,6 +3898,9 @@ async function seedData() {
             const discountAmount = nightlySubtotal * (listing.weeklyDiscount ?? 0)
             const totalPrice = nightlySubtotal - discountAmount + listing.cleaningFee + listing.serviceFee
 
+            const platformCommission = Math.round(totalPrice * 0.1)
+            const hostShare = Math.max(totalPrice - platformCommission, 0)
+
             const booking = await prisma.booking.create({
               data: {
                 listingId: listing.id,
@@ -3023,6 +3915,10 @@ async function seedData() {
                 serviceFee: listing.serviceFee,
                 discount: 0,
                 totalPrice,
+                platformCommission,
+                hostEarnings: hostShare,
+                hostPayoutStatus: HostPayoutStatus.PENDING,
+                hostPayoutSettledAt: checkOut,
                 status: BookingStatus.COMPLETED,
                 instantBook: listing.instantBookable,
                 checkInInstructions: 'Nhận phòng bằng khóa số và liên hệ host khi cần hỗ trợ.',
@@ -3031,6 +3927,18 @@ async function seedData() {
                 completedAt: checkOut,
               },
             })
+            seededBookings.push({
+              id: booking.id,
+              listingId: listing.id,
+              hostId,
+              guestId: guest.id,
+              totalPrice,
+              hostShare,
+            })
+            const hostFinancial = hostFinancials.get(hostId) ?? { earnings: 0, available: 0 }
+            hostFinancial.earnings += hostShare
+            hostFinancial.available += hostShare
+            hostFinancials.set(hostId, hostFinancial)
 
             await prisma.review.create({
               data: {
@@ -3077,6 +3985,49 @@ async function seedData() {
       }
     }
 
+    console.log('🎯 Xây dựng bộ sưu tập curated được tuyển chọn...')
+    for (const collectionSeed of CURATED_COLLECTION_SEEDS) {
+      const listingIds = Array.from(
+        new Set(
+          collectionSeed.listingRefs
+            .map((ref) => {
+              const slug = `${toSlug(ref.city)}-${toSlug(ref.title)}`
+              const record = listingSlugLookup.get(slug)
+              if (!record) {
+                console.warn(`⚠️ Không tìm thấy listing "${ref.title}" tại ${ref.city} cho collection ${collectionSeed.slug}.`)
+              }
+              return record?.id ?? null
+            })
+            .filter((id): id is string => Boolean(id)),
+        ),
+      )
+
+      if (listingIds.length === 0) {
+        console.warn(`⚠️ Bỏ qua collection ${collectionSeed.slug} vì không có listing hợp lệ.`)
+        continue
+      }
+
+      await prisma.curatedCollection.create({
+        data: {
+          slug: collectionSeed.slug,
+          title: collectionSeed.title,
+          subtitle: collectionSeed.subtitle,
+          description: collectionSeed.description,
+          heroImage: collectionSeed.heroImage,
+          cardImage: collectionSeed.cardImage,
+          tags: collectionSeed.tags,
+          location: collectionSeed.location ?? null,
+          category: collectionSeed.category,
+          listingsCount: listingIds.length,
+          listingIds,
+          featured: collectionSeed.featured ?? false,
+          curatorName: collectionSeed.curator?.name ?? null,
+          curatorTitle: collectionSeed.curator?.title ?? null,
+          curatorAvatar: collectionSeed.curator?.avatar ?? null,
+        },
+      })
+    }
+
     for (const [hostId, stats] of hostStats.entries()) {
       if (stats.reviewCount === 0) continue
       const hostAverage = Number((stats.totalRating / stats.reviewCount).toFixed(2))
@@ -3085,6 +4036,362 @@ async function seedData() {
         data: {
           averageRating: hostAverage,
           totalReviews: stats.reviewCount,
+        },
+      })
+    }
+
+    console.log('💸 Thiết lập yêu cầu rút tiền minh họa cho host...')
+    const payoutNow = new Date()
+    const hostPendingPayoutMap = new Map<string, number>()
+    const bookingsByHost = new Map<string, SeededBookingRecord[]>()
+    for (const booking of seededBookings) {
+      const hostList = bookingsByHost.get(booking.hostId)
+      if (hostList) {
+        hostList.push(booking)
+      } else {
+        bookingsByHost.set(booking.hostId, [booking])
+      }
+    }
+
+    for (const host of hostUsers) {
+      const financial = hostFinancials.get(host.id)
+      if (!financial) continue
+
+      const hostBookings = bookingsByHost.get(host.id) ?? []
+      if (hostBookings.length === 0) continue
+
+      const pendingSlice = hostBookings.slice(0, Math.min(3, hostBookings.length))
+      const pendingGross = pendingSlice.reduce((sum, booking) => sum + booking.hostShare, 0)
+      const pendingFee = Math.round(pendingGross * 0.015)
+      const pendingNet = Math.max(Math.round(pendingGross - pendingFee), 0)
+
+      if (pendingGross > 0) {
+        await prisma.hostPayout.create({
+          data: {
+            hostId: host.id,
+            amount: pendingNet,
+            grossAmount: Math.round(pendingGross),
+            feeAmount: pendingFee,
+            status: PayoutStatus.PENDING,
+            bookingIds: Array.from(new Set(pendingSlice.map((booking) => booking.id))),
+            payoutMethod: 'BANK_TRANSFER',
+            notes: 'Yêu cầu rút tiền doanh thu tuần này',
+            accountSnapshot: {
+              bankName: 'Techcombank',
+              accountNumber: '0123456789',
+              accountName: host.name,
+            },
+            requestedAt: payoutNow,
+          },
+        })
+        hostPendingPayoutMap.set(host.id, pendingNet)
+      }
+
+      const historySlice = hostBookings.slice(-Math.min(3, hostBookings.length))
+      const historyGross = historySlice.reduce((sum, booking) => sum + booking.hostShare, 0)
+      if (historyGross > 0) {
+        const historyFee = Math.round(historyGross * 0.012)
+        const historyNet = Math.max(Math.round(historyGross - historyFee), 0)
+        const processedAt = new Date(payoutNow.getTime())
+        processedAt.setDate(processedAt.getDate() - 10)
+
+        await prisma.hostPayout.create({
+          data: {
+            hostId: host.id,
+            amount: historyNet,
+            grossAmount: Math.round(historyGross),
+            feeAmount: historyFee,
+            status: PayoutStatus.PAID,
+            bookingIds: Array.from(new Set(historySlice.map((booking) => booking.id))),
+            payoutMethod: 'BANK_TRANSFER',
+            notes: 'Thanh toán đã hoàn tất cho kỳ trước',
+            accountSnapshot: {
+              bankName: 'Techcombank',
+              accountNumber: '0123456789',
+              accountName: host.name,
+            },
+            requestedAt: processedAt,
+            processedAt,
+          },
+        })
+      }
+    }
+
+    for (const host of hostUsers) {
+      const financial = hostFinancials.get(host.id)
+      if (!financial) continue
+      const pendingNet = hostPendingPayoutMap.get(host.id) ?? 0
+      const availableAfterPending = Math.max(financial.available - pendingNet, 0)
+      await prisma.hostProfile.updateMany({
+        where: { userId: host.id },
+        data: {
+          totalEarnings: financial.earnings,
+          availableBalance: availableAfterPending,
+          pendingPayoutBalance: pendingNet,
+        },
+      })
+    }
+
+    console.log('🎟️ Cấu hình ưu đãi, membership và concierge mẫu...')
+    const now = new Date()
+    const nextQuarter = new Date(now.getTime())
+    nextQuarter.setMonth(nextQuarter.getMonth() + 3)
+
+    const hostPromotionSeeds: Array<{
+      code: string
+      name: string
+      description: string | null
+      type: PromotionType
+      discountType: DiscountType
+      discountValue: number
+      maxDiscount: number | null
+      minBookingValue: number | null
+      maxUses: number | null
+      maxUsesPerUser: number | null
+      validFrom: Date
+      validUntil: Date
+      stackWithMembership: boolean
+      stackWithPromotions: boolean
+      allowedMembershipTiers: LoyaltyTier[]
+      source: PromotionSource
+      listingIds: string[]
+      propertyTypes: PropertyType[]
+      metadata: Record<string, unknown> | null
+      hostId: string
+    }> = []
+
+    for (const coupon of HOST_COUPON_SEEDS) {
+      const hostId = hostMap.get(coupon.hostKey)
+      if (!hostId) {
+        console.warn(`⚠️ Không tìm thấy host cho coupon ${coupon.code}, bỏ qua.`)
+        continue
+      }
+
+      const listingIds = coupon.listingRefs
+        ? Array.from(
+            new Set(
+              coupon.listingRefs
+                .map((ref) => {
+                  const slug = `${toSlug(ref.city)}-${toSlug(ref.title)}`
+                  const record = listingSlugLookup.get(slug)
+                  if (!record) {
+                    console.warn(`⚠️ Không tìm thấy listing "${ref.title}" cho coupon ${coupon.code}.`)
+                  }
+                  return record?.id ?? null
+                })
+                .filter((id): id is string => Boolean(id)),
+            ),
+          )
+        : []
+
+      const validUntil = new Date(now.getTime() + ((coupon.durationDays ?? 60) * 24 * 60 * 60 * 1000))
+
+      hostPromotionSeeds.push({
+        code: coupon.code,
+        name: coupon.name,
+        description: coupon.description ?? null,
+        type: PromotionType.GENERAL,
+        discountType: coupon.discountType,
+        discountValue: coupon.discountValue,
+        maxDiscount: coupon.maxDiscount ?? null,
+        minBookingValue: coupon.minBookingValue ?? null,
+        maxUses: coupon.maxUses ?? 150,
+        maxUsesPerUser: coupon.maxUsesPerUser ?? null,
+        validFrom: now,
+        validUntil,
+        stackWithMembership: coupon.stackWithMembership ?? true,
+        stackWithPromotions: coupon.stackWithPromotions ?? false,
+        allowedMembershipTiers: coupon.allowedMembershipTiers ?? [],
+        source: PromotionSource.HOST,
+        listingIds,
+        propertyTypes: [],
+        metadata: coupon.metadata ?? null,
+        hostId,
+      })
+    }
+
+    const adminPromotionSeeds = [
+      {
+        code: 'WELCOME10',
+        name: 'Ưu đãi khách mới',
+        description: 'Giảm 10% cho đặt phòng đầu tiên',
+        type: PromotionType.FIRST_BOOKING,
+        discountType: DiscountType.PERCENTAGE,
+        discountValue: 10,
+        maxDiscount: 1500000,
+        minBookingValue: 2000000,
+        maxUses: 500,
+        validFrom: now,
+        validUntil: nextQuarter,
+        stackWithMembership: false,
+        stackWithPromotions: false,
+        allowedMembershipTiers: [],
+        source: PromotionSource.ADMIN,
+        listingIds: [],
+        propertyTypes: [],
+      },
+      {
+        code: 'WEEKDAY15',
+        name: 'Tuần lễ staycation',
+        description: 'Giảm 15% cho đặt phòng trong tuần',
+        type: PromotionType.SEASONAL,
+        discountType: DiscountType.PERCENTAGE,
+        discountValue: 15,
+        maxDiscount: 2500000,
+        minBookingValue: 3000000,
+        maxUses: 200,
+        validFrom: now,
+        validUntil: nextQuarter,
+        stackWithMembership: true,
+        stackWithPromotions: false,
+        allowedMembershipTiers: [LoyaltyTier.GOLD, LoyaltyTier.DIAMOND],
+        source: PromotionSource.ADMIN,
+        listingIds: [],
+        propertyTypes: [],
+      },
+      {
+        code: 'CITYCHEF500K',
+        name: 'Host tặng private chef',
+        description: 'Giảm 500k khi đặt villa LuxeStay City Collection',
+        type: PromotionType.FLASH_SALE,
+        discountType: DiscountType.FIXED_AMOUNT,
+        discountValue: 500000,
+        maxUses: 50,
+        validFrom: now,
+        validUntil: nextQuarter,
+        stackWithMembership: true,
+        stackWithPromotions: false,
+        allowedMembershipTiers: [],
+        source: PromotionSource.HOST,
+        listingIds: seededBookings.slice(0, 3).map((booking) => booking.listingId),
+        propertyTypes: [PropertyType.VILLA],
+      },
+    ]
+
+    const promotionsSeed = [...adminPromotionSeeds, ...hostPromotionSeeds]
+
+    for (const promo of promotionsSeed) {
+      await prisma.promotion.create({
+        data: {
+          ...promo,
+          validFrom: promo.validFrom,
+          validUntil: promo.validUntil,
+        },
+      })
+    }
+
+    const goldPlan = membershipPlanMap.get('gold')
+    if (diamondPlan) {
+      await prisma.membershipPurchase.create({
+        data: {
+          userId: loginReadyGuest.id,
+          planId: diamondPlan.id,
+          billingCycle: MembershipBillingCycle.ANNUAL,
+          amount: diamondPlan.annualPrice ?? 2990000,
+          paymentMethod: MembershipPaymentMethod.BANK_TRANSFER,
+          status: MembershipPurchaseStatus.CONFIRMED,
+          referenceCode: `MEM-${loginReadyGuest.id.slice(-5)}`,
+          planSnapshot: {
+            name: diamondPlan.name,
+            perks: diamondPlan.features,
+          },
+          transferInfo: {
+            bank: 'Techcombank',
+            account: '8866997979',
+          },
+          confirmedBy: systemAdmin.id,
+          confirmedAt: new Date(),
+        },
+      })
+    }
+
+    if (goldPlan && guestRecords[0]) {
+      await prisma.user.update({
+        where: { id: guestRecords[0].id },
+        data: {
+          membershipStatus: MembershipStatus.ACTIVE,
+          membershipPlanId: goldPlan.id,
+          membershipStartedAt: now,
+          membershipExpiresAt: nextQuarter,
+        },
+      })
+
+      await prisma.membershipPurchase.create({
+        data: {
+          userId: guestRecords[0].id,
+          planId: goldPlan.id,
+          billingCycle: MembershipBillingCycle.MONTHLY,
+          amount: goldPlan.monthlyPrice ?? 199000,
+          paymentMethod: MembershipPaymentMethod.E_WALLET,
+          status: MembershipPurchaseStatus.CONFIRMED,
+          referenceCode: `MEM-${guestRecords[0].id.slice(-5)}`,
+          planSnapshot: {
+            name: goldPlan.name,
+            perks: goldPlan.features,
+          },
+          transferInfo: {
+            wallet: 'Momo',
+          },
+          confirmedBy: systemAdmin.id,
+          confirmedAt: new Date(),
+        },
+      })
+    }
+
+    const conciergeSamples = seededBookings.slice(0, 5)
+    for (const booking of conciergeSamples) {
+      const assignedHost = hostUsers.find((host) => host.id === booking.hostId)
+      await prisma.conciergePlan.create({
+        data: {
+          bookingId: booking.id,
+          listingId: booking.listingId,
+          guestId: booking.guestId,
+          hostId: booking.hostId,
+          conciergeAgentId: systemAdmin.id,
+          status: ConciergePlanStatus.CONFIRMED,
+          loyaltyOffer: 'Nâng hạng phòng & minibar địa phương',
+          planDetails: {
+            segments: [
+              {
+                id: 'main',
+                type: 'primary',
+                startDate: new Date(),
+                endDate: new Date(),
+                nights: 2,
+                notes: 'Chuẩn bị welcome tea và private chef brunch.',
+              },
+            ],
+            hostName: assignedHost?.name ?? 'Host LuxeStay',
+          },
+          partnerInfo: [
+            {
+              id: 'chef',
+              title: 'Private Chef Tuấn',
+              location: assignedHost?.city ?? 'Đà Lạt',
+              basePrice: 2500000,
+            },
+          ],
+          hostNotes: 'Khách yêu cầu bữa tối nhẹ, set up hoa & nến.',
+          guestNotes: 'Gia đình 4 người, có trẻ nhỏ.',
+        },
+      })
+    }
+
+    const paymentSamples = seededBookings.slice(0, 8)
+    for (const booking of paymentSamples) {
+      await prisma.payment.create({
+        data: {
+          bookingId: booking.id,
+          amount: booking.totalPrice,
+          paymentMethod: PaymentMethodType.CREDIT_CARD,
+          paymentGateway: PaymentGateway.VNPAY,
+          status: PaymentStatus.COMPLETED,
+          transactionId: `PAY-${booking.id.slice(-6)}`,
+          gatewayResponse: {
+            code: '00',
+            message: 'Transaction approved',
+          },
+          paidAt: new Date(),
         },
       })
     }
@@ -3099,8 +4406,11 @@ async function seedData() {
 }
 
 async function main() {
-  await resetDatabase()
-  await seedData()
+  const args = process.argv.slice(2)
+  const shouldReset = args.includes('--reset') || process.env.SEED_RESET === 'true'
+
+  await resetDatabase(shouldReset)
+  await seedData({ shouldReset })
 }
 
 main().catch((error) => {

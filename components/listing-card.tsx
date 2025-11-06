@@ -1,10 +1,14 @@
 "use client"
 
-import { Heart, Star, MapPin, Users, Bed } from "lucide-react"
+import Link from "next/link"
+import { useCallback, useEffect, useState, type MouseEvent } from "react"
+import { useSession } from "next-auth/react"
+import { Heart, Star, MapPin, Users, Bed, Loader2 } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import Link from "next/link"
-import { useState } from "react"
+import { useAuthModal } from "@/hooks/use-auth-modal"
+import { useToast } from "@/hooks/use-toast"
 
 interface ListingCardProps {
   id: string
@@ -37,7 +41,115 @@ export function ListingCard({
   isSecret = false,
   nearbyPlacesCount,
 }: ListingCardProps) {
+  const { data: session } = useSession()
+  const authModal = useAuthModal()
+  const { toast } = useToast()
   const [isFavorite, setIsFavorite] = useState(false)
+  const [isUpdatingWishlist, setIsUpdatingWishlist] = useState(false)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchWishlistStatus = async () => {
+      if (!session?.user?.id) {
+        if (isMounted) {
+          setIsFavorite(false)
+        }
+        return
+      }
+
+      try {
+        const response = await fetch(`/api/wishlist/${id}/check`, {
+          cache: "no-store",
+          credentials: "include",
+        })
+        if (!response.ok) {
+          throw new Error("Failed to check wishlist")
+        }
+        const payload = await response.json()
+        if (isMounted) {
+          setIsFavorite(Boolean(payload?.isInWishlist))
+        }
+      } catch (error) {
+        console.warn("Wishlist status error:", error)
+      }
+    }
+
+    void fetchWishlistStatus()
+
+    return () => {
+      isMounted = false
+    }
+  }, [id, session?.user?.id])
+
+  const handleWishlistToggle = useCallback(
+    async (event: MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+
+      if (!session?.user) {
+        authModal.openLogin()
+        return
+      }
+
+      if (isUpdatingWishlist) {
+        return
+      }
+
+      setIsUpdatingWishlist(true)
+      try {
+        if (isFavorite) {
+          const response = await fetch(`/api/wishlist/${id}`, {
+            method: "DELETE",
+            credentials: "include",
+          })
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({}))
+            if (response.status === 404) {
+              setIsFavorite(false)
+              return
+            }
+            throw new Error(payload?.error || "Không thể gỡ sản phẩm khỏi danh sách yêu thích.")
+          }
+          setIsFavorite(false)
+          toast({
+            title: "Đã gỡ khỏi Wishlist",
+            description: "Chỗ nghỉ đã được xóa khỏi danh sách yêu thích của bạn.",
+          })
+        } else {
+          const response = await fetch("/api/wishlist", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ listingId: id }),
+          })
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({}))
+            if (response.status === 400 && payload?.error === "Already in wishlist") {
+              setIsFavorite(true)
+              return
+            }
+            throw new Error(payload?.error || "Không thể thêm vào danh sách yêu thích.")
+          }
+          setIsFavorite(true)
+          toast({
+            title: "Đã lưu vào Wishlist",
+            description: "Bạn có thể xem lại chỗ nghỉ này bất kỳ lúc nào trong danh sách yêu thích.",
+          })
+        }
+      } catch (error: any) {
+        console.error("Wishlist toggle error:", error)
+        toast({
+          title: "Không thể cập nhật wishlist",
+          description: error?.message || "Vui lòng thử lại sau.",
+          variant: "destructive",
+        })
+      } finally {
+        setIsUpdatingWishlist(false)
+      }
+    },
+    [authModal, id, isFavorite, isUpdatingWishlist, session?.user, toast],
+  )
 
   return (
     <Link href={`/listing/${id}`} className="group block">
@@ -62,16 +174,20 @@ export function ListingCard({
         <Button
           size="icon"
           variant="ghost"
-            className={`absolute top-3 right-3 h-9 w-9 rounded-full backdrop-blur-sm transition-all ${
-              isFavorite ? "bg-white text-red-500 hover:bg-white" : "bg-white/90 hover:bg-white hover:scale-110"
-            }`}
-            onClick={(e) => {
-              e.preventDefault()
-              setIsFavorite(!isFavorite)
-            }}
-          >
+          aria-pressed={isFavorite}
+          disabled={isUpdatingWishlist}
+          className={`absolute top-3 right-3 h-9 w-9 rounded-full backdrop-blur-sm transition-all ${
+            isFavorite ? "bg-white text-red-500 hover:bg-white" : "bg-white/90 hover:bg-white hover:scale-110"
+          }`}
+          onClick={handleWishlistToggle}
+          title={isFavorite ? "Gỡ khỏi Wishlist" : "Thêm vào Wishlist"}
+        >
+          {isUpdatingWishlist ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
             <Heart className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
-          </Button>
+          )}
+        </Button>
           <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-4">
             <div className="flex items-center space-x-4 text-white text-sm">
               <div className="flex items-center space-x-1">

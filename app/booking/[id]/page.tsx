@@ -47,6 +47,8 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
   const initialGuests = initialGuestsParam ? Math.max(1, Number(initialGuestsParam) || 1) : undefined
   const servicesParam = extractParam(query?.services)
   const servicesTotalParam = extractParam(query?.servicesTotal)
+  const couponParam = extractParam(query?.coupon)
+  const initialCouponCode = couponParam ? couponParam.toUpperCase() : undefined
 
   let initialServices
   if (servicesParam) {
@@ -78,6 +80,7 @@ export default async function BookingPage({ params, searchParams }: BookingPageP
             initialGuests={initialGuests}
             initialServices={initialServices}
             initialServicesTotal={initialServicesTotal}
+            initialCouponCode={initialCouponCode}
           />
         </div>
       </main>

@@ -20,9 +20,21 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
-import { cn } from "@/lib/utils"
+import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
+import { VIETNAMESE_BANKS } from "@/lib/banks"
+import { cn } from "@/lib/utils"
 
 type PendingBooking = {
   id: string
@@ -97,6 +109,17 @@ export default function HostPayoutsPage() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [selectedBookingIds, setSelectedBookingIds] = useState<string[]>([])
+  const [accountModalOpen, setAccountModalOpen] = useState(false)
+  const [accountSaving, setAccountSaving] = useState(false)
+  const [accountForm, setAccountForm] = useState({
+    bankName: "",
+    bankBranch: "",
+    accountNumber: "",
+    accountName: "",
+    qrCodeImage: "",
+    taxId: "",
+    notes: "",
+  })
 
   const loadPayouts = useCallback(async () => {
     try {
@@ -153,6 +176,77 @@ export default function HostPayoutsPage() {
     const allIds = data.pendingBookings.map((booking) => booking.id)
     const isAllSelected = selectedBookingIds.length === allIds.length
     setSelectedBookingIds(isAllSelected ? [] : allIds)
+  }
+
+  useEffect(() => {
+    if (!data?.payoutAccount) return
+    const account = data.payoutAccount
+    setAccountForm({
+      bankName: account.bankName ?? "",
+      bankBranch: account.bankBranch ?? "",
+      accountNumber: account.accountNumber ?? "",
+      accountName: account.accountName ?? "",
+      qrCodeImage: account.qrCodeImage ?? "",
+      taxId: account.taxId ?? "",
+      notes: account.notes ?? "",
+    })
+  }, [data?.payoutAccount])
+
+  const handleAccountChange = (field: keyof typeof accountForm, value: string) => {
+    setAccountForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
+  }
+
+  const handleSaveAccount = async () => {
+    if (!accountForm.bankName || !accountForm.accountNumber || !accountForm.accountName) {
+      toast({
+        title: "Thiếu thông tin",
+        description: "Vui lòng chọn ngân hàng và điền đầy đủ số tài khoản, tên tài khoản.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setAccountSaving(true)
+      const response = await fetch("/api/host/payout-account", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bankName: accountForm.bankName,
+          bankBranch: accountForm.bankBranch || undefined,
+          accountNumber: accountForm.accountNumber,
+          accountName: accountForm.accountName,
+          qrCodeImage: accountForm.qrCodeImage || undefined,
+          taxId: accountForm.taxId || undefined,
+          notes: accountForm.notes || undefined,
+        }),
+      })
+
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Không thể cập nhật thông tin thanh toán")
+      }
+
+      toast({
+        title: "Đã lưu thông tin thanh toán",
+        description: "Admin sẽ sử dụng thông tin này để chuyển khoản trong các lần rút tiền.",
+      })
+
+      setAccountModalOpen(false)
+      await loadPayouts()
+    } catch (error) {
+      console.error("Host payout account update error:", error)
+      toast({
+        title: "Cập nhật thất bại",
+        description: error instanceof Error ? error.message : "Vui lòng thử lại sau.",
+        variant: "destructive",
+      })
+    } finally {
+      setAccountSaving(false)
+    }
   }
 
   const selectedBookings = useMemo(() => {
@@ -264,10 +358,7 @@ export default function HostPayoutsPage() {
                 <span>
                   Cập nhật thông tin ngân hàng và mã QR trước khi gửi yêu cầu rút tiền để admin xử lý nhanh chóng.
                 </span>
-                <Button
-                  variant="secondary"
-                  onClick={() => router.push("/host/settings?tab=payments")}
-                >
+                <Button variant="secondary" onClick={() => setAccountModalOpen(true)}>
                   <CreditCard className="mr-2 h-4 w-4" /> Cập nhật ngay
                 </Button>
               </AlertDescription>
@@ -349,7 +440,7 @@ export default function HostPayoutsPage() {
                   ) : (
                     <span className="text-sm text-muted-foreground">Chưa đính kèm QR code</span>
                   )}
-                  <Button variant="outline" size="sm" onClick={() => router.push("/host/settings?tab=payments")}>
+                  <Button variant="outline" size="sm" onClick={() => setAccountModalOpen(true)}>
                     Cập nhật
                   </Button>
                 </div>
@@ -494,7 +585,122 @@ export default function HostPayoutsPage() {
           <Button onClick={loadPayouts}>Thử tải lại</Button>
         </div>
       )}
+
+      <Dialog open={accountModalOpen} onOpenChange={(open) => !accountSaving && setAccountModalOpen(open)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Thông tin tài khoản ngân hàng</DialogTitle>
+            <DialogDescription>
+              LuxeStay sử dụng thông tin này để chuyển khoản khi yêu cầu rút tiền được admin phê duyệt.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Ngân hàng</label>
+              <Select
+                value={accountForm.bankName}
+                onValueChange={(value) => handleAccountChange("bankName", value)}
+                disabled={accountSaving}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn ngân hàng" />
+                </SelectTrigger>
+                <SelectContent>
+                  {VIETNAMESE_BANKS.map((bank) => (
+                    <SelectItem key={bank.code} value={bank.shortName}>
+                      {bank.shortName} — {bank.name}
+                    </SelectItem>
+                  ))}
+                  {accountForm.bankName &&
+                    !VIETNAMESE_BANKS.some(
+                      (bank) => bank.shortName === accountForm.bankName || bank.name === accountForm.bankName,
+                    ) && (
+                      <SelectItem value={accountForm.bankName}>
+                        {accountForm.bankName} (tùy chỉnh)
+                      </SelectItem>
+                    )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Số tài khoản</label>
+                <Input
+                  value={accountForm.accountNumber}
+                  onChange={(event) => handleAccountChange("accountNumber", event.target.value)}
+                  placeholder="Ví dụ: 0123456789"
+                  disabled={accountSaving}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Tên chủ tài khoản</label>
+                <Input
+                  value={accountForm.accountName}
+                  onChange={(event) => handleAccountChange("accountName", event.target.value)}
+                  placeholder="Tên trùng CMND/CCCD"
+                  disabled={accountSaving}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Chi nhánh (tuỳ chọn)</label>
+                <Input
+                  value={accountForm.bankBranch}
+                  onChange={(event) => handleAccountChange("bankBranch", event.target.value)}
+                  placeholder="Ví dụ: Hội sở Hà Nội"
+                  disabled={accountSaving}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Mã số thuế (tuỳ chọn)</label>
+                <Input
+                  value={accountForm.taxId}
+                  onChange={(event) => handleAccountChange("taxId", event.target.value)}
+                  placeholder="Nhập MST nếu có"
+                  disabled={accountSaving}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Link mã QR (tuỳ chọn)</label>
+              <Input
+                value={accountForm.qrCodeImage}
+                onChange={(event) => handleAccountChange("qrCodeImage", event.target.value)}
+                placeholder="https://..."
+                disabled={accountSaving}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Ghi chú cho admin (tuỳ chọn)</label>
+              <Textarea
+                value={accountForm.notes}
+                onChange={(event) => handleAccountChange("notes", event.target.value)}
+                placeholder="Ví dụ: Ưu tiên chuyển trước 12h, nếu chuyển qua số điện thoại thì liên hệ trước."
+                disabled={accountSaving}
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setAccountModalOpen(false)} disabled={accountSaving}>
+              Huỷ
+            </Button>
+            <Button onClick={handleSaveAccount} disabled={accountSaving}>
+              {accountSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Lưu thông tin
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </HostLayout>
   )
 }
-

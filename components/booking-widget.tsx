@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Star, Users, CreditCard, Calendar } from "lucide-react"
+import { Star, Users, CreditCard, Calendar, TicketPercent } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { useRouter } from "next/navigation"
@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/dialog"
 import { useAuthModal } from "@/hooks/use-auth-modal"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { getLoyaltyDiscountConfig } from "@/lib/loyalty-discounts"
 
 interface BookingWidgetProps {
   listingId: string
@@ -29,20 +31,6 @@ interface BookingWidgetProps {
   reviews: number
   instantBookable?: boolean
   cleaningFee?: number
-}
-
-const LOYALTY_DISCOUNT_MAP: Record<string, number> = {
-  SILVER: 5,
-  GOLD: 10,
-  PLATINUM: 12,
-  DIAMOND: 15,
-}
-
-const LOYALTY_SERVICE_DISCOUNT_MAP: Record<string, boolean> = {
-  SILVER: false,
-  GOLD: true,
-  PLATINUM: true,
-  DIAMOND: true,
 }
 
 const MEMBERSHIP_PERKS: Record<string, string[]> = {
@@ -82,27 +70,26 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
   const [selectedServices, setSelectedServices] = useState<SelectedServiceSummary[]>([])
   const [showServices, setShowServices] = useState(false)
   const [showAvailability, setShowAvailability] = useState(false)
+  const [couponCode, setCouponCode] = useState("")
+  const [pendingCoupon, setPendingCoupon] = useState<string | null>(null)
 
   const sessionUser = session?.user
   const membershipStatus = sessionUser?.membershipStatus ?? null
   const loyaltyTier = sessionUser?.membership?.toUpperCase() ?? null
   const plan = sessionUser?.membershipPlan ?? null
   const planDiscountRate = plan?.discountRate ?? 0
-  const loyaltyDiscountRate = loyaltyTier ? LOYALTY_DISCOUNT_MAP[loyaltyTier] ?? 0 : 0
+  const loyaltyConfig = getLoyaltyDiscountConfig(loyaltyTier)
+  const loyaltyDiscountRate = loyaltyConfig.rate
   const hasPlanBenefit = planDiscountRate > 0
   const hasLoyaltyBenefit = loyaltyDiscountRate > 0
   const appliedDiscountRate = hasPlanBenefit ? planDiscountRate : loyaltyDiscountRate
   const appliedServicesDiscount = hasPlanBenefit
     ? Boolean(plan?.applyDiscountToServices)
-    : loyaltyTier
-      ? LOYALTY_SERVICE_DISCOUNT_MAP[loyaltyTier] ?? false
-      : false
+    : loyaltyConfig.applyToServices
   const membershipActive = hasPlanBenefit
     ? membershipStatus !== "INACTIVE" && membershipStatus !== "CANCELLED" && membershipStatus !== "EXPIRED"
     : hasLoyaltyBenefit
-  const membershipLabel =
-    plan?.name ??
-    (loyaltyTier ? `Hạng ${loyaltyTier.charAt(0)}${loyaltyTier.slice(1).toLowerCase()}` : null)
+  const membershipLabel = plan?.name ?? loyaltyConfig.label
   const perkKeyCandidates = [
     plan?.slug?.toLowerCase(),
     loyaltyTier?.toLowerCase(),
@@ -171,6 +158,24 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
     discountBase > 0 ? Math.round((discountBase * appliedDiscountRate) / 100) : 0
   const total = Math.max(0, totalBeforeDiscount - membershipDiscountAmount)
 
+  const handleCouponAttach = () => {
+    const normalized = couponCode.trim().toUpperCase()
+    if (!normalized) {
+      toast({
+        title: "Mã chưa hợp lệ",
+        description: "Vui lòng nhập mã ưu đãi trước khi lưu.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setPendingCoupon(normalized)
+    toast({
+      title: "Đã lưu mã ưu đãi",
+      description: "Mã sẽ được chuyển sang bước tạo đơn để áp dụng nhanh.",
+    })
+  }
+
   const handleServicesChange = (totalPrice: number, services: SelectedServiceSummary[]) => {
     setServicesTotal(totalPrice)
     setSelectedServices(services)
@@ -204,6 +209,10 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
     if (selectedServices.length > 0) {
       params.set("services", encodeURIComponent(JSON.stringify(selectedServices)))
       params.set("servicesTotal", servicesTotal.toString())
+    }
+
+    if (pendingCoupon) {
+      params.set("coupon", pendingCoupon)
     }
 
     toast({
@@ -401,6 +410,29 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
             )}
           </div>
         )}
+
+        <div className="rounded-xl border border-dashed border-border/60 p-4 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <TicketPercent className="h-4 w-4 text-primary" />
+            <span>Mã ưu đãi</span>
+          </div>
+          <Input
+            value={couponCode}
+            onChange={(event) => setCouponCode(event.target.value)}
+            placeholder="NHAPMA"
+            className="uppercase tracking-wide"
+          />
+          <Button type="button" variant="outline" className="w-full" onClick={handleCouponAttach}>
+            Lưu mã để áp dụng ở bước tiếp theo
+          </Button>
+          {pendingCoupon ? (
+            <p className="text-xs text-muted-foreground">
+              Mã <span className="font-semibold text-foreground">{pendingCoupon}</span> sẽ tự động được mang sang bước tạo đơn.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">Bạn có thể nhập mã thành viên hoặc voucher để tiết kiệm hơn.</p>
+          )}
+        </div>
       </CardContent>
 
       <SplitPaymentModal open={showSplitPayment} onOpenChange={setShowSplitPayment} totalAmount={total} bookingId="BOOK123" />

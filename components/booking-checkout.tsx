@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSession } from "next-auth/react"
+import { Loader2, Sparkles, TicketPercent } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -25,6 +26,7 @@ import {
 } from "@/components/ui/dialog"
 import { ServicesSelection, type SelectedServiceSummary } from "@/components/services-selection"
 import { cn } from "@/lib/utils"
+import { getLoyaltyDiscountConfig } from "@/lib/loyalty-discounts"
 
 interface HostInfo {
   name?: string | null
@@ -54,6 +56,7 @@ interface BookingCheckoutProps {
   initialGuests?: number
   initialServices?: SelectedServiceSummary[]
   initialServicesTotal?: number
+  initialCouponCode?: string
 }
 
 type StepStatus = "completed" | "current" | "upcoming"
@@ -329,10 +332,12 @@ export function BookingCheckout({
     specialRequests: "",
   })
   const [bookingId, setBookingId] = useState<string | null>(null)
+  const [bookingData, setBookingData] = useState<any | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [bookingCode, setBookingCode] = useState<string | null>(null)
   const paymentSectionRef = useRef<HTMLDivElement | null>(null)
   const splitSuggestionSectionRef = useRef<HTMLDivElement | null>(null)
+  const autoCouponRef = useRef(false)
   const [splitSuggestion, setSplitSuggestion] = useState<SplitStaySuggestion | null>(null)
   const [selectedAlternatives, setSelectedAlternatives] = useState<Record<string, string>>({})
   const [splitPlanApplied, setSplitPlanApplied] = useState(false)
@@ -347,37 +352,136 @@ export function BookingCheckout({
     initialServicesTotal ?? calculateServicesTotal(initialServices ?? []),
   )
   const [showServicesModal, setShowServicesModal] = useState(false)
+  const [couponCode, setCouponCode] = useState(initialCouponCode ?? "")
+  const [isApplyingCoupon, setIsApplyingCoupon] = useState(false)
+  const [isRemovingCoupon, setIsRemovingCoupon] = useState(false)
 
   const summaryListing = useMemo(() => {
-    const locationParts = [listing.city, listing.state, listing.country].filter(Boolean)
+    const sourceListing = bookingData?.listing ?? listing
+    const locationParts = [sourceListing.city, sourceListing.state, sourceListing.country].filter(Boolean)
     const location = locationParts.length > 0 ? locationParts.join(", ") : "Việt Nam"
 
-    const basePrice = typeof listing.basePrice === "number" ? listing.basePrice : 0
+    const basePrice = typeof sourceListing.basePrice === "number" ? sourceListing.basePrice : 0
 
     return {
-      id: listing.id,
-      title: listing.title,
+      id: sourceListing.id,
+      title: sourceListing.title,
       location,
       price: basePrice,
-      rating: listing.averageRating ?? 4.8,
-      reviews: listing.reviewsCount ?? listing.reviews?.length ?? 0,
-      image: listing.images?.[0] || "/placeholder.svg",
+      rating: sourceListing.averageRating ?? 4.8,
+      reviews: sourceListing.reviewsCount ?? sourceListing.reviews?.length ?? 0,
+      image: sourceListing.images?.[0] || "/placeholder.svg",
       host: {
-        name: listing.host?.name ?? "Host",
-        avatar: listing.host?.image ?? "/placeholder.svg",
+        name: sourceListing.host?.name ?? "Host",
+        avatar: sourceListing.host?.image ?? "/placeholder.svg",
       },
-      cleaningFee: listing.cleaningFee ?? 0,
+      cleaningFee: sourceListing.cleaningFee ?? 0,
       // Don't pass serviceFee - let BookingSummary calculate it
     }
-  }, [listing])
+  }, [bookingData?.listing, listing])
+
+  const summaryServices = bookingData?.additionalServices ?? selectedServices
+  const summaryServicesTotal =
+    typeof bookingData?.additionalServicesTotal === "number"
+      ? bookingData.additionalServicesTotal
+      : servicesTotal
 
   const nights = calculateNights(checkIn, checkOut)
-  const nightlyRate = typeof listing.basePrice === "number" ? listing.basePrice : 0
+  const nightlyRate = summaryListing.price
   const subtotal = nightlyRate * nights
-  const cleaningFee = listing.cleaningFee ?? 0
-  // Always calculate service fee as 10% of subtotal + servicesTotal
+  const cleaningFee = summaryListing.cleaningFee ?? 0
   const serviceFee = (subtotal + servicesTotal) * 0.1
-  const totalAmount = subtotal + cleaningFee + serviceFee + servicesTotal
+  const estimatedTotal = subtotal + cleaningFee + serviceFee + servicesTotal
+  const sessionUser = session?.user
+  const sessionMembershipStatus = sessionUser?.membershipStatus ?? null
+  const loyaltyTier = sessionUser?.membership ?? null
+  const planSnapshot = sessionUser?.membershipPlan ?? null
+  const planActive = planSnapshot
+    ? sessionMembershipStatus !== "INACTIVE" &&
+      sessionMembershipStatus !== "CANCELLED" &&
+      sessionMembershipStatus !== "EXPIRED"
+    : false
+  const loyaltyConfig = getLoyaltyDiscountConfig(loyaltyTier)
+  const previewDiscountRate = planActive ? planSnapshot.discountRate ?? 0 : loyaltyConfig.rate
+  const previewAppliesToServices = planActive
+    ? Boolean(planSnapshot?.applyDiscountToServices)
+    : loyaltyConfig.applyToServices
+  const previewDiscountBase =
+    previewDiscountRate > 0 ? subtotal + (previewAppliesToServices ? servicesTotal : 0) : 0
+  const previewMembershipDiscount =
+    previewDiscountBase > 0 ? Math.round((previewDiscountBase * previewDiscountRate) / 100) : 0
+  const previewMembershipLabel = planActive ? planSnapshot?.name : loyaltyConfig.label
+
+  const serverMembershipDiscount = Math.round(bookingData?.membershipDiscount ?? 0)
+  const serverPromotionDiscount = Math.round(bookingData?.promotionDiscount ?? 0)
+  const appliedPromotions = useMemo(() => {
+    if (!bookingData?.appliedPromotions) {
+      return [] as Array<Record<string, any>>
+    }
+    if (Array.isArray(bookingData.appliedPromotions)) {
+      return bookingData.appliedPromotions.filter((entry): entry is Record<string, any> => Boolean(entry) && typeof entry === "object")
+    }
+    return [] as Array<Record<string, any>>
+  }, [bookingData?.appliedPromotions])
+
+  const membershipPromotion = useMemo(() => {
+    return appliedPromotions.find((entry) => entry.type === "MEMBERSHIP") ?? null
+  }, [appliedPromotions])
+
+  const couponPromotion = useMemo(() => {
+    return appliedPromotions.find((entry) => entry.type === "PROMOTION") ?? null
+  }, [appliedPromotions])
+
+  const bookingDiscountItems = useMemo(() => {
+    if (!bookingData) {
+      return []
+    }
+
+    const items: Array<{ label: string; amount: number }> = []
+    appliedPromotions.forEach((entry) => {
+      const rawAmount = Number(entry.amount ?? 0)
+      if (!Number.isFinite(rawAmount) || Math.round(rawAmount) <= 0) {
+        return
+      }
+
+      const amount = Math.round(rawAmount)
+      if (entry.type === "MEMBERSHIP") {
+        const planName = entry.plan?.name ? ` ${entry.plan.name}` : ""
+        const rateSuffix = typeof entry.rate === "number" && entry.rate > 0 ? ` (-${Math.round(entry.rate)}%)` : ""
+        items.push({
+          label: `Ưu đãi thành viên${planName}${rateSuffix}`.trim(),
+          amount,
+        })
+      } else if (entry.type === "PROMOTION") {
+        const label = entry.name || (entry.code ? `Mã ưu đãi ${entry.code}` : "Khuyến mãi")
+        items.push({ label, amount })
+      }
+    })
+
+    if (items.length === 0) {
+      if (serverMembershipDiscount > 0) {
+        items.push({ label: "Ưu đãi hội viên", amount: serverMembershipDiscount })
+      }
+      if (serverPromotionDiscount > 0) {
+        items.push({ label: "Khuyến mãi", amount: serverPromotionDiscount })
+      }
+    }
+
+    return items
+  }, [appliedPromotions, bookingData, serverMembershipDiscount, serverPromotionDiscount])
+
+  const previewDiscountItems =
+    !bookingData && previewMembershipDiscount > 0
+      ? [
+          {
+            label: `Ưu đãi ${previewMembershipLabel ?? "thành viên"}`,
+            amount: previewMembershipDiscount,
+          },
+        ]
+      : []
+
+  const discountsForSummary = bookingData ? bookingDiscountItems : previewDiscountItems
+  const amountDue = bookingData?.totalPrice ?? Math.max(0, estimatedTotal - previewMembershipDiscount)
   const tripInfoValid = nights > 0
   const guestInfoCompleted = Boolean(
     guestInfo.fullName.trim() &&
@@ -605,9 +709,111 @@ export function BookingCheckout({
     }
   }, [listing.id, bookingId])
 
+  const applyCoupon = useCallback(
+    async (rawCode: string, options?: { silent?: boolean }) => {
+      if (!bookingId) {
+        toast({
+          title: "Chưa có đơn đặt phòng",
+          description: "Vui lòng tạo đơn trước khi áp dụng mã ưu đãi.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      const normalized = rawCode.trim().toUpperCase()
+      if (!normalized) {
+        toast({
+          title: "Mã chưa hợp lệ",
+          description: "Vui lòng nhập mã chính xác.",
+          variant: "destructive",
+        })
+        return
+      }
+
+      setIsApplyingCoupon(true)
+      try {
+        const response = await fetch(`/api/bookings/${bookingId}/promotions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: normalized }),
+        })
+
+        const data = await response.json()
+        if (!response.ok) {
+          throw new Error(data?.error || "Không thể áp dụng mã ưu đãi.")
+        }
+
+        setBookingData(data)
+        if (!options?.silent) {
+          toast({
+            title: "Đã áp dụng mã",
+            description: `Mã ${normalized} đã được áp dụng cho đơn này.`,
+          })
+        }
+      } catch (error: any) {
+        toast({
+          title: "Áp dụng mã thất bại",
+          description: error?.message || "Vui lòng thử lại hoặc chọn mã khác.",
+          variant: "destructive",
+        })
+      } finally {
+        setIsApplyingCoupon(false)
+      }
+    },
+    [bookingId, toast],
+  )
+
+  const handleApplyCoupon = useCallback(() => {
+    applyCoupon(couponCode)
+  }, [applyCoupon, couponCode])
+
+  const handleRemoveCoupon = useCallback(async () => {
+    if (!bookingId) {
+      toast({
+        title: "Chưa có đơn đặt phòng",
+        description: "Vui lòng tạo đơn trước khi gỡ mã.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsRemovingCoupon(true)
+    try {
+      const response = await fetch(`/api/bookings/${bookingId}/promotions`, {
+        method: "DELETE",
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        throw new Error(data?.error || "Không thể gỡ mã ưu đãi.")
+      }
+
+      setBookingData(data)
+      toast({
+        title: "Đã gỡ mã ưu đãi",
+        description: "Bạn có thể áp dụng mã khác ngay bây giờ.",
+      })
+    } catch (error: any) {
+      toast({
+        title: "Không thể gỡ mã",
+        description: error?.message || "Vui lòng thử lại sau.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsRemovingCoupon(false)
+    }
+  }, [bookingId, toast])
+
   useEffect(() => {
     fetchConciergePlans()
   }, [fetchConciergePlans])
+
+  useEffect(() => {
+    if (bookingId && initialCouponCode && !autoCouponRef.current) {
+      autoCouponRef.current = true
+      setCouponCode(initialCouponCode)
+      applyCoupon(initialCouponCode, { silent: true })
+    }
+  }, [applyCoupon, bookingId, initialCouponCode])
 
   const canCreateBooking = tripInfoValid && guestInfoCompleted
   const confirmButtonLabel = isSubmitting
@@ -744,6 +950,13 @@ export function BookingCheckout({
       setSplitPlanApplied(false)
       setBookingId(booking.id)
       setBookingCode(booking.id?.slice(-8).toUpperCase?.() || null)
+      setBookingData(booking)
+      if (Array.isArray(booking.additionalServices)) {
+        setSelectedServices(booking.additionalServices)
+      }
+      if (typeof booking.additionalServicesTotal === "number") {
+        setServicesTotal(booking.additionalServicesTotal)
+      }
 
       // Award loyalty points & quests for logged-in users (async)
       const isRegisteredGuest = Boolean(booking.guestId)
@@ -1338,12 +1551,12 @@ export function BookingCheckout({
           </Card>
 
           <div id="payment-section" ref={paymentSectionRef} className="scroll-mt-24">
-            <PaymentMethods
-              bookingId={bookingId ?? undefined}
-              amount={totalAmount}
-              bookingCode={bookingCode ?? undefined}
-              disabled={!bookingCreated}
-            />
+          <PaymentMethods
+            bookingId={bookingId ?? undefined}
+            amount={amountDue}
+            bookingCode={bookingCode ?? undefined}
+            disabled={!bookingCreated}
+          />
           </div>
         </div>
 
@@ -1412,9 +1625,101 @@ export function BookingCheckout({
               checkIn={checkIn}
               checkOut={checkOut}
               guests={guests}
-              additionalServices={selectedServices}
-              additionalServicesTotal={servicesTotal}
+              additionalServices={summaryServices}
+              additionalServicesTotal={summaryServicesTotal}
+              discounts={discountsForSummary}
+              totalOverride={amountDue}
             />
+
+            {bookingData ? (
+              membershipPromotion && serverMembershipDiscount > 0 ? (
+                <Alert className="bg-purple-50 border-purple-200 text-purple-700">
+                  <Sparkles className="h-4 w-4" />
+                  <AlertDescription className="text-sm">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="border-purple-200 bg-white/70 text-purple-700">
+                          {membershipPromotion.plan?.name ?? "Ưu đãi thành viên"}
+                        </Badge>
+                        {typeof membershipPromotion.rate === "number" && membershipPromotion.rate > 0 ? (
+                          <span className="text-xs font-semibold uppercase tracking-wide">
+                            -{Math.round(membershipPromotion.rate)}%
+                          </span>
+                        ) : null}
+                      </div>
+                      <p>
+                        Tiết kiệm {serverMembershipDiscount.toLocaleString("vi-VN")}₫ nhờ quyền lợi thành viên
+                        {membershipPromotion.appliesToServices ? " (áp dụng cả dịch vụ bổ sung)" : ""}.
+                      </p>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              ) : null
+            ) : previewMembershipDiscount > 0 ? (
+              <Alert className="bg-emerald-50 border-emerald-200 text-emerald-700">
+                <Sparkles className="h-4 w-4" />
+                <AlertDescription className="text-sm">
+                  Dự kiến giảm {previewMembershipDiscount.toLocaleString("vi-VN")}₫ nhờ {previewMembershipLabel ?? "thành viên"} khi tạo đơn.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <TicketPercent className="h-4 w-4 text-primary" />
+                  <span>Mã ưu đãi</span>
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  {bookingCreated ? "Nhập mã để giảm thêm chi phí." : "Vui lòng tạo đơn trước khi áp dụng mã ưu đãi."}
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {couponPromotion ? (
+                  <div className="rounded-lg border border-green-200 bg-green-50/80 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <div className="flex items-center gap-2 text-sm font-semibold text-green-700">
+                          <TicketPercent className="h-4 w-4" />
+                          <span>Mã {couponPromotion.code ?? "ưu đãi"}</span>
+                        </div>
+                        <p className="mt-1 text-sm text-green-700">
+                          Giảm {Number(couponPromotion.amount ?? serverPromotionDiscount).toLocaleString("vi-VN")}₫ cho đơn này.
+                        </p>
+                        {couponPromotion.name ? (
+                          <p className="text-xs text-green-600">{couponPromotion.name}</p>
+                        ) : null}
+                      </div>
+                      <Button variant="outline" size="sm" disabled={isRemovingCoupon} onClick={handleRemoveCoupon}>
+                        {isRemovingCoupon ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        Gỡ mã
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <Input
+                      value={couponCode}
+                      onChange={(event) => setCouponCode(event.target.value)}
+                      placeholder="NHAPMA"
+                      className="uppercase tracking-wide"
+                      disabled={!bookingCreated}
+                    />
+                    <Button
+                      className="w-full"
+                      onClick={handleApplyCoupon}
+                      disabled={!bookingCreated || isApplyingCoupon}
+                    >
+                      {isApplyingCoupon ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      {bookingCreated ? "Kiểm tra mã" : "Tạo đơn để kiểm tra mã"}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      Mỗi đơn chỉ áp dụng một mã ưu đãi tại một thời điểm.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>

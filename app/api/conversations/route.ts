@@ -3,11 +3,14 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { pusherServer } from '@/lib/pusher'
+import { notifyUser } from '@/lib/notifications'
 
 // Schema validation
 const createConversationSchema = z.object({
   participantId: z.string().min(1, 'Participant ID is required'),
   listingId: z.string().optional(),
+  message: z.string().optional(),
 })
 
 // GET - Fetch user's conversations
@@ -140,7 +143,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const { participantId, listingId } = validation.data
+    const { participantId, listingId, message: initialMessageRaw } = validation.data
+    const initialMessageText =
+      typeof initialMessageRaw === 'string' && initialMessageRaw.trim().length > 0
+        ? initialMessageRaw.trim()
+        : 'Xin chào! Tôi quan tâm tới chỗ nghỉ của bạn và muốn trao đổi thêm thông tin.'
 
     // Check if user is trying to create conversation with themselves
     if (participantId === userId) {
@@ -236,12 +243,73 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    const createdMessage = await prisma.message.create({
+      data: {
+        conversationId: newConversation.id,
+        senderId: userId,
+        content: initialMessageText,
+        messageType: 'TEXT',
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            name: true,
+            image: true,
+            isVerified: true,
+            role: true,
+          },
+        },
+      },
+    })
+
+    const updatedConversation = await prisma.conversation.update({
+      where: { id: newConversation.id },
+      data: {
+        lastMessage: initialMessageText.substring(0, 100),
+        lastMessageAt: createdMessage.createdAt,
+        unreadCount: {
+          [userId]: 0,
+          [participantId]: 1,
+        },
+      },
+    })
+
+    try {
+      await pusherServer.trigger(`conversation-${newConversation.id}`, 'new-message', {
+        message: createdMessage,
+      })
+      await pusherServer.trigger(`user-${participantId}`, 'new-conversation-message', {
+        conversationId: newConversation.id,
+        message: createdMessage,
+      })
+    } catch (pusherError) {
+      console.error('Pusher conversation init error:', pusherError)
+    }
+
+    const conversationLink =
+      otherUser?.role === 'HOST'
+        ? `/host/messages?conversation=${newConversation.id}`
+        : `/messages?conversation=${newConversation.id}`
+
+    await notifyUser(participantId, {
+      type: 'MESSAGE_RECEIVED',
+      title: `${session.user.name ?? 'Khách LuxeStay'} vừa gửi tin nhắn`,
+      message: initialMessageText.slice(0, 140),
+      link: conversationLink,
+      data: {
+        conversationId: newConversation.id,
+        listingId: listingId ?? null,
+      },
+    })
+
     return NextResponse.json({
       conversation: {
-        ...newConversation,
+        ...updatedConversation,
         otherParticipant: otherUser,
         listing,
       },
+      message: createdMessage,
       isNew: true,
     })
   } catch (error) {

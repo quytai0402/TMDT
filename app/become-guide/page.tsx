@@ -4,7 +4,7 @@ import Image from "next/image"
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
-import { Loader2, Sparkles, ClipboardList } from "lucide-react"
+import { Loader2, Sparkles, ClipboardList, ShieldCheck } from "lucide-react"
 
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
@@ -439,17 +439,68 @@ export default function BecomeGuidePage() {
       <main className="flex-1">
         <div className="container mx-auto px-4 py-12 lg:px-8">
           <div className="mx-auto max-w-5xl space-y-10">
-            <section className="text-center space-y-4">
-              <Badge className="inline-flex items-center gap-2 text-sm font-medium">
-                <Sparkles className="h-4 w-4" /> LuxeStay Experiences
-              </Badge>
-              <h1 className="font-serif text-4xl font-bold text-foreground md:text-5xl">
-                Trở thành hướng dẫn viên LuxeStay
-              </h1>
-              <p className="mx-auto max-w-3xl text-lg text-muted-foreground">
-                Xây dựng thương hiệu cá nhân, tạo trải nghiệm độc đáo và kiếm thu nhập ổn định từ cộng đồng du lịch cao cấp của LuxeStay.
-                Phí thành viên {formatCurrency(MONTHLY_FEE)}/tháng &amp; LuxeStay thu {Math.round(COMMISSION_RATE * 100)}% trên mỗi trải nghiệm.
-              </p>
+            <section className="relative overflow-hidden rounded-3xl border border-primary/10 bg-gradient-to-br from-teal-50 via-white to-sky-50 p-8 shadow-lg">
+              <div className="pointer-events-none absolute -top-16 -right-12 h-56 w-56 rounded-full bg-primary/10 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-16 -left-10 h-64 w-64 rounded-full bg-emerald-100/40 blur-3xl" />
+
+              <div className="relative grid gap-10 lg:grid-cols-[1.3fr_1fr] lg:items-center">
+                <div className="space-y-6 text-left">
+                  <Badge className="inline-flex items-center gap-2 bg-primary/10 text-primary">
+                    <Sparkles className="h-4 w-4" /> LuxeStay Experiences Network
+                  </Badge>
+                  <div className="space-y-4">
+                    <h1 className="font-serif text-4xl font-bold text-foreground md:text-5xl">
+                      Trở thành hướng dẫn viên LuxeStay
+                    </h1>
+                    <p className="text-lg text-muted-foreground max-w-2xl">
+                      Xây dựng thương hiệu cá nhân, thiết kế trải nghiệm độc đáo và tiếp cận tập khách cao cấp của LuxeStay.
+                      Bạn sẽ nhận được đội ngũ concierge hỗ trợ, nền tảng marketing và hệ thống thanh toán minh bạch.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-3 text-sm">
+                    {[
+                      "Thiết kế & bán trải nghiệm riêng",
+                      "Concierge hỗ trợ 24/7",
+                      "Quản lý booking & thu nhập minh bạch",
+                      "Khóa học nâng cao kỹ năng dẫn tour",
+                    ].map((benefit) => (
+                      <span
+                        key={benefit}
+                        className="rounded-full bg-white/70 px-4 py-2 text-primary shadow-sm ring-1 ring-primary/10"
+                      >
+                        {benefit}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-white/60 bg-white/80 p-6 shadow-xl backdrop-blur">
+                  <div className="space-y-3">
+                    <p className="text-sm font-semibold text-primary uppercase tracking-wide">Gói thành viên hướng dẫn viên</p>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-4xl font-bold text-foreground">{formatCurrency(MONTHLY_FEE)}</span>
+                      <span className="text-sm text-muted-foreground">/ tháng</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      LuxeStay thu thêm {Math.round(COMMISSION_RATE * 100)}% hoa hồng trên mỗi trải nghiệm đã hoàn thành.
+                    </p>
+                  </div>
+                  <div className="mt-4 space-y-2 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2 rounded-xl bg-primary/5 px-4 py-2">
+                      <Sparkles className="h-4 w-4 text-primary" />
+                      <span>Hiển thị nổi bật trên LuxeStay & chiến dịch đối tác</span>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-xl bg-primary/5 px-4 py-2">
+                      <ClipboardList className="h-4 w-4 text-primary" />
+                      <span>Dashboard quản lý lịch, booking và thu nhập theo thời gian thực</span>
+                    </div>
+                    <div className="flex items-center gap-2 rounded-xl bg-primary/5 px-4 py-2">
+                      <ShieldCheck className="h-4 w-4 text-primary" />
+                      <span>Bảo hiểm trách nhiệm & concierge xử lý sự cố cho mọi trải nghiệm</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </section>
 
             {existingApplication ? (
@@ -724,18 +775,31 @@ export default function BecomeGuidePage() {
                       <p className="text-xs text-muted-foreground">Tối đa 5 đường dẫn, phân tách bằng dấu phẩy.</p>
                     </div>
 
-                    <div className="flex items-start gap-3 rounded-md border border-dashed border-primary/40 bg-primary/5 p-4 text-sm text-muted-foreground">
-                      <Checkbox
-                        id="subscriptionAcknowledged"
-                        checked={form.subscriptionAcknowledged}
-                        onCheckedChange={(checked) =>
-                          setForm((prev) => ({ ...prev, subscriptionAcknowledged: checked === true }))
-                        }
-                      />
-                      <Label htmlFor="subscriptionAcknowledged" className="text-left leading-6">
-                        Tôi đồng ý với phí thành viên hướng dẫn viên <strong>{formatCurrency(MONTHLY_FEE)}</strong>/tháng và hoa hồng nền tảng <strong>{Math.round(COMMISSION_RATE * 100)}%</strong> trên tổng giá trị dịch vụ.
-                        LuxeStay sẽ khấu trừ tự động trước khi thanh toán thu nhập.
-                      </Label>
+                    <div className="rounded-2xl border border-dashed border-primary/40 bg-gradient-to-r from-emerald-50/80 to-white p-5 shadow-sm">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4 text-sm">
+                        <Checkbox
+                          id="subscriptionAcknowledged"
+                          checked={form.subscriptionAcknowledged}
+                          onCheckedChange={(checked) =>
+                            setForm((prev) => ({ ...prev, subscriptionAcknowledged: checked === true }))
+                          }
+                          className="mt-1"
+                        />
+                        <div className="space-y-2 text-muted-foreground">
+                          <Label htmlFor="subscriptionAcknowledged" className="text-base font-semibold text-foreground">
+                            Tôi đồng ý với phí thành viên hướng dẫn viên{" "}
+                            <span className="text-primary">{formatCurrency(MONTHLY_FEE)}/tháng</span> và hoa hồng nền tảng{" "}
+                            <span className="text-primary">{Math.round(COMMISSION_RATE * 100)}%</span>.
+                          </Label>
+                          <p>
+                            LuxeStay sẽ khấu trừ tự động trước khi thanh toán thu nhập. Bạn luôn có thể xem lịch sử thanh toán trong ví hướng dẫn viên.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                        <p>• Hỗ trợ marketing đa kênh và đội concierge giữ chỗ cho khách.</p>
+                        <p>• Dashboard minh bạch, cảnh báo lịch trùng và báo cáo thu nhập chi tiết.</p>
+                      </div>
                     </div>
 
                     {form.subscriptionAcknowledged ? (
@@ -1058,17 +1122,31 @@ export default function BecomeGuidePage() {
                       <p className="text-xs text-muted-foreground">Tối đa 5 liên kết, phân tách bằng dấu phẩy.</p>
                     </div>
 
-                    <div className="flex items-start gap-3 rounded-md border border-dashed border-primary/40 bg-primary/5 p-4 text-sm text-muted-foreground">
-                      <Checkbox
-                        id="register-subscription"
-                        checked={registerForm.subscriptionAcknowledged}
-                        onCheckedChange={(checked) =>
-                          setRegisterForm((prev) => ({ ...prev, subscriptionAcknowledged: checked === true }))
-                        }
-                      />
-                      <Label htmlFor="register-subscription" className="text-left leading-6">
-                        Tôi đồng ý với phí thành viên hướng dẫn viên <strong>{formatCurrency(MONTHLY_FEE)}</strong>/tháng và hoa hồng nền tảng <strong>{Math.round(COMMISSION_RATE * 100)}%</strong> trên tổng giá trị dịch vụ. LuxeStay sẽ khấu trừ tự động trước khi thanh toán thu nhập.
-                      </Label>
+                    <div className="rounded-2xl border border-dashed border-primary/40 bg-gradient-to-r from-emerald-50/80 to-white p-5 shadow-sm">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4 text-sm">
+                        <Checkbox
+                          id="register-subscription"
+                          checked={registerForm.subscriptionAcknowledged}
+                          onCheckedChange={(checked) =>
+                            setRegisterForm((prev) => ({ ...prev, subscriptionAcknowledged: checked === true }))
+                          }
+                          className="mt-1"
+                        />
+                        <div className="space-y-2 text-muted-foreground">
+                          <Label htmlFor="register-subscription" className="text-base font-semibold text-foreground">
+                            Tôi đồng ý với phí thành viên hướng dẫn viên{" "}
+                            <span className="text-primary">{formatCurrency(MONTHLY_FEE)}/tháng</span> và hoa hồng nền tảng{" "}
+                            <span className="text-primary">{Math.round(COMMISSION_RATE * 100)}%</span>.
+                          </Label>
+                          <p>
+                            LuxeStay sẽ khấu trừ tự động trước khi thanh toán thu nhập và gửi hóa đơn điện tử qua email đăng ký.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                        <p>• Nhận mentoring 1-1 để thiết kế trải nghiệm đạt chuẩn LuxeStay.</p>
+                        <p>• Quy trình đảm bảo an toàn, bảo hiểm trách nhiệm cho mọi chuyến đi.</p>
+                      </div>
                     </div>
 
                     {registerForm.subscriptionAcknowledged ? (

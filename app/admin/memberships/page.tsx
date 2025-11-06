@@ -43,6 +43,27 @@ type MembershipMember = {
 type MembershipResponse = {
   plans: MembershipPlanSummary[]
   members: MembershipMember[]
+  pendingPurchases: PendingPurchase[]
+}
+
+type PendingPurchase = {
+  id: string
+  status: string
+  amount: number
+  billingCycle: 'MONTHLY' | 'ANNUAL'
+  paymentMethod: 'BANK_TRANSFER' | 'CREDIT_CARD' | 'E_WALLET'
+  referenceCode: string
+  createdAt: string
+  user: {
+    id: string
+    name: string | null
+    email: string | null
+  }
+  plan: {
+    id: string
+    name: string
+    slug: string
+  }
 }
 
 const statusBadge = (status: string) => {
@@ -72,6 +93,7 @@ export default function AdminMembershipsPage() {
   const [data, setData] = useState<MembershipResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'EXPIRED' | 'CANCELLED'>('ALL')
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   const loadMemberships = async () => {
     try {
@@ -100,6 +122,38 @@ export default function AdminMembershipsPage() {
     if (!data?.members) return []
     return data.members
   }, [data])
+
+  const handlePurchaseAction = async (purchaseId: string, action: 'confirm' | 'reject') => {
+    try {
+      setActionLoading(purchaseId)
+      const body: Record<string, string> = { action }
+      if (action === 'reject') {
+        const notes = window.prompt('Nhập ghi chú cho việc từ chối (tuỳ chọn):', '')
+        if (notes !== null && notes.trim()) {
+          body.notes = notes.trim()
+        }
+      }
+
+      const res = await fetch(`/api/admin/memberships/purchases/${purchaseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}))
+        throw new Error(error.error ?? 'Không thể cập nhật giao dịch')
+      }
+
+      toast.success(action === 'confirm' ? 'Đã kích hoạt membership cho khách hàng.' : 'Đã từ chối giao dịch.')
+      void loadMemberships()
+    } catch (error) {
+      console.error(error)
+      toast.error(error instanceof Error ? error.message : 'Không thể cập nhật giao dịch')
+    } finally {
+      setActionLoading(null)
+    }
+  }
 
   const planPerkMap = useMemo(() => {
     const map = new Map<string, string[]>()
@@ -135,6 +189,85 @@ export default function AdminMembershipsPage() {
 
         {!loading && data && (
           <>
+            <Card>
+              <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <CardTitle>Chờ xác nhận chuyển khoản</CardTitle>
+                  <CardDescription>
+                    {data.pendingPurchases.length
+                      ? `${data.pendingPurchases.length} giao dịch cần xác nhận.`
+                      : 'Không có giao dịch chuyển khoản đang chờ.'}
+                  </CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {data.pendingPurchases.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Không có giao dịch chờ xử lý.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Khách hàng</TableHead>
+                          <TableHead>Gói</TableHead>
+                          <TableHead>Số tiền</TableHead>
+                          <TableHead>Tham chiếu</TableHead>
+                          <TableHead>Ngày tạo</TableHead>
+                          <TableHead className="text-right">Thao tác</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {data.pendingPurchases.map((purchase) => (
+                          <TableRow key={purchase.id}>
+                            <TableCell>
+                              <div className="flex flex-col text-sm">
+                                <span className="font-medium">{purchase.user.name ?? 'Khách'}</span>
+                                <span className="text-muted-foreground">{purchase.user.email ?? '—'}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col text-sm">
+                                <span className="font-semibold">{purchase.plan.name}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {purchase.billingCycle === 'MONTHLY' ? 'Hàng tháng' : 'Hàng năm'}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(purchase.amount)}
+                            </TableCell>
+                            <TableCell>
+                              <code className="text-xs bg-muted px-2 py-1 rounded">{purchase.referenceCode}</code>
+                            </TableCell>
+                            <TableCell>
+                              {new Date(purchase.createdAt).toLocaleString('vi-VN')}
+                            </TableCell>
+                            <TableCell className="text-right space-x-2">
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={actionLoading === purchase.id}
+                                onClick={() => handlePurchaseAction(purchase.id, 'reject')}
+                              >
+                                Từ chối
+                              </Button>
+                              <Button
+                                size="sm"
+                                disabled={actionLoading === purchase.id}
+                                onClick={() => handlePurchaseAction(purchase.id, 'confirm')}
+                              >
+                                Xác nhận
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {data.plans.map((plan) => {
                 const perks = Array.isArray(plan.perks) ? plan.perks : []

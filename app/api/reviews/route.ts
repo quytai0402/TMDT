@@ -4,6 +4,10 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
+// Aggressive cache for reviews (90 seconds TTL)
+const reviewsCache = new Map<string, { data: any; timestamp: number }>()
+const CACHE_TTL = 90000 // 90 seconds - reviews don't change frequently
+
 const createReviewSchema = z.object({
   bookingId: z.string(),
   type: z.enum(['GUEST_TO_HOST', 'HOST_TO_GUEST', 'GUEST_TO_LISTING']),
@@ -24,6 +28,16 @@ export async function GET(req: NextRequest) {
     const listingId = searchParams.get('listingId')
     const userId = searchParams.get('userId')
     const type = searchParams.get('type')
+    const limit = parseInt(searchParams.get('limit') || '20')
+
+    // Generate cache key
+    const cacheKey = `${listingId || 'all'}-${userId || 'all'}-${type || 'all'}-${limit}`
+    const cached = reviewsCache.get(cacheKey)
+    const now = Date.now()
+
+    if (cached && now - cached.timestamp < CACHE_TTL) {
+      return NextResponse.json(cached.data)
+    }
 
     const where: any = {}
 
@@ -39,9 +53,20 @@ export async function GET(req: NextRequest) {
       where.type = type
     }
 
-    const reviews = await prisma.review.findMany({
+    const queryPromise = prisma.review.findMany({
       where,
-      include: {
+      select: {
+        id: true,
+        type: true,
+        overallRating: true,
+        cleanlinessRating: true,
+        accuracyRating: true,
+        checkInRating: true,
+        communicationRating: true,
+        locationRating: true,
+        valueRating: true,
+        comment: true,
+        createdAt: true,
         reviewer: {
           select: {
             id: true,
@@ -64,9 +89,24 @@ export async function GET(req: NextRequest) {
         },
       },
       orderBy: { createdAt: 'desc' },
+      take: limit,
     })
 
-    return NextResponse.json({ reviews })
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Query timeout')), 2000) // Reduce to 2s
+    )
+
+    const reviews = await Promise.race([queryPromise, timeoutPromise]).catch((error) => {
+      console.error('Reviews query error:', error)
+      return []
+    })
+
+    const result = { reviews }
+
+    // Cache the result
+    reviewsCache.set(cacheKey, { data: result, timestamp: now })
+
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Get reviews error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

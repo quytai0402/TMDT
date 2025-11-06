@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Header } from "@/components/header"
@@ -25,8 +25,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Gift, Search, Filter, Loader2, CheckCircle2, AlertCircle } from "lucide-react"
+import { Gift, Search, Loader2, CheckCircle2, AlertCircle } from "lucide-react"
 import { toast } from "sonner"
+import { useAuthModal } from "@/hooks/use-auth-modal"
 
 interface CatalogItem {
   id: string
@@ -48,6 +49,7 @@ export default function RewardsCatalogPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const authModal = useAuthModal()
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<CatalogItem[]>([])
   const [filteredItems, setFilteredItems] = useState<CatalogItem[]>([])
@@ -59,50 +61,25 @@ export default function RewardsCatalogPage() {
   const [redeeming, setRedeeming] = useState(false)
   const [userPoints, setUserPoints] = useState(0)
 
-  useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/login?redirect=/rewards/catalog")
-      return
-    }
-
-    if (status === "authenticated") {
-      fetchCatalogItems()
-    }
-  }, [status, router])
+  const isAuthenticated = status === "authenticated"
 
   useEffect(() => {
-    // Auto-open redemption dialog if item ID in URL
+    if (status === "loading") return
+    fetchCatalogItems()
+  }, [status])
+
+  useEffect(() => {
+    // Auto-open redemption dialog if item ID in URL (only once authenticated)
     const itemId = searchParams.get("item")
-    if (itemId && items.length > 0) {
-      const item = items.find(i => i.id === itemId)
-      if (item) {
-        handleRedeemClick(item)
-      }
+    if (!itemId || items.length === 0 || !isAuthenticated) return
+    const item = items.find((i) => i.id === itemId)
+    if (item) {
+      setSelectedItem(item)
+      setRedeemDialogOpen(true)
     }
-  }, [searchParams, items])
+  }, [searchParams, items, isAuthenticated])
 
-  useEffect(() => {
-    filterAndSortItems()
-  }, [items, searchQuery, categoryFilter, sortBy])
-
-  const fetchCatalogItems = async () => {
-    try {
-      setLoading(true)
-      const res = await fetch("/api/rewards/catalog?limit=100&available=true")
-      if (res.ok) {
-        const data = await res.json()
-        setItems(data.items || [])
-        setUserPoints(data.userPoints || 0)
-      }
-    } catch (error) {
-      console.error("Error fetching catalog:", error)
-      toast.error("Failed to load rewards catalog")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const filterAndSortItems = () => {
+  const filterAndSortItems = useCallback(() => {
     let filtered = [...items]
 
     // Search filter
@@ -133,14 +110,47 @@ export default function RewardsCatalogPage() {
     })
 
     setFilteredItems(filtered)
+  }, [items, searchQuery, categoryFilter, sortBy])
+
+  useEffect(() => {
+    filterAndSortItems()
+  }, [filterAndSortItems])
+
+  const fetchCatalogItems = async () => {
+    try {
+      setLoading(true)
+      const res = await fetch("/api/rewards/catalog?limit=100&available=true")
+      if (res.ok) {
+        const data = await res.json()
+        setItems(data.items || [])
+        setUserPoints(data.userPoints || 0)
+      } else {
+        setItems([])
+        setUserPoints(0)
+      }
+    } catch (error) {
+      console.error("Error fetching catalog:", error)
+      toast.error("Failed to load rewards catalog")
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleRedeemClick = (item: CatalogItem) => {
+    if (!isAuthenticated) {
+      authModal.openLogin()
+      return
+    }
     setSelectedItem(item)
     setRedeemDialogOpen(true)
   }
 
   const handleRedeem = async () => {
+    if (!isAuthenticated) {
+      authModal.openLogin()
+      return
+    }
+
     if (!selectedItem) return
 
     try {
@@ -211,10 +221,21 @@ export default function RewardsCatalogPage() {
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-sm text-muted-foreground">Your Balance</p>
-                <p className="text-3xl font-bold text-primary">
-                  {userPoints.toLocaleString()} pts
-                </p>
+                {isAuthenticated ? (
+                  <>
+                    <p className="text-sm text-muted-foreground">Your Balance</p>
+                    <p className="text-3xl font-bold text-primary">
+                      {userPoints.toLocaleString()} pts
+                    </p>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-end gap-2">
+                    <p className="text-sm text-muted-foreground">Đăng nhập để xem điểm</p>
+                    <Button size="sm" onClick={() => authModal.openLogin()}>
+                      Đăng nhập
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -327,11 +348,13 @@ export default function RewardsCatalogPage() {
 
                     <Button 
                       className="w-full"
-                      disabled={!item.canAfford || !item.isAvailable}
+                      disabled={isAuthenticated ? (!item.canAfford || !item.isAvailable) : false}
                       onClick={() => handleRedeemClick(item)}
                     >
                       {!item.isAvailable 
                         ? "Out of Stock"
+                        : !isAuthenticated
+                        ? "Đăng nhập để nhận"
                         : !item.canAfford 
                         ? `Need ${(item.pointsCost - userPoints).toLocaleString()} more`
                         : "Redeem Now"}

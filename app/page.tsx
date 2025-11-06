@@ -15,6 +15,9 @@ import { FeaturesSection } from "@/components/features-section"
 import { PersonaShowcase } from "@/components/persona-showcase"
 import { Footer } from "@/components/footer"
 
+// Enable Next.js page-level caching with revalidation
+export const revalidate = 60 // Revalidate every 60 seconds
+
 export default function HomePage() {
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-b from-white via-white to-slate-100">
@@ -25,12 +28,16 @@ export default function HomePage() {
         <RoleBasedWelcome />
         <FlexibleDatesSearch />
         <CategoryFilter />
+        
+        {/* Core content - loads immediately */}
+        <ListingsGrid />
+        
+        {/* Secondary content */}
         <FeaturedDestinations />
         <FlexibleSearchGrid />
         <CuratedCollections />
         <PersonalizedDiscovery />
         <PersonaShowcase compact />
-        <ListingsGrid />
         <InteractiveMapPreview />
         <TestimonialsSection />
         <FeaturesSection />

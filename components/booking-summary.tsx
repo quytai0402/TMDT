@@ -26,6 +26,8 @@ interface BookingSummaryProps {
   guests?: number
   additionalServices?: SelectedServiceSummary[]
   additionalServicesTotal?: number
+  discounts?: Array<{ label: string; amount: number }>
+  totalOverride?: number
 }
 
 export function BookingSummary({
@@ -35,6 +37,8 @@ export function BookingSummary({
   guests: propGuests,
   additionalServices,
   additionalServicesTotal,
+  discounts: propDiscounts,
+  totalOverride,
 }: BookingSummaryProps) {
   const fallbackCheckIn = () => {
     const today = new Date()
@@ -65,20 +69,23 @@ export function BookingSummary({
   const cleaningFee = listing.cleaningFee ?? 0
   const serviceFee = listing.serviceFee ?? (subtotal + servicesTotal) * 0.1
   const total = subtotal + serviceFee + cleaningFee + servicesTotal
+  const discounts = (propDiscounts ?? []).filter((discount) => Number.isFinite(discount.amount) && discount.amount > 0)
+  const discountTotal = discounts.reduce((sum, discount) => sum + discount.amount, 0)
+  const finalTotal = typeof totalOverride === "number" ? totalOverride : Math.max(0, total - discountTotal)
 
   return (
     <Card className="shadow-lg">
       <CardHeader className="pb-4">
-        <div className="flex space-x-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-4">
           <img
             src={listing.image || "/placeholder.svg"}
             alt={listing.title}
-            className="w-24 h-24 rounded-lg object-cover"
+            className="h-48 w-full rounded-lg object-cover sm:h-24 sm:w-24 sm:flex-shrink-0"
           />
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-foreground truncate">{listing.title}</h3>
-            <p className="text-sm text-muted-foreground truncate">{listing.location}</p>
-            <div className="flex items-center space-x-1 mt-1">
+          <div className="flex-1 min-w-0 space-y-1">
+            <h3 className="font-semibold text-foreground break-words text-base leading-tight">{listing.title}</h3>
+            <p className="text-sm text-muted-foreground break-words">{listing.location}</p>
+            <div className="flex items-center space-x-1">
               <Star className="h-3 w-3 fill-foreground text-foreground" />
               <span className="text-sm font-semibold">
                 {Number.isFinite(listing.rating) ? listing.rating : "--"}
@@ -136,11 +143,11 @@ export function BookingSummary({
             <div className="space-y-2">
               {selectedServices.map((service) => (
                 <div key={service.id} className="flex justify-between text-sm text-muted-foreground">
-                  <span>
+                  <span className="max-w-[70%] break-words">
                     {service.name}
                     {service.quantityLabel ? ` · ${service.quantityLabel}` : ""}
                   </span>
-                  <span className="text-foreground">{service.totalPrice.toLocaleString("vi-VN")}₫</span>
+                  <span className="text-foreground">{Number(service.totalPrice ?? 0).toLocaleString("vi-VN")}₫</span>
                 </div>
               ))}
               <div className="flex justify-between text-sm font-semibold text-primary">
@@ -151,22 +158,41 @@ export function BookingSummary({
           )}
 
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Phí dịch vụ</span>
-            <span className="text-foreground">{serviceFee.toLocaleString("vi-VN")}₫</span>
-          </div>
-
-          <div className="flex justify-between text-sm">
             <span className="text-muted-foreground">Phí vệ sinh</span>
             <span className="text-foreground">{cleaningFee.toLocaleString("vi-VN")}₫</span>
           </div>
+
+          <div className="flex justify-between text-sm">
+            <span className="text-muted-foreground">Phí dịch vụ</span>
+            <span className="text-foreground">{serviceFee.toLocaleString("vi-VN")}₫</span>
+          </div>
         </div>
+
+        {discounts.length > 0 && (
+          <>
+            <Separator />
+            <div className="space-y-2">
+              <h4 className="font-semibold text-foreground">Ưu đãi</h4>
+              {discounts.map((discount) => (
+                <div key={discount.label} className="flex justify-between text-sm text-muted-foreground">
+                  <span>{discount.label}</span>
+                  <span className="text-foreground">-{discount.amount.toLocaleString("vi-VN")}₫</span>
+                </div>
+              ))}
+              <div className="flex justify-between text-sm font-semibold text-primary">
+                <span>Tổng ưu đãi</span>
+                <span>-{discountTotal.toLocaleString("vi-VN")}₫</span>
+              </div>
+            </div>
+          </>
+        )}
 
         <Separator />
 
         {/* Total */}
         <div className="flex justify-between items-center">
           <span className="font-semibold text-lg text-foreground">Tổng cộng</span>
-          <span className="font-bold text-2xl text-foreground">{total.toLocaleString("vi-VN")}₫</span>
+          <span className="font-bold text-2xl text-foreground">{finalTotal.toLocaleString("vi-VN")}₫</span>
         </div>
 
         {/* Cancellation Policy */}

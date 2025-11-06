@@ -3,12 +3,25 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+// Cache for wishlist (30 seconds TTL)
+const wishlistCache = new Map<string, { data: any; timestamp: number }>()
+const CACHE_TTL = 30000
+
 // GET /api/wishlist - Get user wishlist
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Check cache
+    const cacheKey = `wishlist-${session.user.id}`
+    const cached = wishlistCache.get(cacheKey)
+    const now = Date.now()
+
+    if (cached && now - cached.timestamp < CACHE_TTL) {
+      return NextResponse.json(cached.data)
     }
 
     // Get user's wishlist
@@ -20,15 +33,29 @@ export async function GET() {
     })
 
     if (!wishlist || wishlist.listingIds.length === 0) {
+      wishlistCache.set(cacheKey, { data: [], timestamp: now })
       return NextResponse.json([])
     }
 
-    // Get all listings in wishlist
+    // Get all listings in wishlist with optimized select
     const listings = await prisma.listing.findMany({
       where: {
         id: { in: wishlist.listingIds },
       },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        images: true,
+        city: true,
+        country: true,
+        basePrice: true,
+        averageRating: true,
+        totalReviews: true,
+        maxGuests: true,
+        bedrooms: true,
+        bathrooms: true,
+        propertyType: true,
         host: {
           select: {
             id: true,
@@ -41,6 +68,9 @@ export async function GET() {
       console.error('Database timeout in wishlist listings:', error)
       return []
     })
+
+    // Cache the result
+    wishlistCache.set(cacheKey, { data: listings, timestamp: now })
 
     return NextResponse.json(listings)
   } catch (error: any) {

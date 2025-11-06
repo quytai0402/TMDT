@@ -3,6 +3,10 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+// Cache user profiles (10 seconds TTL - short because it changes often)
+const profileCache = new Map<string, { data: any; timestamp: number }>()
+const CACHE_TTL = 10000
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
@@ -10,7 +14,15 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const user = await prisma.user.findUnique({
+    // Check cache
+    const cached = profileCache.get(session.user.id)
+    const now = Date.now()
+
+    if (cached && now - cached.timestamp < CACHE_TTL) {
+      return NextResponse.json(cached.data)
+    }
+
+    const queryPromise = prisma.user.findUnique({
       where: { id: session.user.id },
       select: {
         id: true,
@@ -32,9 +44,21 @@ export async function GET() {
       },
     })
 
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Query timeout')), 2000)
+    )
+
+    const user = await Promise.race([queryPromise, timeoutPromise]).catch((error) => {
+      console.error('Profile query error:', error)
+      return null
+    })
+
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
+
+    // Cache result
+    profileCache.set(session.user.id, { data: user, timestamp: now })
 
     return NextResponse.json(user)
   } catch (error: any) {
@@ -85,6 +109,9 @@ export async function PUT(req: Request) {
         bio: true,
       },
     })
+
+    // Clear cache for this user
+    profileCache.delete(session.user.id)
 
     // Check if profile just became complete
     const wasIncomplete = !currentUser?.name || !currentUser?.phone || !currentUser?.bio || !currentUser?.image

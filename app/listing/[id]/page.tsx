@@ -34,7 +34,7 @@ import { ListingConciergeHydrator } from "@/components/concierge-context-hydrato
 
 const HEX_OBJECT_ID_REGEX = /^[a-fA-F0-9]{24}$/
 
-async function getListingData(identifier: string) {
+async function getListingData(identifier: string, userId?: string, userRole?: string) {
   const isObjectId = HEX_OBJECT_ID_REGEX.test(identifier)
 
   const listing = await prisma.listing.findUnique({
@@ -50,6 +50,7 @@ async function getListingData(identifier: string) {
           isVerified: true,
           isSuperHost: true,
           createdAt: true,
+          phone: true,
           hostProfile: {
             select: {
               responseRate: true,
@@ -77,7 +78,16 @@ async function getListingData(identifier: string) {
     },
   })
 
-  if (!listing || listing.status !== 'ACTIVE') {
+  if (!listing) {
+    return null
+  }
+
+  // Allow admin and host to view listing even if not ACTIVE
+  const isAdmin = userRole === 'ADMIN'
+  const isHost = userId === listing.hostId
+  const canViewNonActive = isAdmin || isHost
+
+  if (listing.status !== 'ACTIVE' && !canViewNonActive) {
     return null
   }
 
@@ -123,13 +133,13 @@ async function getListingData(identifier: string) {
 
 export default async function ListingDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const listing = await getListingData(id)
+  let session = await getServerSession(authOptions)
+  
+  const listing = await getListingData(id, session?.user?.id, session?.user?.role)
 
   if (!listing) {
     notFound()
   }
-
-  const session = await getServerSession(authOptions)
 
   if (listing.isSecret) {
     const isAdmin = session?.user?.role === 'ADMIN'
@@ -193,11 +203,11 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
           {/* Title */}
           <div className="mb-6">
             <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <h1 className="font-serif text-3xl md:text-4xl font-bold text-foreground mb-2">
+              <div className="flex-1 min-w-0">
+                <h1 className="font-serif text-3xl md:text-4xl font-bold text-foreground mb-2 break-words">
                   {listing.title}
                 </h1>
-                <div className="flex items-center space-x-4 text-sm">
+                <div className="flex items-center space-x-4 text-sm flex-wrap gap-y-1">
                   <span className="flex items-center space-x-1">
                     <span className="font-semibold">{listing.averageRating.toFixed(1)}</span>
                     <span className="text-muted-foreground">({listing.reviews.length} đánh giá)</span>
@@ -205,7 +215,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                   <span className="text-muted-foreground">{listing.locationString}</span>
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 flex-shrink-0">
                 <ShareButton 
                   listingId={listing.id}
                   title={listing.title}
@@ -279,6 +289,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                 city={city}
                 lat={listing.latitude}
                 lng={listing.longitude}
+                savedPlaces={listing.nearbyPlaces as any[] | undefined}
               />
 
               <LocationMap 
@@ -313,6 +324,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                   rating={listing.averageRating} 
                   reviews={listing.reviews.length}
                   instantBookable={listing.instantBookable}
+                  cleaningFee={listing.cleaningFee}
                 />
                 <ListingLoyaltyPerks
                   listingId={listing.id}
@@ -334,6 +346,7 @@ export default async function ListingDetailPage({ params }: { params: Promise<{ 
                 verified: listing.host.isVerified,
                 responseRate: listing.host.hostProfile?.responseRate || 0,
                 responseTime: String(listing.host.hostProfile?.responseTime || 'chưa rõ'),
+                phone: listing.host.phone,
               }}
               listingId={listing.id}
             />

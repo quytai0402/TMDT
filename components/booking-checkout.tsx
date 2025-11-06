@@ -367,7 +367,7 @@ export function BookingCheckout({
         avatar: listing.host?.image ?? "/placeholder.svg",
       },
       cleaningFee: listing.cleaningFee ?? 0,
-      serviceFee: listing.serviceFee ?? undefined,
+      // Don't pass serviceFee - let BookingSummary calculate it
     }
   }, [listing])
 
@@ -375,7 +375,8 @@ export function BookingCheckout({
   const nightlyRate = typeof listing.basePrice === "number" ? listing.basePrice : 0
   const subtotal = nightlyRate * nights
   const cleaningFee = listing.cleaningFee ?? 0
-  const serviceFee = listing.serviceFee ?? (subtotal + servicesTotal) * 0.1
+  // Always calculate service fee as 10% of subtotal + servicesTotal
+  const serviceFee = (subtotal + servicesTotal) * 0.1
   const totalAmount = subtotal + cleaningFee + serviceFee + servicesTotal
   const tripInfoValid = nights > 0
   const guestInfoCompleted = Boolean(
@@ -509,6 +510,7 @@ export function BookingCheckout({
       const response = await fetch("/api/concierge/plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           bookingId: bookingId ?? undefined,
           listingId: listing.id,
@@ -587,7 +589,10 @@ export function BookingCheckout({
   const fetchConciergePlans = useCallback(async () => {
     try {
       const params = bookingId ? `bookingId=${bookingId}` : `listingId=${listing.id}`
-      const response = await fetch(`/api/concierge/plans?${params}`, { cache: "no-store" })
+      const response = await fetch(`/api/concierge/plans?${params}`, {
+        cache: "no-store",
+        credentials: "include",
+      })
       if (!response.ok) {
         throw new Error("Không thể tải concierge plan")
       }
@@ -713,7 +718,9 @@ export function BookingCheckout({
           const conflictRange = `${formatter.format(new Date(data.conflict.checkIn))} - ${formatter.format(
             new Date(data.conflict.checkOut),
           )}`
-          throw new Error(`${data.error || "Khoảng thời gian đã kín."} (${conflictRange})`)
+          throw new Error(
+            `Khoảng thời gian này đã có khách đặt và được xác nhận bởi host/admin (${conflictRange}). Vui lòng chọn ngày khác.`
+          )
         }
 
         if (data?.blocked) {
@@ -1408,35 +1415,6 @@ export function BookingCheckout({
               additionalServices={selectedServices}
               additionalServicesTotal={servicesTotal}
             />
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Chi tiết chi phí</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span>Tiền phòng</span>
-                  <span>{subtotal.toLocaleString("vi-VN")}₫</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Phí dọn dẹp</span>
-                  <span>{cleaningFee.toLocaleString("vi-VN")}₫</span>
-                </div>
-                {servicesTotal > 0 && (
-                  <div className="flex justify-between">
-                    <span>Dịch vụ bổ sung</span>
-                    <span>{servicesTotal.toLocaleString("vi-VN")}₫</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span>Phí dịch vụ</span>
-                  <span>{serviceFee.toLocaleString("vi-VN")}₫</span>
-                </div>
-                <div className="flex justify-between font-semibold border-t border-border pt-2">
-                  <span>Tổng cộng</span>
-                  <span>{totalAmount.toLocaleString("vi-VN")}₫</span>
-                </div>
-              </CardContent>
-            </Card>
           </div>
         </div>
       </div>

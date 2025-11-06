@@ -184,6 +184,8 @@ export function SearchResultsView({ initialParams }: SearchResultsViewProps) {
   const [listings, setListings] = useState<ListingResult[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [fallbackApplied, setFallbackApplied] = useState(false)
+  const [fallbackSource, setFallbackSource] = useState<string | null>(null)
 
   const activeSortOption = useMemo(
     () => sortOptions.find((option) => option.id === activeSort) ?? sortOptions[0],
@@ -252,13 +254,31 @@ export function SearchResultsView({ initialParams }: SearchResultsViewProps) {
     try {
       setLoading(true)
       setError(null)
+      setFallbackApplied(false)
+      setFallbackSource(null)
       const params = buildSearchParams()
       const response = await fetch(`/api/search?${params.toString()}`, { cache: 'no-store' })
       if (!response.ok) {
         throw new Error('Không thể tải kết quả tìm kiếm')
       }
-      const data = await response.json()
+      let data = await response.json()
+      let usedFallback = false
+      const originalTerm = params.get('q')?.trim() ?? ""
+      if ((data.listings?.length ?? 0) === 0 && originalTerm.length > 0) {
+        const fallbackParams = new URLSearchParams(params)
+        fallbackParams.delete('q')
+        const fallbackResponse = await fetch(`/api/search?${fallbackParams.toString()}`, { cache: 'no-store' })
+        if (fallbackResponse.ok) {
+          const fallbackData = await fallbackResponse.json()
+          if ((fallbackData.listings?.length ?? 0) > 0) {
+            data = fallbackData
+            usedFallback = true
+          }
+        }
+      }
       setListings(data.listings ?? [])
+      setFallbackApplied(usedFallback)
+      setFallbackSource(usedFallback ? originalTerm : null)
       startTransition(() => {
         router.replace(`${pathname}?${params.toString()}`, { scroll: false })
       })
@@ -303,6 +323,13 @@ export function SearchResultsView({ initialParams }: SearchResultsViewProps) {
     return `Tìm thấy ${listings.length} chỗ nghỉ phù hợp`
   }, [loading, error, listings.length])
 
+  const helperText = useMemo(() => {
+    if (fallbackApplied && fallbackSource) {
+      return `Không tìm thấy kết quả cho “${fallbackSource}”. Hiển thị đề xuất thịnh hành để bạn tham khảo thêm.`
+    }
+    return 'Tinh chỉnh bộ lọc để tìm homestay đúng gu của bạn. Giá hiển thị cho mỗi đêm.'
+  }, [fallbackApplied, fallbackSource])
+
   const handleResetFilters = () => {
     setQuery('')
     setCity('')
@@ -338,8 +365,13 @@ export function SearchResultsView({ initialParams }: SearchResultsViewProps) {
             <div>
               <h2 className="text-2xl font-semibold">{resultCountLabel}</h2>
               <p className="text-muted-foreground text-sm">
-                Tinh chỉnh bộ lọc để tìm homestay đúng gu của bạn. Giá hiển thị cho mỗi đêm.
+                {helperText}
               </p>
+              {fallbackApplied && (
+                <Badge variant="secondary" className="mt-2 bg-amber-100 text-amber-900">
+                  Đã bật gợi ý thay thế
+                </Badge>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button

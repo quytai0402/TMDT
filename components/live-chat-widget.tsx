@@ -11,6 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
 import { useConciergeContext } from "@/components/concierge-context-provider"
+import { useSession } from "next-auth/react"
 
 const SESSION_STORAGE_KEY = "luxestay_live_chat_session"
 const POLL_INTERVAL_MS = 4000
@@ -114,6 +115,14 @@ function mapApiMessage(message: ApiMessage, session: ChatSessionState | null): M
 }
 
 export function LiveChatWidget() {
+  const { data: session } = useSession()
+  const membershipTier = session?.user?.membership ?? null
+  const isDiamondMember = membershipTier === "DIAMOND"
+
+  if (!isDiamondMember) {
+    return null
+  }
+
   const [isOpen, setIsOpen] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
   const [chatSession, setChatSession] = useState<ChatSessionState | null>(null)
@@ -203,6 +212,7 @@ export function LiveChatWidget() {
       const response = await fetch(`/api/live-chat/sessions/${sessionId}`, {
         method: "GET",
         cache: "no-store",
+        credentials: "include",
       })
 
       if (response.status === 404) {
@@ -250,6 +260,7 @@ export function LiveChatWidget() {
       const response = await fetch("/api/live-chat/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(
           conciergeContext
             ? {
@@ -328,6 +339,7 @@ export function LiveChatWidget() {
 
     fetch(`/api/concierge/context?${params.toString()}`, {
       cache: 'no-store',
+      credentials: 'include',
       signal: controller.signal,
     })
       .then(async (res) => {
@@ -337,14 +349,16 @@ export function LiveChatWidget() {
       .then((data) => {
         if (!data?.introMessage) return
 
+        const introMessage = data.introMessage
+
         setMessages((prev) => {
-          const exists = prev.some((message) => message.sender === 'bot' && message.content === data.introMessage)
+          const exists = prev.some((message) => message.sender === 'bot' && message.content === introMessage)
           if (exists) return prev
           return [
             ...prev,
             {
               id: `context-${Date.now()}`,
-              content: data.introMessage,
+              content: introMessage,
               sender: 'bot',
               timestamp: new Date(),
             },
@@ -378,11 +392,15 @@ export function LiveChatWidget() {
       const response = await fetch(`/api/live-chat/sessions/${sessionId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ content }),
       })
 
       if (!response.ok) {
-        throw new Error("Failed to send message")
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || "Failed to send message"
+        console.error("Failed to send message:", errorMessage)
+        throw new Error(errorMessage)
       }
 
       const message: ApiMessage = await response.json()
@@ -399,7 +417,10 @@ export function LiveChatWidget() {
       fetchSession()
     } catch (err) {
       console.error("Failed to send live chat message:", err)
-      setError("Không thể gửi tin nhắn. Vui lòng thử lại.")
+      const errorMsg = err instanceof Error ? err.message : "Không thể gửi tin nhắn"
+      setError(errorMsg + ". Vui lòng thử lại.")
+      // Re-add the message back to input so user doesn't lose it
+      setInputMessage(content)
     }
   }, [chatSession, createSession, fetchSession, inputMessage, loading, scrollToBottom])
 
@@ -411,6 +432,7 @@ export function LiveChatWidget() {
         await fetch(`/api/live-chat/sessions/${sessionId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ status: "ENDED" as LiveChatStatus }),
         })
       }

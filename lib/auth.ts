@@ -15,21 +15,48 @@ import type {
 import type { JWT } from 'next-auth/jwt'
 import type { UserRole } from '@prisma/client'
 
+type MembershipPlanSnapshot = {
+  slug: string
+  name: string
+  discountRate: number
+  applyDiscountToServices: boolean
+  color?: string | null
+  icon?: string | null
+  features?: string[] | null
+  exclusiveFeatures?: string[] | null
+}
+
 type RoleAwareUser = AdapterUser & {
   role?: UserRole
   isHost?: boolean
+  isGuide?: boolean
+  guideProfileId?: string | null
+  membership?: string | null
+  loyaltyTier?: string | null
+  membershipPlan?: MembershipPlanSnapshot | null
+  membershipStatus?: string | null
 }
 
 type RoleAwareToken = JWT & {
   id?: string
   role?: UserRole
   isHost?: boolean
+  isGuide?: boolean
+  guideProfileId?: string | null
+  membership?: string | null
+  membershipPlan?: MembershipPlanSnapshot | null
+  membershipStatus?: string | null
 }
 
 type RoleAwareSessionUser = Session['user'] & {
   id?: string
   role?: UserRole
   isHost?: boolean
+  isGuide?: boolean
+  guideProfileId?: string | null
+  membership?: string | null
+  membershipPlan?: MembershipPlanSnapshot | null
+  membershipStatus?: string | null
 }
 
 // Custom adapter to handle OAuth provider IDs as strings (not ObjectIDs)
@@ -106,6 +133,13 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
+          include: {
+            guideProfile: {
+              select: {
+                id: true,
+              },
+            },
+          },
         })
 
         if (!user || !user.password) {
@@ -131,6 +165,10 @@ export const authOptions: NextAuthOptions = {
           image: user.image,
           role: user.role,
           isHost: user.role === 'HOST',
+          isGuide: user.isGuide ?? false,
+          guideProfileId: user.guideProfile?.id ?? null,
+          membership: user.loyaltyTier ?? null,
+          membershipStatus: user.membershipStatus ?? null,
         }
       },
     }),
@@ -184,6 +222,30 @@ export const authOptions: NextAuthOptions = {
         sessionUser.id = enrichedToken.id ?? sessionUser.id
         sessionUser.role = enrichedToken.role ?? sessionUser.role
         sessionUser.isHost = enrichedToken.isHost ?? sessionUser.isHost
+        sessionUser.isGuide = enrichedToken.isGuide ?? sessionUser.isGuide
+        if (enrichedToken.guideProfileId !== undefined) {
+          sessionUser.guideProfileId = enrichedToken.guideProfileId ?? null
+        } else if (typeof sessionUser.guideProfileId === 'undefined') {
+          sessionUser.guideProfileId = null
+        }
+        if (typeof sessionUser.isGuide === 'undefined') {
+          sessionUser.isGuide = false
+        }
+        if (enrichedToken.membership !== undefined) {
+          sessionUser.membership = enrichedToken.membership ?? null
+        } else {
+          sessionUser.membership = sessionUser.membership ?? null
+        }
+        if (enrichedToken.membershipPlan !== undefined) {
+          sessionUser.membershipPlan = enrichedToken.membershipPlan ?? null
+        } else if (typeof sessionUser.membershipPlan === 'undefined') {
+          sessionUser.membershipPlan = null
+        }
+        if (enrichedToken.membershipStatus !== undefined) {
+          sessionUser.membershipStatus = enrichedToken.membershipStatus ?? null
+        } else if (typeof sessionUser.membershipStatus === 'undefined') {
+          sessionUser.membershipStatus = null
+        }
       }
       return session
     },
@@ -199,11 +261,31 @@ export const authOptions: NextAuthOptions = {
         const roleAwareUser = user as RoleAwareUser | (User & {
           role?: UserRole
           isHost?: boolean
+          membership?: string | null
+          loyaltyTier?: string | null
         })
 
         enrichedToken.id = roleAwareUser.id ?? enrichedToken.id
         enrichedToken.role = roleAwareUser.role ?? enrichedToken.role
         enrichedToken.isHost = roleAwareUser.isHost ?? enrichedToken.isHost
+        enrichedToken.isGuide = roleAwareUser.isGuide ?? enrichedToken.isGuide
+        if (roleAwareUser.guideProfileId !== undefined) {
+          enrichedToken.guideProfileId = roleAwareUser.guideProfileId ?? null
+        }
+        const membershipFromUser =
+          roleAwareUser.membership ??
+          ("loyaltyTier" in roleAwareUser ? roleAwareUser.loyaltyTier : undefined)
+        if (membershipFromUser !== undefined) {
+          enrichedToken.membership = membershipFromUser
+        }
+        if ("membershipPlan" in roleAwareUser) {
+          enrichedToken.membershipPlan =
+            roleAwareUser.membershipPlan ?? enrichedToken.membershipPlan ?? null
+        }
+        if ("membershipStatus" in roleAwareUser) {
+          enrichedToken.membershipStatus =
+            roleAwareUser.membershipStatus ?? enrichedToken.membershipStatus ?? null
+        }
       }
       
       // Handle session update
@@ -213,6 +295,74 @@ export const authOptions: NextAuthOptions = {
         enrichedToken.id = sessionUser.id ?? enrichedToken.id
         enrichedToken.role = sessionUser.role ?? enrichedToken.role
         enrichedToken.isHost = sessionUser.isHost ?? enrichedToken.isHost
+        enrichedToken.isGuide = sessionUser.isGuide ?? enrichedToken.isGuide
+        if (sessionUser.guideProfileId !== undefined) {
+          enrichedToken.guideProfileId = sessionUser.guideProfileId ?? null
+        }
+        if (sessionUser.membership !== undefined) {
+          enrichedToken.membership = sessionUser.membership
+        }
+        if (sessionUser.membershipPlan !== undefined) {
+          enrichedToken.membershipPlan = sessionUser.membershipPlan ?? null
+        }
+        if (sessionUser.membershipStatus !== undefined) {
+          enrichedToken.membershipStatus = sessionUser.membershipStatus ?? null
+        }
+      }
+
+      if (
+        enrichedToken.id &&
+        (typeof enrichedToken.membership === 'undefined' ||
+          typeof enrichedToken.membershipPlan === 'undefined' ||
+          typeof enrichedToken.membershipStatus === 'undefined' ||
+          typeof enrichedToken.isGuide === 'undefined' ||
+          typeof enrichedToken.guideProfileId === 'undefined')
+      ) {
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: enrichedToken.id },
+            select: {
+              isGuide: true,
+              loyaltyTier: true,
+              membershipStatus: true,
+              membershipPlan: {
+                select: {
+                  slug: true,
+                  name: true,
+                  bookingDiscountRate: true,
+                  applyDiscountToServices: true,
+                  color: true,
+                  icon: true,
+                  features: true,
+                  exclusiveFeatures: true,
+                },
+              },
+              guideProfile: {
+                select: {
+                  id: true,
+                },
+              },
+            },
+          })
+          enrichedToken.membership = dbUser?.loyaltyTier ?? null
+          enrichedToken.membershipStatus = dbUser?.membershipStatus ?? null
+          enrichedToken.isGuide = dbUser?.isGuide ?? false
+          enrichedToken.guideProfileId = dbUser?.guideProfile?.id ?? null
+          enrichedToken.membershipPlan = dbUser?.membershipPlan
+            ? {
+                slug: dbUser.membershipPlan.slug,
+                name: dbUser.membershipPlan.name,
+                discountRate: dbUser.membershipPlan.bookingDiscountRate,
+                applyDiscountToServices: dbUser.membershipPlan.applyDiscountToServices,
+                color: dbUser.membershipPlan.color,
+                icon: dbUser.membershipPlan.icon,
+                features: dbUser.membershipPlan.features ?? null,
+                exclusiveFeatures: dbUser.membershipPlan.exclusiveFeatures ?? null,
+              }
+            : null
+        } catch (error) {
+          console.error('Failed to resolve membership tier for token:', error)
+        }
       }
       
       return enrichedToken
@@ -289,7 +439,7 @@ export const authOptions: NextAuthOptions = {
     error: '/login',
   },
   secret: process.env.NEXTAUTH_SECRET,
-  debug: process.env.NODE_ENV === 'development',
+  debug: process.env.NEXTAUTH_DEBUG === 'true',
 }
 
 // ========================================

@@ -20,13 +20,37 @@ export interface GuestInfo {
   specialRequests?: string
 }
 
+export interface LoyaltyLookupResult {
+  totalBookings: number
+  totalSpent: number
+  memberTier: string
+  discount: number
+  perks: string[]
+  progress: number
+  nextTier: {
+    name: string
+    bookingsToUnlock: number
+    spendToUnlock: number
+    discount: number
+    perks: string[]
+  } | null
+}
+
 interface GuestInfoFormProps {
   onInfoChange?: (info: GuestInfo) => void
   onLoginClick?: () => void
   titlePrefix?: string
+  initialInfo?: Partial<GuestInfo>
+  onLoyaltyInfoChange?: (info: LoyaltyLookupResult | null) => void
 }
 
-export function GuestInfoForm({ onInfoChange, onLoginClick, titlePrefix }: GuestInfoFormProps) {
+export function GuestInfoForm({
+  onInfoChange,
+  onLoginClick,
+  titlePrefix,
+  initialInfo,
+  onLoyaltyInfoChange,
+}: GuestInfoFormProps) {
   const { data: session } = useSession()
   const [guestInfo, setGuestInfo] = useState<GuestInfo>({
     fullName: "",
@@ -34,29 +58,41 @@ export function GuestInfoForm({ onInfoChange, onLoginClick, titlePrefix }: Guest
     email: "",
     specialRequests: ""
   })
-  const [phoneHistory, setPhoneHistory] = useState<{
-    totalBookings: number
-    totalSpent: number
-    memberTier: string
-    discount: number
-    perks: string[]
-    progress: number
-    nextTier: {
-      name: string
-      bookingsToUnlock: number
-      spendToUnlock: number
-      discount: number
-      perks: string[]
-    } | null
-  } | null>(null)
+  const [phoneHistory, setPhoneHistory] = useState<LoyaltyLookupResult | null>(null)
+
+  useEffect(() => {
+    if (!initialInfo) {
+      return
+    }
+
+    const normalizedInitial: GuestInfo = {
+      fullName: initialInfo.fullName ?? "",
+      phone: initialInfo.phone ?? "",
+      email: initialInfo.email ?? "",
+      specialRequests: initialInfo.specialRequests ?? "",
+    }
+
+    const hasDifference =
+      guestInfo.fullName !== normalizedInitial.fullName ||
+      guestInfo.phone !== normalizedInitial.phone ||
+      guestInfo.email !== normalizedInitial.email ||
+      (guestInfo.specialRequests ?? "") !== (normalizedInitial.specialRequests ?? "")
+
+    if (hasDifference) {
+      setGuestInfo((prev) => ({
+        ...prev,
+        ...normalizedInitial,
+      }))
+    }
+  }, [initialInfo, guestInfo.fullName, guestInfo.phone, guestInfo.email, guestInfo.specialRequests])
 
   // Auto-fill if user is logged in
   useEffect(() => {
     if (session?.user) {
-      setGuestInfo(prev => ({
+      setGuestInfo((prev) => ({
         ...prev,
-        fullName: session.user.name || "",
-        email: session.user.email || "",
+        fullName: prev.fullName || session.user.name || "",
+        email: prev.email || session.user.email || "",
       }))
     }
   }, [session])
@@ -112,6 +148,10 @@ export function GuestInfoForm({ onInfoChange, onLoginClick, titlePrefix }: Guest
   useEffect(() => {
     onInfoChange?.(guestInfo)
   }, [guestInfo, onInfoChange])
+
+  useEffect(() => {
+    onLoyaltyInfoChange?.(phoneHistory)
+  }, [phoneHistory, onLoyaltyInfoChange])
 
   const formatPrice = (price: number) => {
     return new Intl.NumberFormat('vi-VN').format(Math.round(price))

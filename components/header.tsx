@@ -1,10 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import { Menu, User, Heart, Globe, Trophy, Sparkles, Crown, MapPin, Users, Compass, Calendar, Home, MessageSquare, Building2, LayoutDashboard } from "lucide-react"
+import { Menu, User, Heart, Globe, Trophy, Sparkles, Crown, Users, Compass, Calendar, MessageSquare, Building2, LayoutDashboard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useState } from "react"
 import { useSession, signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import {
@@ -23,13 +22,51 @@ import { NotificationCenter } from "@/components/notification-center"
 import { MobileMenu } from "@/components/mobile-menu"
 import { UserRewardsBadge } from "@/components/user-rewards-badge"
 import { canAccessAdmin, canManageListings, isGuest, resolveRoleLabel } from "@/lib/rbac"
+import { useConciergeAccess } from "@/hooks/use-concierge-access"
+
+const MEMBERSHIP_BADGE_STYLES: Record<string, { label: string; className: string }> = {
+  SILVER: {
+    label: "Silver",
+    className: "h-5 px-1.5 text-[10px] bg-gradient-to-r from-slate-400 to-slate-600 border-0",
+  },
+  GOLD: {
+    label: "Gold",
+    className: "h-5 px-1.5 text-[10px] bg-gradient-to-r from-amber-500 to-amber-600 border-0",
+  },
+  PLATINUM: {
+    label: "Platinum",
+    className: "h-5 px-1.5 text-[10px] bg-gradient-to-r from-gray-500 to-gray-700 border-0",
+  },
+  DIAMOND: {
+    label: "Diamond",
+    className: "h-5 px-1.5 text-[10px] bg-gradient-to-r from-cyan-500 to-blue-600 border-0",
+  },
+}
+
+function resolveMembershipKey(tier: string | null | undefined) {
+  if (!tier) return null
+  const normalized = tier.toString().toUpperCase()
+  if (normalized in MEMBERSHIP_BADGE_STYLES) {
+    return normalized as keyof typeof MEMBERSHIP_BADGE_STYLES
+  }
+  if (normalized.includes("DIAMOND")) return "DIAMOND"
+  if (normalized.includes("PLATINUM")) return "PLATINUM"
+  if (normalized.includes("GOLD")) return "GOLD"
+  if (normalized.includes("SILVER")) return "SILVER"
+  return null
+}
 
 export function Header() {
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
   const { data: session } = useSession()
   const router = useRouter()
   const authModal = useAuthModal()
   const isAuthenticated = !!session?.user
+  const { hasAccess: conciergeAccess, resolvedTier, loading: conciergeLoading } = useConciergeAccess()
+  const sessionTier = session?.user?.membership ?? null
+  const normalizedTier = resolvedTier ?? (sessionTier ? sessionTier.toString().toUpperCase() : null)
+  const badgeKey = resolveMembershipKey(normalizedTier)
+  const membershipBadge = badgeKey ? MEMBERSHIP_BADGE_STYLES[badgeKey] : undefined
+
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-white/80 backdrop-blur-xl supports-[backdrop-filter]:bg-white/80 shadow-sm">
@@ -88,19 +125,6 @@ export function Header() {
               Trải nghiệm
             </Link>
 
-            <Link
-              href="/become-host"
-              className="px-2.5 py-1.5 text-sm font-medium text-gray-700 hover:text-primary hover:bg-primary/5 rounded-lg transition-all duration-200 flex items-center gap-1"
-            >
-              <Home className="h-3.5 w-3.5" />
-              Trở thành chủ nhà
-            </Link>
-
-            <Link href="/map" className="px-2.5 py-1.5 text-sm font-medium text-gray-700 hover:text-primary hover:bg-primary/5 rounded-lg transition-all duration-200 flex items-center gap-1">
-              <MapPin className="h-3.5 w-3.5" />
-              Bản đồ
-            </Link>
-
             <Link href="/community" className="px-2.5 py-1.5 text-sm font-medium text-gray-700 hover:text-primary hover:bg-primary/5 rounded-lg transition-all duration-200 flex items-center gap-1">
               <Users className="h-3.5 w-3.5" />
               Cộng đồng
@@ -116,11 +140,13 @@ export function Header() {
               Membership
             </Link>
 
-            <Link href="/concierge" className="px-2.5 py-1.5 text-sm font-medium text-gray-700 hover:text-primary hover:bg-primary/5 rounded-lg transition-all duration-200 flex items-center gap-1 relative">
-              <MessageSquare className="h-3.5 w-3.5" />
-              Concierge
-              <Badge className="ml-1 h-4 px-1.5 text-[10px] bg-gradient-to-r from-primary to-pink-500 text-white border-0 shadow-sm">24/7</Badge>
-            </Link>
+            {conciergeAccess && !conciergeLoading && (
+              <Link href="/concierge" className="px-2.5 py-1.5 text-sm font-medium text-gray-700 hover:text-primary hover:bg-primary/5 rounded-lg transition-all duration-200 flex items-center gap-1 relative">
+                <MessageSquare className="h-3.5 w-3.5" />
+                Concierge
+                <Badge className="ml-1 h-4 px-1.5 text-[10px] bg-gradient-to-r from-primary to-pink-500 text-white border-0 shadow-sm">24/7</Badge>
+              </Link>
+            )}
           </nav>
 
           {/* Right Actions */}
@@ -166,25 +192,12 @@ export function Header() {
                       <div className="flex flex-col flex-1">
                         <p className="text-sm font-medium flex items-center gap-1.5">
                           {session.user.name}
-                          {session.user.membership && (
-                            <>
-                              {session.user.membership === "PLUS" && (
-                                <Badge className="h-5 px-1.5 text-[10px] bg-gradient-to-r from-blue-500 to-blue-600 border-0">
-                                  <Crown className="h-3 w-3" />
-                                </Badge>
-                              )}
-                              {session.user.membership === "PREMIUM" && (
-                                <Badge className="h-5 px-1.5 text-[10px] bg-gradient-to-r from-purple-500 to-purple-600 border-0">
-                                  <Crown className="h-3 w-3" />
-                                </Badge>
-                              )}
-                              {session.user.membership === "LUXURY" && (
-                                <Badge className="h-5 px-1.5 text-[10px] bg-gradient-to-r from-amber-500 to-amber-600 border-0">
-                                  <Crown className="h-3 w-3" />
-                                </Badge>
-                              )}
-                            </>
-                          )}
+                          {membershipBadge ? (
+                            <Badge className={membershipBadge.className}>
+                              <Crown className="h-3 w-3" />
+                              <span className="ml-1 hidden sm:inline">{membershipBadge.label}</span>
+                            </Badge>
+                          ) : null}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {resolveRoleLabel(session.user.role)} • {session.user.email}
@@ -224,6 +237,9 @@ export function Header() {
                         <DropdownMenuItem onClick={() => router.push('/become-host')}>
                           Trở thành chủ nhà
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => router.push('/become-guide')}>
+                          Trở thành hướng dẫn viên
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => router.push('/profile')}>
                           Tài khoản
                         </DropdownMenuItem>
@@ -247,6 +263,26 @@ export function Header() {
                         <DropdownMenuItem onClick={() => router.push('/host/calendar')}>
                           <Calendar className="h-4 w-4 mr-2" />
                           Lịch đặt phòng
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                      <DropdownMenuSeparator />
+                    </>
+                  ) : null}
+                  {session.user.isGuide ? (
+                    <>
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel className="text-xs text-muted-foreground font-semibold">Guide Tools</DropdownMenuLabel>
+                        <DropdownMenuItem onClick={() => router.push('/guide/dashboard')}>
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          Dashboard hướng dẫn viên
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => router.push('/guide/experiences')}>
+                          <Compass className="h-4 w-4 mr-2" />
+                          Quản lý trải nghiệm
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => router.push('/guide/bookings')}>
+                          <Calendar className="h-4 w-4 mr-2" />
+                          Lịch & Booking
                         </DropdownMenuItem>
                       </DropdownMenuGroup>
                       <DropdownMenuSeparator />

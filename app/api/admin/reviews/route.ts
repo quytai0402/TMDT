@@ -13,6 +13,9 @@ export async function GET(req: NextRequest) {
 
     const searchParams = req.nextUrl.searchParams
     const filter = searchParams.get('filter') || 'all'
+    const hostId = searchParams.get('hostId')
+    const listingId = searchParams.get('listingId')
+    const rating = searchParams.get('rating')
     const search = searchParams.get('search') || ''
 
     // Build where clause
@@ -34,6 +37,22 @@ export async function GET(req: NextRequest) {
       where.isFlagged = true
     }
 
+    if (hostId && hostId !== 'all') {
+      where.listing = { hostId }
+    }
+
+    if (listingId && listingId !== 'all') {
+      where.listingId = listingId
+    }
+
+    if (rating && rating !== 'all') {
+      const ratingNum = parseInt(rating, 10)
+      where.overallRating = {
+        gte: ratingNum,
+        lt: ratingNum + 1,
+      }
+    }
+
     const reviews = await prisma.review.findMany({
       where,
       include: {
@@ -41,35 +60,81 @@ export async function GET(req: NextRequest) {
           select: { id: true, name: true, email: true, image: true }
         },
         listing: {
-          select: { id: true, title: true }
+          select: { 
+            id: true, 
+            title: true,
+            hostId: true,
+            host: {
+              select: { id: true, name: true, email: true }
+            }
+          }
         },
       },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: 100,
+    })
+
+    // Get filter options
+    const hosts = await prisma.user.findMany({
+      where: {
+        listings: {
+          some: {}
+        }
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
+      take: 100,
+    })
+
+    const listings = await prisma.listing.findMany({
+      select: {
+        id: true,
+        title: true,
+        hostId: true,
+      },
+      take: 200,
     })
 
     // Get stats
     const totalReviews = await prisma.review.count()
-  const pendingReviews = await prisma.review.count({ where: { isVerified: false } })
-  const flaggedReviews = await prisma.review.count({ where: { isFlagged: true } })
+    const pendingReviews = await prisma.review.count({ where: { isVerified: false } })
+    const flaggedReviews = await prisma.review.count({ where: { isFlagged: true } })
     
     // Calculate average rating
     const avgRating = await prisma.review.aggregate({
       _avg: { overallRating: true }
     })
 
+    // Transform reviews to include host info at top level
+    const transformedReviews = reviews.map(review => ({
+      ...review,
+      host: review.listing.host,
+      listing: {
+        id: review.listing.id,
+        title: review.listing.title,
+        hostId: review.listing.hostId,
+      }
+    }))
+
     return NextResponse.json({
-      reviews,
+      reviews: transformedReviews,
       stats: {
         total: totalReviews,
         pending: pendingReviews,
-  flagged: flaggedReviews,
-  averageRating: avgRating._avg?.overallRating || 0,
+        flagged: flaggedReviews,
+        averageRating: avgRating._avg?.overallRating || 0,
         thisWeek: reviews.filter((r: any) => {
           const weekAgo = new Date()
           weekAgo.setDate(weekAgo.getDate() - 7)
           return new Date(r.createdAt) > weekAgo
         }).length,
+      },
+      filterOptions: {
+        hosts,
+        listings,
       }
     })
   } catch (error) {

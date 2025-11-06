@@ -1,9 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { 
@@ -11,7 +10,6 @@ import {
   Plus,
   TrendingDown,
   TrendingUp,
-  PieChart,
   Wallet,
   CreditCard,
   Home,
@@ -20,26 +18,23 @@ import {
   ShoppingBag,
   Camera
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-interface BudgetItem {
+export interface BudgetItem {
   id: string
   category: string
   name: string
   planned: number
   spent: number
+  currency?: string
 }
 
-const categoryIcons = {
-  accommodation: Home,
-  food: Utensils,
-  transport: Car,
-  activities: Camera,
-  shopping: ShoppingBag,
-  misc: Wallet,
+interface TripBudgetTrackerProps {
+  items?: BudgetItem[]
 }
 
-const categoryColors = {
+const categoryColors: Record<string, string> = {
   accommodation: "bg-blue-500",
   food: "bg-orange-500",
   transport: "bg-green-500",
@@ -48,25 +43,39 @@ const categoryColors = {
   misc: "bg-gray-500",
 }
 
-export function TripBudgetTracker() {
-  const [budget, setBudget] = useState<BudgetItem[]>([
-    { id: "1", category: "accommodation", name: "Khách sạn Đà Lạt", planned: 2500000, spent: 2500000 },
-    { id: "2", category: "accommodation", name: "Khách sạn Nha Trang", planned: 1800000, spent: 0 },
-    { id: "3", category: "food", name: "Ăn uống", planned: 2000000, spent: 500000 },
-    { id: "4", category: "transport", name: "Vé máy bay", planned: 3000000, spent: 3000000 },
-    { id: "5", category: "transport", name: "Thuê xe", planned: 1500000, spent: 0 },
-    { id: "6", category: "activities", name: "Tour tham quan", planned: 1000000, spent: 0 },
-    { id: "7", category: "shopping", name: "Mua sắm", planned: 1000000, spent: 200000 },
-  ])
+const categoryIcons: Record<string, LucideIcon> = {
+  accommodation: Home,
+  food: Utensils,
+  transport: Car,
+  activities: Camera,
+  shopping: ShoppingBag,
+  misc: Wallet,
+}
 
-  const categories = [
-    { id: "accommodation", label: "Chỗ nghỉ", icon: Home },
-    { id: "food", label: "Ẩm thực", icon: Utensils },
-    { id: "transport", label: "Di chuyển", icon: Car },
-    { id: "activities", label: "Hoạt động", icon: Camera },
-    { id: "shopping", label: "Mua sắm", icon: ShoppingBag },
-    { id: "misc", label: "Khác", icon: Wallet },
-  ]
+export function TripBudgetTracker({ items }: TripBudgetTrackerProps) {
+  const budget = useMemo(() => (Array.isArray(items) ? [...items] : []), [items])
+
+  const categories = useMemo(() => {
+    const base = new Map<string, { label: string; icon: LucideIcon }>([
+      ["accommodation", { label: "Chỗ nghỉ", icon: Home }],
+      ["food", { label: "Ẩm thực", icon: Utensils }],
+      ["transport", { label: "Di chuyển", icon: Car }],
+      ["activities", { label: "Hoạt động", icon: Camera }],
+      ["shopping", { label: "Mua sắm", icon: ShoppingBag }],
+      ["misc", { label: "Khác", icon: Wallet }],
+    ])
+
+    budget.forEach((item) => {
+      if (!base.has(item.category)) {
+        base.set(item.category, {
+          label: item.category.charAt(0).toUpperCase() + item.category.slice(1),
+          icon: Wallet,
+        })
+      }
+    })
+
+    return Array.from(base.entries()).map(([id, value]) => ({ id, ...value }))
+  }, [budget])
 
   const totalPlanned = budget.reduce((sum, item) => sum + item.planned, 0)
   const totalSpent = budget.reduce((sum, item) => sum + item.spent, 0)
@@ -78,6 +87,29 @@ export function TripBudgetTracker() {
     const planned = items.reduce((sum, item) => sum + item.planned, 0)
     const spent = items.reduce((sum, item) => sum + item.spent, 0)
     return { planned, spent, remaining: planned - spent, percent: planned > 0 ? Math.round((spent / planned) * 100) : 0 }
+  }
+
+  if (!budget.length) {
+    return (
+      <Card className="p-6">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-2xl font-bold mb-2 flex items-center">
+              <DollarSign className="w-6 h-6 mr-3 text-primary" />
+              Quản lý ngân sách
+            </h2>
+            <p className="text-muted-foreground">
+              Chưa có dữ liệu ngân sách cho chuyến đi này.
+            </p>
+          </div>
+        </div>
+        <Card className="mt-6 bg-muted/40 p-6 text-center">
+          <p className="text-sm text-muted-foreground">
+            Khi bạn thêm dịch vụ concierge hoặc cập nhật chi phí trong planner, ngân sách sẽ hiển thị tại đây.
+          </p>
+        </Card>
+      </Card>
+    )
   }
 
   return (
@@ -96,7 +128,7 @@ export function TripBudgetTracker() {
       </div>
 
       {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="p-6 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-200">
           <div className="flex items-start justify-between mb-3">
             <div>
@@ -162,6 +194,7 @@ export function TripBudgetTracker() {
           {categories.map(category => {
             const stats = getCategoryStats(category.id)
             const Icon = category.icon
+            const colorKey = categoryColors[category.id] ? category.id : "misc"
             
             if (stats.planned === 0) return null
 
@@ -171,7 +204,7 @@ export function TripBudgetTracker() {
                   <div className="flex items-center space-x-3">
                     <div className={cn(
                       "w-10 h-10 rounded-lg flex items-center justify-center",
-                      categoryColors[category.id as keyof typeof categoryColors],
+                      categoryColors[colorKey],
                       "bg-opacity-20"
                     )}>
                       <Icon className="w-5 h-5" />
@@ -210,14 +243,16 @@ export function TripBudgetTracker() {
         </div>
         <div className="space-y-2">
           {budget.map(item => {
-            const Icon = categoryIcons[item.category as keyof typeof categoryIcons]
+            const iconKey = categoryIcons[item.category] ? item.category : "misc"
+            const Icon = categoryIcons[iconKey]
             const percent = item.planned > 0 ? Math.round((item.spent / item.planned) * 100) : 0
+            const colorKey = categoryColors[item.category] ? item.category : "misc"
             
             return (
               <div key={item.id} className="flex items-center space-x-4 p-4 rounded-lg border hover:shadow-sm transition-shadow">
                 <div className={cn(
                   "w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0",
-                  categoryColors[item.category as keyof typeof categoryColors],
+                  categoryColors[colorKey],
                   "bg-opacity-20"
                 )}>
                   <Icon className="w-5 h-5" />

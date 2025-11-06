@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
+// Simple in-memory cache for unread count (5 seconds TTL)
+const unreadCache = new Map<string, { count: number; timestamp: number }>()
+const CACHE_TTL = 5000 // 5 seconds
+
 // GET /api/notifications - Get user notifications
 export async function GET(req: NextRequest) {
   try {
@@ -17,6 +21,20 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const skip = (page - 1) * limit
 
+    // If only requesting unread count, use cache
+    if (unreadOnly && limit === 1 && skip === 0) {
+      const cached = unreadCache.get(session.user.id)
+      const now = Date.now()
+      
+      if (cached && now - cached.timestamp < CACHE_TTL) {
+        return NextResponse.json({
+          notifications: [],
+          pagination: { page: 1, limit: 1, total: cached.count },
+          unreadCount: cached.count,
+        })
+      }
+    }
+
     const where: any = {
       userId: session.user.id
     }
@@ -25,35 +43,60 @@ export async function GET(req: NextRequest) {
       where.isRead = false
     }
 
-    const [notifications, total, unreadCount] = await Promise.all([
+    // Optimize: Only fetch what's needed
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Database timeout')), 15000)
+    )
+
+    const queryPromise = Promise.all([
       prisma.notification.findMany({
         where,
         orderBy: { createdAt: 'desc' },
         skip,
-        take: limit
-      }),
-      prisma.notification.count({ where }),
-      prisma.notification.count({
-        where: {
-          userId: session.user.id,
-          isRead: false
+        take: limit,
+        select: {
+          id: true,
+          type: true,
+          title: true,
+          message: true,
+          link: true,
+          isRead: true,
+          createdAt: true,
         }
-      })
-    ]).catch((error) => {
-      // Handle database timeout gracefully
-      console.error('Database timeout in notifications:', error)
-      return [[], 0, 0] as const
+      }),
+      // Only count if not cached
+      unreadOnly && limit === 1 ? 
+        prisma.notification.count({ where }) : 
+        Promise.resolve(0),
+    ])
+
+    const [notifications, count] = await Promise.race([queryPromise, timeout]).catch(async (error) => {
+      console.warn('Notifications query exceeded timeout, retrying without race condition:', error)
+      try {
+        return await queryPromise
+      } catch (fallbackError) {
+        console.error('Database error in notifications after fallback:', fallbackError)
+        return [[], 0] as const
+      }
     })
+
+    // Cache unread count
+    if (unreadOnly && limit === 1) {
+      unreadCache.set(session.user.id, {
+        count: count,
+        timestamp: Date.now()
+      })
+    }
 
     return NextResponse.json({
       notifications,
       pagination: {
         page,
         limit,
-        total: Number(total) || 0,
-        totalPages: Math.ceil((Number(total) || 0) / limit)
+        total: count,
+        totalPages: Math.ceil(count / limit)
       },
-      unreadCount: Number(unreadCount) || 0
+      unreadCount: unreadOnly ? count : 0
     })
 
   } catch (error) {

@@ -20,7 +20,15 @@ export async function POST(
       where: { id },
       include: {
         listing: true,
-        guest: true,
+        guest: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            membershipStatus: true,
+            loyaltyTier: true,
+          },
+        },
         host: true,
         payment: true,
       },
@@ -48,23 +56,50 @@ export async function POST(
       )
     }
 
-    // Calculate refund based on cancellation policy
+    // Calculate refund based on cancellation policy and membership benefits
     let refundAmount = 0
     const hoursUntilCheckIn =
       (booking.checkIn.getTime() - new Date().getTime()) / (1000 * 60 * 60)
 
+    // Check membership status for enhanced refund policy
+    const membershipStatus = booking.guest?.membershipStatus
+    const loyaltyTier = booking.guest?.loyaltyTier
+    const hasEnhancedRefund =
+      membershipStatus === 'ACTIVE' &&
+      ['SILVER', 'GOLD', 'PLATINUM', 'DIAMOND'].includes(loyaltyTier || '')
+
     switch (booking.listing.cancellationPolicy) {
       case 'FLEXIBLE':
-        refundAmount = hoursUntilCheckIn >= 24 ? booking.totalPrice : 0
+        // Standard: Full refund if cancelled 24h before
+        // Enhanced: Full refund if cancelled 12h before
+        refundAmount = hoursUntilCheckIn >= (hasEnhancedRefund ? 12 : 24) ? booking.totalPrice : 0
         break
       case 'MODERATE':
-        refundAmount = hoursUntilCheckIn >= 120 ? booking.totalPrice : booking.totalPrice * 0.5
+        // Standard: Full refund 5 days before, 50% otherwise
+        // Enhanced: Full refund 3 days before, 75% otherwise
+        if (hasEnhancedRefund) {
+          refundAmount = hoursUntilCheckIn >= 72 ? booking.totalPrice : booking.totalPrice * 0.75
+        } else {
+          refundAmount = hoursUntilCheckIn >= 120 ? booking.totalPrice : booking.totalPrice * 0.5
+        }
         break
       case 'STRICT':
-        refundAmount = hoursUntilCheckIn >= 168 ? booking.totalPrice : 0
+        // Standard: Full refund 7 days before, 0% otherwise
+        // Enhanced: Full refund 7 days before, 50% within 7 days
+        if (hasEnhancedRefund) {
+          refundAmount = hoursUntilCheckIn >= 168 ? booking.totalPrice : booking.totalPrice * 0.5
+        } else {
+          refundAmount = hoursUntilCheckIn >= 168 ? booking.totalPrice : 0
+        }
         break
       case 'SUPER_STRICT':
-        refundAmount = hoursUntilCheckIn >= 336 ? booking.totalPrice * 0.5 : 0
+        // Standard: 50% refund 14 days before, 0% otherwise
+        // Enhanced: 75% refund 14 days before, 50% within 14 days
+        if (hasEnhancedRefund) {
+          refundAmount = hoursUntilCheckIn >= 336 ? booking.totalPrice * 0.75 : booking.totalPrice * 0.5
+        } else {
+          refundAmount = hoursUntilCheckIn >= 336 ? booking.totalPrice * 0.5 : 0
+        }
         break
     }
 
@@ -80,6 +115,12 @@ export async function POST(
         cancelledBy: session.user.id,
         cancellationReason,
         refundAmount,
+        metadata: {
+          ...(booking.metadata as object),
+          membershipBenefitApplied: hasEnhancedRefund,
+          cancellationPolicy: booking.listing.cancellationPolicy,
+          hoursUntilCheckIn: Math.round(hoursUntilCheckIn),
+        },
       },
       include: {
         listing: true,
@@ -100,20 +141,25 @@ export async function POST(
     // Send notification to the other party
     const isGuestCancelling = booking.guestId && session.user.id === booking.guestId
     const notificationUserId = isGuestCancelling ? booking.hostId : booking.guestId
+    const bookingRef = booking.id.slice(-6).toUpperCase()
 
     if (notificationUserId) {
+      const notificationTitle = isGuestCancelling
+        ? 'Khách đã hủy đặt phòng'
+        : 'Chủ nhà đã hủy đặt phòng'
+      
       const notificationMessage = isGuestCancelling
-        ? `Khách đã hủy đặt chỗ ${booking.listing.title}`
-        : `Chủ nhà đã hủy đặt chỗ ${booking.listing.title}`
+        ? `${booking.guest?.name || 'Khách'} đã hủy đặt phòng ${bookingRef} cho "${booking.listing.title}". ${refundAmount > 0 ? `Hoàn tiền: ${refundAmount.toLocaleString('vi-VN')}₫` : 'Không hoàn tiền.'}${cancellationReason ? ` Lý do: ${cancellationReason}` : ''}`
+        : `Chủ nhà đã hủy đặt phòng ${bookingRef} cho "${booking.listing.title}". Bạn sẽ được hoàn tiền đầy đủ.`
 
       await prisma.notification.create({
         data: {
           userId: notificationUserId,
           type: 'BOOKING_CANCELLED',
-          title: 'Booking Cancelled',
+          title: notificationTitle,
           message: notificationMessage,
-          link: `/bookings/${booking.id}`,
-          data: { bookingId: booking.id, refundAmount },
+          link: isGuestCancelling ? `/host/bookings/${booking.id}` : `/trips/${booking.id}`,
+          data: { bookingId: booking.id, refundAmount, cancellationReason },
         },
       })
     }
@@ -139,6 +185,8 @@ export async function POST(
     return NextResponse.json({
       booking: updatedBooking,
       refundAmount,
+      refundPercentage: Math.round((refundAmount / booking.totalPrice) * 100),
+      membershipBenefitApplied: hasEnhancedRefund,
       message: 'Booking cancelled successfully',
     })
   } catch (error) {

@@ -12,6 +12,8 @@ const ALLOWED_STATUSES = ['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED'] as c
 
 type AllowedStatus = (typeof ALLOWED_STATUSES)[number]
 
+// Host can only confirm or cancel PENDING bookings, and cancel CONFIRMED bookings
+// This ensures hosts have control over their properties
 const HOST_TRANSITIONS: Record<AllowedStatus, AllowedStatus[]> = {
   PENDING: ['CONFIRMED', 'CANCELLED'],
   CONFIRMED: ['CANCELLED'],
@@ -19,6 +21,7 @@ const HOST_TRANSITIONS: Record<AllowedStatus, AllowedStatus[]> = {
   COMPLETED: [],
 }
 
+// Admin has full control and can reverse most transitions
 const ADMIN_TRANSITIONS: Record<AllowedStatus, AllowedStatus[]> = {
   PENDING: ['CONFIRMED', 'CANCELLED'],
   CONFIRMED: ['PENDING', 'CANCELLED', 'COMPLETED'],

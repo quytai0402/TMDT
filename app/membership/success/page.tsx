@@ -5,7 +5,7 @@ import { Footer } from "@/components/footer"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import type { LucideIcon } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import type { LucideIcon } from "lucide-react"
 import {
   Crown,
@@ -13,6 +13,7 @@ import {
   Zap,
   CheckCircle,
   Calendar,
+  Clock,
   Gift,
   Map,
   ShieldCheck,
@@ -29,7 +30,7 @@ import { useEffect, useMemo, useState } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 
-type MembershipStatusValue = "INACTIVE" | "ACTIVE" | "EXPIRED" | "CANCELLED"
+type MembershipStatusValue = "INACTIVE" | "ACTIVE" | "EXPIRED" | "CANCELLED" | "PENDING"
 type MembershipBillingCycleValue = "MONTHLY" | "ANNUAL" | null
 
 interface MembershipPlan {
@@ -60,6 +61,14 @@ interface MembershipInfo {
 
 interface MembershipStatusResponse {
   membership: MembershipInfo | null
+  pendingPurchase?: {
+    id: string
+    amount: number
+    billingCycle: Exclude<MembershipBillingCycleValue, null>
+    paymentMethod: "BANK_TRANSFER" | "CREDIT_CARD" | "E_WALLET"
+    referenceCode: string
+    createdAt: string
+  } | null
 }
 
 const iconComponents: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -141,6 +150,8 @@ export default function MembershipSuccessPage() {
   const [plan, setPlan] = useState<MembershipPlan | null>(null)
   const [loadingPlan, setLoadingPlan] = useState(true)
   const [planError, setPlanError] = useState<string | null>(null)
+  const [pendingPurchase, setPendingPurchase] = useState<MembershipStatusResponse["pendingPurchase"]>(null)
+  const pendingStatusParam = searchParams.get("status")
 
   useEffect(() => {
     const controller = new AbortController()
@@ -177,6 +188,7 @@ export default function MembershipSuccessPage() {
 
         const data: MembershipStatusResponse = await response.json()
         setMembership(data.membership ?? null)
+        setPendingPurchase(data.pendingPurchase ?? null)
         setMembershipError(null)
       } catch (error) {
         if (controller.signal.aborted) return
@@ -260,13 +272,14 @@ export default function MembershipSuccessPage() {
   const startedAt = membership?.startedAt ? new Date(membership.startedAt) : null
   const expiresAt = membership?.expiresAt ? new Date(membership.expiresAt) : null
   const isActiveMember = membership?.isActive ?? true
-  const statusLabelMap: Record<MembershipStatusValue, string> = {
+  const statusLabelMap: Record<MembershipStatusValue | "PENDING", string> = {
     ACTIVE: "Đang hoạt động",
     EXPIRED: "Đã hết hạn",
     CANCELLED: "Đã hủy",
     INACTIVE: "Chưa kích hoạt",
+    PENDING: "Chờ xác nhận",
   }
-  const resolvedStatus = membership?.status ?? "ACTIVE"
+  const resolvedStatus = membership?.status ?? (pendingPurchase ? "PENDING" : "ACTIVE")
   const statusLabel = statusLabelMap[resolvedStatus] ?? "Đang hoạt động"
   const errorMessage = membershipError ?? planError
 
@@ -296,6 +309,30 @@ export default function MembershipSuccessPage() {
       <main className="flex-1 bg-gradient-to-b from-muted/30 to-background">
         <div className="container mx-auto px-4 py-16">
           <div className="max-w-3xl mx-auto space-y-8">
+            {(pendingPurchase || pendingStatusParam === "pending") && (
+              <Alert className="border-amber-200 bg-amber-50/85 text-amber-900">
+                <AlertTitle className="font-semibold">Membership đang chờ xác nhận</AlertTitle>
+                <AlertDescription className="space-y-2 text-sm">
+                  <p>
+                    Cảm ơn bạn đã chuyển khoản. LuxeStay sẽ kích hoạt membership ngay khi xác nhận giao dịch (tối đa 24h làm việc).
+                  </p>
+                  {pendingPurchase && (
+                    <div className="rounded-md border border-amber-200 bg-white px-3 py-2 text-xs text-muted-foreground">
+                      <div className="flex justify-between">
+                        <span>Mã tham chiếu</span>
+                        <span className="font-semibold text-foreground">{pendingPurchase.referenceCode}</span>
+                      </div>
+                      <div className="flex justify-between mt-1">
+                        <span>Số tiền</span>
+                        <span className="font-medium text-foreground">
+                          {new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND" }).format(pendingPurchase.amount)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
             {/* Success Message */}
             <Card className="text-center overflow-hidden">
               <CardContent className="pt-12 pb-8 space-y-6">
@@ -315,8 +352,17 @@ export default function MembershipSuccessPage() {
                         <IconComponent className="h-8 w-8 text-white" />
                       )}
                     </div>
-                    <div className="absolute -bottom-2 -right-2 w-12 h-12 bg-green-500 rounded-full flex items-center justify-center border-4 border-white">
-                      <CheckCircle className="h-6 w-6 text-white" />
+                    <div
+                      className={cn(
+                        "absolute -bottom-2 -right-2 w-12 h-12 rounded-full flex items-center justify-center border-4 border-white",
+                        resolvedStatus === "PENDING" ? "bg-amber-400" : "bg-green-500"
+                      )}
+                    >
+                      {resolvedStatus === "PENDING" ? (
+                        <Clock className="h-6 w-6 text-white" />
+                      ) : (
+                        <CheckCircle className="h-6 w-6 text-white" />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -347,17 +393,30 @@ export default function MembershipSuccessPage() {
                   ) : (
                     <span className="font-semibold text-lg">{planName} Membership</span>
                   )}
-                  <Badge variant={isActiveMember ? "default" : "secondary"}>{statusLabel}</Badge>
+                  <Badge
+                    variant={
+                      resolvedStatus === "PENDING"
+                        ? "secondary"
+                        : isActiveMember
+                          ? "default"
+                          : "secondary"
+                    }
+                  >
+                    {statusLabel}
+                  </Badge>
                   <Badge variant="outline">{billingLabel}</Badge>
                 </div>
 
                 {/* Description */}
                 {errorMessage ? (
                   <p className="text-sm text-red-600 max-w-xl mx-auto">{errorMessage}</p>
+                ) : resolvedStatus === "PENDING" ? (
+                  <p className="text-muted-foreground max-w-xl mx-auto">
+                    Chúng tôi đang xác nhận chuyển khoản của bạn. Bạn sẽ nhận thêm email thông báo ngay khi membership được kích hoạt.
+                  </p>
                 ) : (
                   <p className="text-muted-foreground max-w-xl mx-auto">
-                    Membership của bạn đã được kích hoạt thành công. Quyền lợi sẽ áp dụng ngay cho booking, Secret
-                    Collection và trải nghiệm dành riêng cho hội viên.
+                    Membership của bạn đã được kích hoạt thành công. Quyền lợi sẽ áp dụng ngay cho booking, Secret Collection và trải nghiệm dành riêng cho hội viên.
                   </p>
                 )}
               </CardContent>

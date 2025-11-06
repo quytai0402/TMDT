@@ -61,6 +61,21 @@ export async function GET(req: NextRequest) {
     const bookingId = searchParams.get("bookingId")
     const listingId = searchParams.get("listingId")
 
+    if (!session?.user) {
+      return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 })
+    }
+
+    const membershipTier = session.user.membership ?? null
+    const userRole = session.user.role
+    const hasConciergePrivileges = userRole && userRole !== "GUEST" ? true : membershipTier === "DIAMOND"
+
+    if (!hasConciergePrivileges) {
+      return NextResponse.json(
+        { error: "Concierge chỉ dành cho thành viên Diamond" },
+        { status: 403 },
+      )
+    }
+
     if (!bookingId && !listingId) {
       return NextResponse.json(
         { error: "Vui lòng cung cấp bookingId hoặc listingId" },
@@ -76,7 +91,11 @@ export async function GET(req: NextRequest) {
       whereClause.listingId = listingId
     }
     if (session?.user?.id) {
-      whereClause.OR = [{ guestId: session.user.id }, { conciergeAgentId: session.user.id }]
+      whereClause.OR = [
+        { guestId: session.user.id },
+        { conciergeAgentId: session.user.id },
+        { hostId: session.user.id },
+      ]
     }
 
     const plans = await prisma.conciergePlan.findMany({
@@ -95,6 +114,21 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
+    if (!session?.user) {
+      return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 })
+    }
+
+    const membershipTier = session.user.membership ?? null
+    const userRole = session.user.role
+    const hasConciergePrivileges = userRole && userRole !== "GUEST" ? true : membershipTier === "DIAMOND"
+
+    if (!hasConciergePrivileges) {
+      return NextResponse.json(
+        { error: "Concierge chỉ dành cho thành viên Diamond" },
+        { status: 403 },
+      )
+    }
+
     const body = await req.json()
     const payload = conciergePlanSchema.parse(body)
 

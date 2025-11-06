@@ -5,6 +5,7 @@ import { HostPayoutStatus } from "@prisma/client"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { computeBookingFinancials } from "@/lib/finance"
+import { notifyAdmins } from "@/lib/notifications"
 
 export async function GET() {
   try {
@@ -14,7 +15,13 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const [profile, payouts, bookings] = await Promise.all([
+    const db = prisma as unknown as {
+      hostPayoutAccount: {
+        findUnique: typeof prisma.hostPayout.findUnique
+      }
+    }
+
+    const [profile, payouts, bookings, payoutAccount] = await Promise.all([
       prisma.hostProfile.findUnique({
         where: { userId: session.user.id },
         select: {
@@ -43,25 +50,37 @@ export async function GET() {
           completedAt: true,
         },
       }),
+      db.hostPayoutAccount.findUnique({
+        where: { hostId: session.user.id },
+      }),
     ])
 
-    const pendingBookings = bookings.map((booking) => {
-      const { hostShare } = computeBookingFinancials(booking)
+    const bookingFinancials = bookings.map((booking) => {
+      const { hostShare, commission } = computeBookingFinancials(booking)
+      const grossAmount = hostShare + commission
       return {
         id: booking.id,
         amount: hostShare,
+        commission,
+        grossAmount,
         completedAt: booking.completedAt,
       }
     })
 
+    const totalBookable = bookingFinancials.reduce((sum, item) => sum + item.amount, 0)
+    const reportedAvailable = profile?.availableBalance ?? 0
+    const availableBalance = reportedAvailable > 0 ? reportedAvailable : totalBookable
+
     return NextResponse.json({
       balance: {
-        available: profile?.availableBalance ?? 0,
+        available: availableBalance,
         pending: profile?.pendingPayoutBalance ?? 0,
         lifetime: profile?.totalEarnings ?? 0,
       },
-      pendingBookings,
+      pendingBookings: bookingFinancials,
       payouts,
+      requiresPayoutSetup: !payoutAccount,
+      payoutAccount,
     })
   } catch (error) {
     console.error("Host payouts GET error:", error)
@@ -87,7 +106,13 @@ export async function POST(request: NextRequest) {
     const note =
       typeof body?.note === "string" && body.note.trim().length > 0 ? body.note.trim() : null
 
-    const [profile, bookings] = await Promise.all([
+    const db = prisma as unknown as {
+      hostPayoutAccount: {
+        findUnique: typeof prisma.hostPayout.findUnique
+      }
+    }
+
+    const [profile, bookings, account] = await Promise.all([
       prisma.hostProfile.findUnique({
         where: { userId: session.user.id },
         select: {
@@ -112,6 +137,9 @@ export async function POST(request: NextRequest) {
           hostEarnings: true,
         },
       }),
+      db.hostPayoutAccount.findUnique({
+        where: { hostId: session.user.id },
+      }),
     ])
 
     if (!profile) {
@@ -128,13 +156,29 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const bookingFinancials = bookings.map((booking) => ({
-      id: booking.id,
-      ...computeBookingFinancials(booking),
-    }))
+    if (!account) {
+      return NextResponse.json(
+        { error: "Vui lòng cập nhật thông tin thanh toán trước khi yêu cầu rút tiền" },
+        { status: 400 },
+      )
+    }
+
+    const bookingFinancials = bookings.map((booking) => {
+      const financials = computeBookingFinancials(booking)
+      return {
+        id: booking.id,
+        hostShare: financials.hostShare,
+        commission: financials.commission,
+      }
+    })
 
     const totalFromBookings = bookingFinancials.reduce(
       (sum, booking) => sum + booking.hostShare,
+      0,
+    )
+
+    const totalCommission = bookingFinancials.reduce(
+      (sum, booking) => sum + booking.commission,
       0,
     )
 
@@ -165,9 +209,19 @@ export async function POST(request: NextRequest) {
         data: {
           hostId: session.user.id,
           amount,
+          feeAmount: totalCommission,
+          grossAmount: amount + totalCommission,
           payoutMethod,
           notes: note,
           bookingIds,
+          accountSnapshot: {
+            bankName: account.bankName,
+            bankBranch: account.bankBranch,
+            accountNumber: account.accountNumber,
+            accountName: account.accountName,
+            qrCodeImage: account.qrCodeImage,
+            taxId: account.taxId,
+          },
         },
       })
 
@@ -188,6 +242,18 @@ export async function POST(request: NextRequest) {
       })
 
       return createdPayout
+    })
+
+    await notifyAdmins({
+      type: "PAYOUT_REQUEST",
+      title: "Yêu cầu rút tiền mới",
+      message: `${session.user.name ?? "Host"} yêu cầu rút ${amount.toLocaleString("vi-VN")}₫`,
+      link: "/admin/payouts",
+      data: {
+        payoutId: payout.id,
+        amount,
+        feeAmount: totalCommission,
+      },
     })
 
     return NextResponse.json({ payout })

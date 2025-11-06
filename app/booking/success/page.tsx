@@ -19,12 +19,16 @@ const currencyFormatter = new Intl.NumberFormat("vi-VN", {
 type PageProps = {
   searchParams: Promise<{
     bookingId?: string
+    pending?: string
+    method?: string
   }>
 }
 
 export default async function BookingSuccessPage({ searchParams }: PageProps) {
   const params = await searchParams
   const bookingId = params.bookingId
+  const isPending = params.pending === 'true'
+  const paymentMethod = params.method
 
   if (!bookingId) {
     notFound()
@@ -93,12 +97,17 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
         <div className="container mx-auto px-4 lg:px-8 py-16">
           <div className="max-w-3xl mx-auto">
             <div className="text-center mb-8">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 mb-4">
-                <CheckCircle2 className="h-10 w-10 text-green-600" />
+              <div className={`inline-flex items-center justify-center w-20 h-20 rounded-full ${isPending ? 'bg-yellow-100' : 'bg-green-100'} mb-4`}>
+                <CheckCircle2 className={`h-10 w-10 ${isPending ? 'text-yellow-600' : 'text-green-600'}`} />
               </div>
-              <h1 className="font-serif text-4xl font-bold text-foreground mb-2">Đặt phòng thành công!</h1>
+              <h1 className="font-serif text-4xl font-bold text-foreground mb-2">
+                {isPending ? 'Đặt phòng đang chờ xác nhận!' : 'Đặt phòng thành công!'}
+              </h1>
               <p className="text-lg text-muted-foreground">
-                Cảm ơn bạn đã tin tưởng LuxeStay. Chúng tôi đã gửi xác nhận tới email của bạn.
+                {isPending 
+                  ? 'Vui lòng hoàn tất thanh toán. Phòng sẽ được xác nhận sau khi chúng tôi nhận được thanh toán.'
+                  : 'Cảm ơn bạn đã tin tưởng LuxeStay. Chúng tôi đã gửi xác nhận tới email của bạn.'
+                }
               </p>
             </div>
 
@@ -106,7 +115,14 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
               <CardContent className="p-6 space-y-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-semibold text-xl text-foreground">Thông tin đặt phòng</h2>
-                  <span className="text-sm font-medium text-primary">Mã đặt phòng: {bookingCode}</span>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-sm font-medium text-primary">Mã đặt phòng: {bookingCode}</span>
+                    {isPending && (
+                      <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700 font-medium">
+                        Chờ thanh toán
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-4">
@@ -197,6 +213,22 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
               <CardContent className="p-6">
                 <h3 className="font-semibold text-lg text-foreground mb-4">Bước tiếp theo</h3>
                 <ul className="space-y-3">
+                  {isPending && paymentMethod === 'bank' && (
+                    <li className="flex items-start gap-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                      <div className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500 flex items-center justify-center text-sm font-semibold text-white">
+                        !
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">Hoàn tất thanh toán chuyển khoản</p>
+                        <p className="text-sm text-muted-foreground mb-2">
+                          Vui lòng chuyển khoản với nội dung <span className="font-semibold text-foreground">{receiptReference}</span>
+                        </p>
+                        <p className="text-xs text-yellow-700 font-medium">
+                          ⚠️ Phòng chưa được xác nhận. Sau khi thanh toán, admin sẽ xác nhận và phòng sẽ chính thức thuộc về bạn.
+                        </p>
+                      </div>
+                    </li>
+                  )}
                   <li className="flex items-start gap-3">
                     <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
                       1

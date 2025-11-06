@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { useAuthModal } from "@/hooks/use-auth-modal"
+import { Badge } from "@/components/ui/badge"
 
 interface BookingWidgetProps {
   listingId: string
@@ -27,9 +28,47 @@ interface BookingWidgetProps {
   rating: number
   reviews: number
   instantBookable?: boolean
+  cleaningFee?: number
 }
 
-export function BookingWidget({ listingId, price, rating, reviews, instantBookable = true }: BookingWidgetProps) {
+const LOYALTY_DISCOUNT_MAP: Record<string, number> = {
+  SILVER: 5,
+  GOLD: 10,
+  PLATINUM: 12,
+  DIAMOND: 15,
+}
+
+const LOYALTY_SERVICE_DISCOUNT_MAP: Record<string, boolean> = {
+  SILVER: false,
+  GOLD: true,
+  PLATINUM: true,
+  DIAMOND: true,
+}
+
+const MEMBERSHIP_PERKS: Record<string, string[]> = {
+  diamond: [
+    "Giảm 15% cho mọi booking",
+    "Concierge cá nhân hoá",
+    "Ưu tiên check-in/out linh hoạt",
+    "Tặng 3 đêm miễn phí mỗi năm",
+    "Giảm 15% cho dịch vụ bổ sung",
+    "Trải nghiệm partner cao cấp",
+    "Miễn phí đổi lịch không giới hạn",
+  ],
+  "luxe-platinum": [
+    "Giảm 12% cho mọi booking",
+    "Concierge cá nhân hoá",
+    "Ưu tiên check-in/out linh hoạt",
+    "Giảm 15% cho dịch vụ bổ sung",
+  ],
+  "luxe-gold": [
+    "Giảm 10% cho mọi booking",
+    "Priority concierge 24/7",
+    "Giảm 10% cho dịch vụ bổ sung",
+  ],
+}
+
+export function BookingWidget({ listingId, price, rating, reviews, instantBookable = true, cleaningFee = 0 }: BookingWidgetProps) {
   const router = useRouter()
   const { data: session } = useSession()
   const { toast } = useToast()
@@ -43,6 +82,32 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
   const [selectedServices, setSelectedServices] = useState<SelectedServiceSummary[]>([])
   const [showServices, setShowServices] = useState(false)
   const [showAvailability, setShowAvailability] = useState(false)
+
+  const sessionUser = session?.user
+  const membershipStatus = sessionUser?.membershipStatus ?? null
+  const loyaltyTier = sessionUser?.membership?.toUpperCase() ?? null
+  const plan = sessionUser?.membershipPlan ?? null
+  const planDiscountRate = plan?.discountRate ?? 0
+  const loyaltyDiscountRate = loyaltyTier ? LOYALTY_DISCOUNT_MAP[loyaltyTier] ?? 0 : 0
+  const hasPlanBenefit = planDiscountRate > 0
+  const hasLoyaltyBenefit = loyaltyDiscountRate > 0
+  const appliedDiscountRate = hasPlanBenefit ? planDiscountRate : loyaltyDiscountRate
+  const appliedServicesDiscount = hasPlanBenefit
+    ? Boolean(plan?.applyDiscountToServices)
+    : loyaltyTier
+      ? LOYALTY_SERVICE_DISCOUNT_MAP[loyaltyTier] ?? false
+      : false
+  const membershipActive = hasPlanBenefit
+    ? membershipStatus !== "INACTIVE" && membershipStatus !== "CANCELLED" && membershipStatus !== "EXPIRED"
+    : hasLoyaltyBenefit
+  const membershipLabel =
+    plan?.name ??
+    (loyaltyTier ? `Hạng ${loyaltyTier.charAt(0)}${loyaltyTier.slice(1).toLowerCase()}` : null)
+  const perkKeyCandidates = [
+    plan?.slug?.toLowerCase(),
+    loyaltyTier?.toLowerCase(),
+  ].filter(Boolean) as string[]
+  const membershipPerks = perkKeyCandidates.map((key) => MEMBERSHIP_PERKS[key]).find((perks) => Array.isArray(perks)) ?? null
 
   const ensureFutureCheckout = (newCheckIn: string) => {
     if (!newCheckIn) return
@@ -97,7 +162,14 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
   const nights = calculateNights()
   const subtotal = price * nights
   const serviceFee = (subtotal + servicesTotal) * 0.1
-  const total = subtotal + servicesTotal + serviceFee
+  const totalBeforeDiscount = subtotal + servicesTotal + serviceFee + cleaningFee
+  const discountBase =
+    membershipActive && appliedDiscountRate > 0
+      ? subtotal + (appliedServicesDiscount ? servicesTotal : 0)
+      : 0
+  const membershipDiscountAmount =
+    discountBase > 0 ? Math.round((discountBase * appliedDiscountRate) / 100) : 0
+  const total = Math.max(0, totalBeforeDiscount - membershipDiscountAmount)
 
   const handleServicesChange = (totalPrice: number, services: SelectedServiceSummary[]) => {
     setServicesTotal(totalPrice)
@@ -159,6 +231,30 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {membershipActive && membershipLabel ? (
+          <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary" className="border-emerald-200 bg-white/80 text-emerald-700">
+                {membershipLabel}
+              </Badge>
+              {appliedDiscountRate > 0 ? (
+                <span className="text-sm font-semibold text-emerald-700">-{Math.round(appliedDiscountRate)}%</span>
+              ) : null}
+            </div>
+            <p className="text-xs text-emerald-800">
+              Đã áp dụng ưu đãi thành viên cho giá phòng{appliedServicesDiscount ? " và dịch vụ bổ sung" : ""}.
+              Bạn tiết kiệm {membershipDiscountAmount.toLocaleString("vi-VN")}₫ so với giá niêm yết.
+            </p>
+            {membershipPerks ? (
+              <ul className="text-xs text-emerald-900 ml-4 list-disc space-y-1">
+                {membershipPerks.map((perk) => (
+                  <li key={perk}>{perk}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="grid grid-cols-2 gap-2">
           <div className="border border-border rounded-lg p-3">
             <label className="text-xs font-semibold text-foreground block mb-1">Nhận phòng</label>
@@ -282,10 +378,27 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
               <span className="text-muted-foreground">Phí dịch vụ</span>
               <span className="text-foreground">{serviceFee.toLocaleString("vi-VN")}₫</span>
             </div>
+            {cleaningFee > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Phí vệ sinh</span>
+                <span className="text-foreground">{cleaningFee.toLocaleString("vi-VN")}₫</span>
+              </div>
+            )}
+            {membershipActive && membershipDiscountAmount > 0 && (
+              <div className="flex justify-between text-sm font-semibold text-emerald-600">
+                <span>Ưu đãi {membershipLabel ?? "thành viên"}</span>
+                <span>-{membershipDiscountAmount.toLocaleString("vi-VN")}₫</span>
+              </div>
+            )}
             <div className="flex justify-between font-semibold pt-3 border-t border-border">
               <span className="text-foreground">Tổng cộng</span>
               <span className="text-foreground">{total.toLocaleString("vi-VN")}₫</span>
             </div>
+            {membershipActive && membershipDiscountAmount > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Đã bao gồm ưu đãi {membershipLabel ?? "thành viên"} trị giá {membershipDiscountAmount.toLocaleString("vi-VN")}₫.
+              </p>
+            )}
           </div>
         )}
       </CardContent>
@@ -305,7 +418,12 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
             <DialogTitle>Lịch phòng trống</DialogTitle>
             <DialogDescription>Kiểm tra nhanh tình trạng phòng để điều chỉnh kế hoạch phù hợp.</DialogDescription>
           </DialogHeader>
-          <AvailabilityCalendar checkIn={checkIn} checkOut={checkOut} onClose={() => setShowAvailability(false)} />
+          <AvailabilityCalendar
+            listingId={listingId}
+            initialCheckIn={checkIn}
+            initialCheckOut={checkOut}
+            onClose={() => setShowAvailability(false)}
+          />
         </DialogContent>
       </Dialog>
 

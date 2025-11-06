@@ -9,16 +9,25 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Search, Star, Flag, Eye, Trash2, Loader2, CheckCircle2 } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Search, Star, Flag, Eye, Trash2, Loader2, CheckCircle2, Filter } from 'lucide-react'
 
 interface Review {
   id: string
   reviewer: { id: string; name: string | null; email: string; image: string | null }
-  listing: { id: string; title: string }
+  listing: { id: string; title: string; hostId: string }
+  host?: { id: string; name: string | null; email: string }
   overallRating: number
   comment: string | null
   createdAt: string
   flagged?: boolean
+  hostResponse?: string | null
 }
 
 interface ReviewStats {
@@ -26,6 +35,11 @@ interface ReviewStats {
   pending: number
   flagged: number
   averageRating: number
+}
+
+interface FilterOptions {
+  hosts: Array<{ id: string; name: string | null; email: string }>
+  listings: Array<{ id: string; title: string; hostId: string }>
 }
 
 const DEFAULT_STATS: ReviewStats = {
@@ -41,7 +55,11 @@ export default function AdminReviewsPage() {
   const [reviews, setReviews] = useState<Review[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
+  const [hostFilter, setHostFilter] = useState('all')
+  const [listingFilter, setListingFilter] = useState('all')
+  const [ratingFilter, setRatingFilter] = useState('all')
   const [stats, setStats] = useState<ReviewStats>(DEFAULT_STATS)
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({ hosts: [], listings: [] })
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
@@ -50,18 +68,22 @@ export default function AdminReviewsPage() {
       setLoading(true)
       const params = new URLSearchParams()
       if (filter !== 'all') params.append('filter', filter)
+      if (hostFilter !== 'all') params.append('hostId', hostFilter)
+      if (listingFilter !== 'all') params.append('listingId', listingFilter)
+      if (ratingFilter !== 'all') params.append('rating', ratingFilter)
       if (searchQuery) params.append('search', searchQuery)
       
       const res = await fetch(`/api/admin/reviews?${params}`)
       const data = await res.json()
       setReviews(data.reviews || [])
       setStats(data.stats || DEFAULT_STATS)
+      setFilterOptions(data.filterOptions || { hosts: [], listings: [] })
     } catch (error) {
       console.error('Failed to fetch reviews:', error)
     } finally {
       setLoading(false)
     }
-  }, [filter, searchQuery])
+  }, [filter, hostFilter, listingFilter, ratingFilter, searchQuery])
 
   useEffect(() => {
     fetchReviews()
@@ -167,7 +189,7 @@ export default function AdminReviewsPage() {
         {/* Reviews Table */}
         <Card>
           <CardContent className="pt-6">
-            <div className="mb-4">
+            <div className="mb-4 space-y-3">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -176,6 +198,64 @@ export default function AdminReviewsPage() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9"
                 />
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Select value={hostFilter} onValueChange={setHostFilter}>
+                  <SelectTrigger className="w-full sm:w-[200px]">
+                    <SelectValue placeholder="Lọc theo host" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tất cả hosts</SelectItem>
+                    {filterOptions.hosts.map((host) => (
+                      <SelectItem key={host.id} value={host.id}>
+                        {host.name || host.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={listingFilter} onValueChange={setListingFilter}>
+                  <SelectTrigger className="w-full sm:w-[250px]">
+                    <SelectValue placeholder="Lọc theo listing" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tất cả listings</SelectItem>
+                    {filterOptions.listings.map((listing) => (
+                      <SelectItem key={listing.id} value={listing.id}>
+                        {listing.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select value={ratingFilter} onValueChange={setRatingFilter}>
+                  <SelectTrigger className="w-full sm:w-[150px]">
+                    <SelectValue placeholder="Lọc đánh giá" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tất cả đánh giá</SelectItem>
+                    <SelectItem value="5">5 sao</SelectItem>
+                    <SelectItem value="4">4 sao</SelectItem>
+                    <SelectItem value="3">3 sao</SelectItem>
+                    <SelectItem value="2">2 sao</SelectItem>
+                    <SelectItem value="1">1 sao</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {(hostFilter !== 'all' || listingFilter !== 'all' || ratingFilter !== 'all') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setHostFilter('all')
+                      setListingFilter('all')
+                      setRatingFilter('all')
+                    }}
+                  >
+                    Xóa bộ lọc
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -214,6 +294,11 @@ export default function AdminReviewsPage() {
                           <div>
                             <p className="font-medium">{review.reviewer.name || 'Anonymous'}</p>
                             <p className="text-sm text-muted-foreground">{review.listing.title}</p>
+                            {review.host && (
+                              <p className="text-xs text-muted-foreground">
+                                Host: {review.host.name || review.host.email}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -238,6 +323,12 @@ export default function AdminReviewsPage() {
                         </div>
                       </div>
                       <p className="text-sm mb-2">{review.comment || 'Không có nhận xét'}</p>
+                      {review.hostResponse && (
+                        <div className="pl-3 border-l-2 border-primary/30 mb-2">
+                          <p className="text-xs font-medium text-primary">Phản hồi của host:</p>
+                          <p className="text-sm text-muted-foreground">{review.hostResponse}</p>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between">
                         <p className="text-xs text-muted-foreground">
                           {new Date(review.createdAt).toLocaleDateString('vi-VN')}

@@ -14,14 +14,21 @@ export function LocationMap({ coordinates, address }: LocationMapProps) {
       <h3 className="font-semibold text-xl text-foreground mb-4">Vị trí</h3>
       <p className="text-muted-foreground mb-4">{address}</p>
 
-      {/* Placeholder for map - will integrate Google Maps later */}
-      <div className="w-full h-[400px] bg-muted rounded-lg flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-muted-foreground mb-2">Bản đồ sẽ được hiển thị tại đây</p>
-          <p className="text-sm text-muted-foreground">
-            Tọa độ: {coordinates.lat}, {coordinates.lng}
-          </p>
-        </div>
+      {/* Google Maps iframe */}
+      <div className="w-full h-[400px] bg-muted rounded-lg overflow-hidden">
+        <iframe
+          width="100%"
+          height="100%"
+          style={{ border: 0 }}
+          loading="lazy"
+          allowFullScreen
+          referrerPolicy="no-referrer-when-downgrade"
+          src={`https://www.google.com/maps?q=${coordinates.lat},${coordinates.lng}&output=embed&z=15`}
+        />
+      </div>
+      
+      <div className="mt-2 text-xs text-muted-foreground text-center">
+        Tọa độ: {coordinates.lat.toFixed(6)}, {coordinates.lng.toFixed(6)}
       </div>
     </div>
   )

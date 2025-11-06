@@ -1,18 +1,51 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
 
-const data = [
-  { month: "T1", revenue: 25000000 },
-  { month: "T2", revenue: 32000000 },
-  { month: "T3", revenue: 28000000 },
-  { month: "T4", revenue: 35000000 },
-  { month: "T5", revenue: 42000000 },
-  { month: "T6", revenue: 45000000 },
-]
+interface RevenuePoint {
+  label: string
+  revenue: number
+}
 
-export function RevenueChart() {
+interface RevenueChartProps {
+  data: RevenuePoint[]
+  loading?: boolean
+}
+
+export function RevenueChart({ data, loading = false }: RevenueChartProps) {
+  if (loading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Doanh thu 6 tháng gần đây</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Skeleton className="h-6 w-32" />
+          <Skeleton className="h-60 w-full" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (!data.length) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Doanh thu 6 tháng gần đây</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+            Chưa có dữ liệu doanh thu. Khi bookings được xác nhận, biểu đồ sẽ cập nhật tự động.
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const chartData = data.map((point) => ({ month: point.label, revenue: point.revenue }))
+
   return (
     <Card>
       <CardHeader>
@@ -20,10 +53,10 @@ export function RevenueChart() {
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={data}>
+          <BarChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="month" />
-            <YAxis />
+            <YAxis tickFormatter={(value) => `${Number(value).toLocaleString("vi-VN")}`} />
             <Tooltip
               formatter={(value: number) => `${value.toLocaleString("vi-VN")}₫`}
               contentStyle={{ backgroundColor: "white", border: "1px solid #e5e5e5" }}

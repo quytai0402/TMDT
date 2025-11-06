@@ -3,7 +3,8 @@ import { getServerSession } from "next-auth"
 
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { HostApplicationStatus, UserRole, UserStatus } from "@prisma/client"
+import { notifyUser } from "@/lib/notifications"
+import { HostApplicationStatus, NotificationType, UserRole, UserStatus } from "@prisma/client"
 import { sendHostApplicationStatusEmail } from "@/lib/email"
 
 export async function GET(request: NextRequest) {
@@ -111,6 +112,20 @@ export async function PATCH(request: NextRequest) {
           notes: adminNotes,
         })
 
+        await notifyUser(updatedApplication.userId, {
+          type: NotificationType.SYSTEM,
+          title: "Hồ sơ host đã được duyệt",
+          message:
+            adminNotes && adminNotes.length > 0
+              ? `Admin đã duyệt hồ sơ của bạn. Ghi chú: ${adminNotes}`
+              : "Admin đã duyệt hồ sơ host của bạn. Bạn có thể bắt đầu đăng listings ngay.",
+          link: "/host/dashboard",
+          data: {
+            applicationId,
+            status: HostApplicationStatus.APPROVED,
+          },
+        })
+
         return { application: updatedApplication, hostProfile }
       }
 
@@ -130,6 +145,20 @@ export async function PATCH(request: NextRequest) {
         status: "rejected",
         locationName: rejectedApplication.locationName,
         notes: adminNotes,
+      })
+
+      await notifyUser(rejectedApplication.userId, {
+        type: NotificationType.SYSTEM,
+        title: "Hồ sơ host bị từ chối",
+        message:
+          adminNotes && adminNotes.length > 0
+            ? `Rất tiếc, hồ sơ của bạn chưa đạt yêu cầu. Lý do: ${adminNotes}`
+            : "Rất tiếc, hồ sơ của bạn chưa đáp ứng tiêu chí xét duyệt. Vui lòng cập nhật và gửi lại sau.",
+        link: "/become-host",
+        data: {
+          applicationId,
+          status: HostApplicationStatus.REJECTED,
+        },
       })
 
       return { application: rejectedApplication }

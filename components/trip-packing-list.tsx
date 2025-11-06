@@ -1,12 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
-import { 
+import {
   Backpack,
   Plus,
   Check,
@@ -16,11 +16,12 @@ import {
   Pill,
   Camera,
   Laptop,
-  FileText
+  FileText,
 } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-interface PackingItem {
+export interface PackingItem {
   id: string
   category: string
   item: string
@@ -28,36 +29,62 @@ interface PackingItem {
   packed: boolean
 }
 
-const categoryIcons = {
-  clothing: Shirt,
-  toiletries: Pill,
-  electronics: Laptop,
-  documents: FileText,
-  equipment: Camera,
-  misc: ShoppingCart,
+interface TripPackingListProps {
+  initialItems?: PackingItem[]
 }
 
-export function TripPackingList() {
-  const [items, setItems] = useState<PackingItem[]>([
-    { id: "1", category: "clothing", item: "Áo thun", quantity: 3, packed: true },
-    { id: "2", category: "clothing", item: "Quần jeans", quantity: 2, packed: false },
-    { id: "3", category: "toiletries", item: "Kem chống nắng", quantity: 1, packed: true },
-    { id: "4", category: "electronics", item: "Sạc điện thoại", quantity: 1, packed: false },
-    { id: "5", category: "documents", item: "CMND/CCCD", quantity: 1, packed: true },
-    { id: "6", category: "equipment", item: "Máy ảnh", quantity: 1, packed: false },
-  ])
+const FALLBACK_CATEGORY = "misc"
+
+const categoryLabels: Record<string, { label: string; icon: LucideIcon }> = {
+  clothing: { label: "Quần áo", icon: Shirt },
+  toiletries: { label: "Đồ dùng cá nhân", icon: Pill },
+  electronics: { label: "Thiết bị điện tử", icon: Laptop },
+  documents: { label: "Giấy tờ", icon: FileText },
+  equipment: { label: "Trang thiết bị", icon: Camera },
+  misc: { label: "Khác", icon: ShoppingCart },
+}
+
+function normalizeItems(source: PackingItem[] | undefined): PackingItem[] {
+  if (!Array.isArray(source) || source.length === 0) return []
+  return source.map((item, index) => {
+    const category = typeof item.category === "string" && item.category.trim() ? item.category.trim() : FALLBACK_CATEGORY
+    return {
+      id: typeof item.id === "string" && item.id ? item.id : `packing-${index}`,
+      category,
+      item: item.item,
+      quantity: Math.max(1, Number.isFinite(item.quantity) ? Number(item.quantity) : 1),
+      packed: Boolean(item.packed),
+    }
+  })
+}
+
+export function TripPackingList({ initialItems }: TripPackingListProps) {
+  const normalizedInitialItems = useMemo(() => normalizeItems(initialItems), [initialItems])
+
+  const [items, setItems] = useState<PackingItem[]>(normalizedInitialItems)
 
   const [newItem, setNewItem] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("clothing")
 
-  const categories = [
-    { id: "clothing", label: "Quần áo", icon: Shirt },
-    { id: "toiletries", label: "Đồ dùng cá nhân", icon: Pill },
-    { id: "electronics", label: "Thiết bị điện tử", icon: Laptop },
-    { id: "documents", label: "Giấy tờ", icon: FileText },
-    { id: "equipment", label: "Trang thiết bị", icon: Camera },
-    { id: "misc", label: "Khác", icon: ShoppingCart },
-  ]
+  useEffect(() => {
+    setItems(normalizedInitialItems)
+    if (normalizedInitialItems.length) {
+      setSelectedCategory(normalizedInitialItems[0].category)
+    }
+  }, [normalizedInitialItems])
+
+  const categories = useMemo(() => {
+    const base = new Map(Object.entries(categoryLabels))
+    items.forEach((item) => {
+      if (!base.has(item.category)) {
+        base.set(item.category, {
+          label: item.category.charAt(0).toUpperCase() + item.category.slice(1),
+          icon: ShoppingCart,
+        })
+      }
+    })
+    return Array.from(base.entries()).map(([id, value]) => ({ id, ...value }))
+  }, [items])
 
   const togglePacked = (id: string) => {
     setItems(items.map(item => 
@@ -67,8 +94,9 @@ export function TripPackingList() {
 
   const addItem = () => {
     if (newItem.trim()) {
+      const identifier = `packing-${Date.now()}`
       setItems([...items, {
-        id: Date.now().toString(),
+        id: identifier,
         category: selectedCategory,
         item: newItem,
         quantity: 1,
@@ -135,7 +163,12 @@ export function TripPackingList() {
               placeholder="VD: Áo khoác, Dép..."
               value={newItem}
               onChange={(e) => setNewItem(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && addItem()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  addItem()
+                }
+              }}
             />
           </div>
           <div>

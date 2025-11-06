@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -30,21 +30,25 @@ import {
 import Link from "next/link"
 import { DESTINATIONS } from "@/data/destinations"
 
-type ListingPreview = {
+export type ListingPreview = {
   id: string
   title: string
-  image: string
-  price: number
-  rating: number
+  image?: string | null
+  price?: number | null
+  rating?: number | null
 }
 
-type TripStop = {
+export type TripStop = {
   id: string
   destinationSlug: string
   checkIn?: Date
   checkOut?: Date
   guests: number
   listing?: ListingPreview
+}
+
+interface MultiDestinationBookingProps {
+  initialStops?: TripStop[]
 }
 
 const DEFAULT_RATING = 4.8
@@ -69,32 +73,41 @@ const buildListingPreview = (slug: string): ListingPreview | undefined => {
     }
   }
 
-  return {
-    id: stay.slug,
-    title: stay.title,
-    image: stay.images[0] ?? destination.heroImage,
-    price: stay.pricePerNight,
-    rating: DEFAULT_RATING,
-  }
+    return {
+      id: stay.slug,
+      title: stay.title,
+      image: stay.images[0] ?? destination.heroImage,
+      price: stay.pricePerNight,
+      rating: DEFAULT_RATING,
+    }
 }
 
-const buildInitialStops = (): TripStop[] => {
-  const baseDate = addDays(new Date(), 21)
-  return DESTINATIONS.slice(0, 2).map((destination, index) => {
-    const checkIn = addDays(baseDate, index * 4)
-    const checkOut = addDays(checkIn, 3)
+const normalizeStops = (stops?: TripStop[]): TripStop[] => {
+  if (!Array.isArray(stops)) return []
+  return stops.map((stop, index) => {
+    const checkIn = stop.checkIn instanceof Date
+      ? stop.checkIn
+      : stop.checkIn
+        ? new Date(stop.checkIn)
+        : undefined
+    const checkOut = stop.checkOut instanceof Date
+      ? stop.checkOut
+      : stop.checkOut
+        ? new Date(stop.checkOut)
+        : undefined
+
     return {
-      id: `${destination.slug}-${index}`,
-      destinationSlug: destination.slug,
+      id: typeof stop.id === "string" && stop.id ? stop.id : `stop-${index}`,
+      destinationSlug: stop.destinationSlug || `slug-${index}`,
       checkIn,
       checkOut,
-      guests: 2,
-      listing: buildListingPreview(destination.slug),
+      guests: Math.max(1, Number.isFinite(stop.guests) ? Number(stop.guests) : 1),
+      listing: stop.listing,
     }
   })
 }
 
-export function MultiDestinationBooking() {
+export function MultiDestinationBooking({ initialStops }: MultiDestinationBookingProps) {
   const destinationOptions = useMemo(
     () =>
       DESTINATIONS.map((destination) => ({
@@ -111,7 +124,11 @@ export function MultiDestinationBooking() {
     [destinationOptions]
   )
 
-  const [destinations, setDestinations] = useState<TripStop[]>(buildInitialStops)
+  const [destinations, setDestinations] = useState<TripStop[]>(() => normalizeStops(initialStops))
+
+  useEffect(() => {
+    setDestinations(normalizeStops(initialStops))
+  }, [initialStops])
 
   const addDestination = () => {
     const lastStop = destinations[destinations.length - 1]
@@ -132,7 +149,7 @@ export function MultiDestinationBooking() {
   }
 
   const totalCost = destinations.reduce((sum, stop) => {
-    if (!stop.listing || !stop.checkIn || !stop.checkOut) {
+    if (!stop.listing || typeof stop.listing.price !== "number" || !stop.checkIn || !stop.checkOut) {
       return sum
     }
     const nights = Math.max(
@@ -169,6 +186,14 @@ export function MultiDestinationBooking() {
       </div>
 
       <div className="space-y-4">
+        {destinations.length === 0 && (
+          <Card className="p-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              Chưa có điểm đến nào trong planner. Thêm điểm dừng để bắt đầu xây dựng hành trình nhiều thành phố.
+            </p>
+          </Card>
+        )}
+
         {destinations.map((stop, index) => {
           const destinationInfo = destinationMap.get(stop.destinationSlug)
           return (
@@ -312,14 +337,16 @@ export function MultiDestinationBooking() {
                     <Card className="p-4 bg-muted/40">
                       <div className="flex items-start gap-4">
                         <img
-                          src={stop.listing.image}
+                          src={stop.listing.image ?? "/placeholder.svg"}
                           alt={stop.listing.title}
                           className="w-20 h-20 rounded-lg object-cover"
                         />
                         <div className="flex-1">
                           <h4 className="font-semibold mb-1">{stop.listing.title}</h4>
                           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-                            <Badge variant="secondary">⭐ {stop.listing.rating}</Badge>
+                            {typeof stop.listing.rating === "number" && stop.listing.rating > 0 ? (
+                              <Badge variant="secondary">⭐ {stop.listing.rating.toFixed(1)}</Badge>
+                            ) : null}
                             {destinationInfo && <Badge variant="outline">{destinationInfo.name}</Badge>}
                             {stop.checkIn && stop.checkOut && (
                               <Badge variant="outline">
@@ -335,7 +362,9 @@ export function MultiDestinationBooking() {
                             )}
                           </div>
                           <p className="font-semibold text-primary">
-                            {stop.listing.price.toLocaleString("vi-VN")}₫ / đêm
+                            {typeof stop.listing.price === "number" && stop.listing.price > 0
+                              ? `${stop.listing.price.toLocaleString("vi-VN")}₫ / đêm`
+                              : "Đang cập nhật giá"}
                           </p>
                         </div>
                         <Button variant="outline" size="sm" asChild>

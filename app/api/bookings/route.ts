@@ -8,6 +8,10 @@ import { notifyAdmins, notifyUser } from '@/lib/notifications'
 import { z } from 'zod'
 import { Prisma, MembershipStatus, NotificationType } from '@prisma/client'
 
+// Cache for bookings (10 seconds TTL)
+const bookingsCache = new Map<string, { data: any; timestamp: number }>()
+const CACHE_TTL = 10000
+
 const createBookingSchema = z
   .object({
     listingId: z.string(),
@@ -138,6 +142,16 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url)
     const type = searchParams.get('type') || 'guest' // guest or host
+    const limit = parseInt(searchParams.get('limit') || '50')
+
+    // Check cache
+    const cacheKey = `${session.user.id}-${type}-${limit}`
+    const cached = bookingsCache.get(cacheKey)
+    const now = Date.now()
+
+    if (cached && now - cached.timestamp < CACHE_TTL) {
+      return NextResponse.json(cached.data)
+    }
 
     const where: any = {}
     if (type === 'guest') {
@@ -146,9 +160,20 @@ export async function GET(req: NextRequest) {
       where.hostId = session.user.id
     }
 
-    const bookings = await prisma.booking.findMany({
+    const queryPromise = prisma.booking.findMany({
       where,
-      include: {
+      select: {
+        id: true,
+        checkIn: true,
+        checkOut: true,
+        adults: true,
+        children: true,
+        infants: true,
+        status: true,
+        totalPrice: true,
+        createdAt: true,
+        guestId: true,
+        hostId: true,
         listing: {
           select: {
             id: true,
@@ -183,7 +208,18 @@ export async function GET(req: NextRequest) {
             phone: true,
           },
         },
-        payment: true,
+        payment: {
+          select: {
+            id: true,
+            amount: true,
+            status: true,
+            currency: true,
+            paymentMethod: true,
+            paymentGateway: true,
+            transactionId: true,
+            paidAt: true,
+          },
+        },
         review: {
           select: {
             id: true,
@@ -193,6 +229,16 @@ export async function GET(req: NextRequest) {
         },
       },
       orderBy: { createdAt: 'desc' },
+      take: limit,
+    })
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Query timeout')), 3000)
+    )
+
+    const bookings = await Promise.race([queryPromise, timeoutPromise]).catch((error) => {
+      console.error('Bookings query error:', error)
+      return []
     })
 
     const enrichedBookings = bookings.map((booking) => {
@@ -202,16 +248,31 @@ export async function GET(req: NextRequest) {
         type === 'guest' &&
         booking.guestId === session.user.id &&
         !hasReview
+      const normalizedPayment = booking.payment
+        ? {
+            ...booking.payment,
+            method:
+              booking.payment.paymentMethod ??
+              booking.payment.paymentGateway ??
+              null,
+          }
+        : null
 
       return {
         ...booking,
+        payment: normalizedPayment,
         canReview,
         hasReview,
         reviewUrl: canReview ? `/trips/${booking.id}/review` : null,
       }
     })
 
-    return NextResponse.json({ bookings: enrichedBookings })
+    const result = { bookings: enrichedBookings }
+
+    // Cache the result
+    bookingsCache.set(cacheKey, { data: result, timestamp: now })
+
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Get bookings error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -359,10 +420,11 @@ export async function POST(req: NextRequest) {
     }
 
     const buildSplitStaySuggestion = async (): Promise<SplitStaySuggestionPayload | null> => {
+      // Only check CONFIRMED and COMPLETED bookings, not PENDING
       const overlappingBookings = await prisma.booking.findMany({
         where: {
           listingId: listing.id,
-          status: { in: ['CONFIRMED', 'PENDING'] },
+          status: { in: ['CONFIRMED', 'COMPLETED'] },
           checkIn: { lt: checkOutDate },
           checkOut: { gt: checkInDate },
         },
@@ -524,9 +586,10 @@ export async function POST(req: NextRequest) {
             maxGuests: { gte: totalGuests },
             city: listing.city,
             propertyType: listing.propertyType,
+            // Only check CONFIRMED and COMPLETED bookings
             bookings: {
               none: {
-                status: { in: ['CONFIRMED', 'PENDING'] },
+                status: { in: ['CONFIRMED', 'COMPLETED'] },
                 checkIn: { lt: gapEnd },
                 checkOut: { gt: gapStart },
               },
@@ -634,11 +697,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Check availability
+    // Check availability - only check CONFIRMED and COMPLETED bookings
     const conflictingBooking = await prisma.booking.findFirst({
       where: {
         listingId: validatedData.listingId,
-        status: { in: ['CONFIRMED', 'PENDING'] },
+        status: { in: ['CONFIRMED', 'COMPLETED'] },
         OR: [
           {
             AND: [

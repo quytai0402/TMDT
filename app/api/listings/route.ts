@@ -9,6 +9,11 @@ import { NotificationType } from '@prisma/client'
 import { z } from 'zod'
 import type { Prisma } from '@prisma/client'
 
+// Aggressive cache for public listings with smart TTL
+const listingsCache = new Map<string, { data: any[]; timestamp: number }>()
+const CACHE_TTL = 60000 // 60 seconds for regular requests
+const CACHE_TTL_LONG = 300000 // 5 minutes for large requests (50+ items)
+
 function buildCategoryQuery(category: string | null) {
   const where: Prisma.ListingWhereInput = {
     status: 'ACTIVE',
@@ -92,6 +97,7 @@ const createListingSchema = z.object({
   cleaningFee: z.number().min(0).optional(),
   images: z.array(z.string()).min(5, 'Cần ít nhất 5 ảnh'),
   amenities: z.array(z.string()),
+  nearbyPlaces: z.array(z.any()).optional(), // Auto-detected nearby places from SerpAPI
 })
 
 // GET all listings (public or host-specific)
@@ -147,9 +153,41 @@ export async function GET(req: NextRequest) {
       categoryWhere.isSecret = false
     }
 
-    const listings = await prisma.listing.findMany({
+    // Check cache for public listings with smart TTL
+    const cacheKey = `${category}-${page}-${limit}-${secretOnly}`
+    const cached = listingsCache.get(cacheKey)
+    const now = Date.now()
+    
+    // Use longer cache for large requests (50+ items)
+    const cacheTTL = limit >= 50 ? CACHE_TTL_LONG : CACHE_TTL
+    
+    if (cached && now - cached.timestamp < cacheTTL && !secretOnly) {
+      return NextResponse.json(cached.data)
+    }
+
+    // Optimize: Only select needed fields with timeout protection
+    // Longer timeout for large requests
+    const timeoutDuration = limit >= 50 ? 8000 : 5000
+    
+    const queryPromise = prisma.listing.findMany({
       where: categoryWhere,
-      include: {
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        images: true,
+        city: true,
+        country: true,
+        basePrice: true,
+        averageRating: true,
+        totalReviews: true,
+        maxGuests: true,
+        bedrooms: true,
+        bathrooms: true,
+        propertyType: true,
+        instantBookable: true,
+        featured: true,
+        isSecret: true,
         host: {
           select: {
             id: true,
@@ -158,19 +196,33 @@ export async function GET(req: NextRequest) {
             isSuperHost: true,
           },
         },
-        _count: {
-          select: {
-            reviews: true,
-          },
-        },
       },
       take: limit,
       skip: skip,
       orderBy,
-    }).catch((error) => {
-      console.error('Database timeout in listings:', error)
-      return []
     })
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Query timeout')), timeoutDuration)
+    )
+
+    const listings = await Promise.race([queryPromise, timeoutPromise]).catch(async (error) => {
+      console.warn('Listings query exceeded timeout, retrying once without race condition:', error)
+      try {
+        return await queryPromise
+      } catch (fallbackError) {
+        console.error('Database error in listings after fallback:', fallbackError)
+        return []
+      }
+    })
+
+    // Cache public listings
+    if (!secretOnly) {
+      listingsCache.set(cacheKey, {
+        data: listings,
+        timestamp: now
+      })
+    }
 
     return NextResponse.json(listings)
   } catch (error) {
@@ -201,7 +253,7 @@ export async function POST(req: NextRequest) {
         ...validatedData,
         slug,
         hostId: session.user.id,
-        status: 'PENDING',
+        status: 'PENDING_REVIEW',
       },
       include: {
         host: {

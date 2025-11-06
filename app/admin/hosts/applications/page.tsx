@@ -169,6 +169,18 @@ export default function AdminHostApplicationsPage() {
                       </div>
                     )}
 
+                    {application.status !== "PENDING" && application.adminNotes ? (
+                      <div className="rounded-lg border border-dashed bg-muted/30 p-4">
+                        <p className="text-sm font-semibold text-muted-foreground">Ghi chú đã gửi cho host</p>
+                        <p className="mt-1 whitespace-pre-line text-sm text-foreground">{application.adminNotes}</p>
+                        {application.reviewedAt ? (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            Đánh giá lúc {new Date(application.reviewedAt).toLocaleString("vi-VN")}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+
                     {application.status === "PENDING" && (
                       <div className="space-y-3">
                         <Textarea

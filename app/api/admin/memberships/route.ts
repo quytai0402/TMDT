@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
-import { MembershipStatus } from "@prisma/client"
+import { MembershipPurchaseStatus, MembershipStatus } from "@prisma/client"
 
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
                   MembershipStatus.ACTIVE,
                   MembershipStatus.EXPIRED,
                   MembershipStatus.CANCELLED,
+                  MembershipStatus.PENDING,
                 ],
               },
       },
@@ -72,6 +73,28 @@ export async function GET(request: NextRequest) {
       take: 100,
     })
 
+    const pendingPurchases = await prisma.membershipPurchase.findMany({
+      where: { status: MembershipPurchaseStatus.PENDING },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        plan: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    })
+
     return NextResponse.json({
       plans: planStats.map(({ plan, stats }) => ({
         id: plan.id,
@@ -86,6 +109,25 @@ export async function GET(request: NextRequest) {
         ],
         description: plan.description,
         stats,
+      })),
+      pendingPurchases: pendingPurchases.map((purchase) => ({
+        id: purchase.id,
+        status: purchase.status,
+        amount: purchase.amount,
+        billingCycle: purchase.billingCycle,
+        paymentMethod: purchase.paymentMethod,
+        referenceCode: purchase.referenceCode,
+        createdAt: purchase.createdAt,
+        user: {
+          id: purchase.user.id,
+          name: purchase.user.name,
+          email: purchase.user.email,
+        },
+        plan: {
+          id: purchase.plan.id,
+          name: purchase.plan.name,
+          slug: purchase.plan.slug,
+        },
       })),
       members: members.map((member) => ({
         id: member.id,

@@ -73,6 +73,11 @@ export function Footer() {
                 </Link>
               </li>
               <li>
+                <Link href="/become-guide" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                  Trở thành hướng dẫn viên
+                </Link>
+              </li>
+              <li>
                 <Link
                   href="/host/resources"
                   className="text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -124,6 +129,29 @@ export function Footer() {
                 </Link>
               </li>
             </ul>
+          </div>
+        </div>
+
+        <div className="mb-10 rounded-3xl border border-border bg-background/70 p-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-lg font-semibold text-foreground">Muốn chia sẻ trải nghiệm và kiếm thêm thu nhập?</p>
+            <p className="text-sm text-muted-foreground">
+              Đăng ký làm chủ nhà hoặc hướng dẫn viên ngay hôm nay, đội ngũ LuxeStay sẽ hỗ trợ bạn từng bước.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+            <Link
+              href="/become-host"
+              className="flex-1 rounded-xl bg-primary text-primary-foreground px-4 py-3 text-center text-sm font-semibold shadow-lg shadow-primary/10 hover:bg-primary/90"
+            >
+              Trở thành chủ nhà
+            </Link>
+            <Link
+              href="/become-guide"
+              className="flex-1 rounded-xl border border-primary/30 px-4 py-3 text-center text-sm font-semibold text-primary hover:bg-primary/5"
+            >
+              Trở thành hướng dẫn viên
+            </Link>
           </div>
         </div>
 

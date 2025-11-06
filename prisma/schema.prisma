@@ -28,6 +28,7 @@ model User {
   role        UserRole   @default(GUEST)
   isVerified  Boolean    @default(false)
   isHost      Boolean    @default(false)
+  isGuide     Boolean    @default(false)
   isSuperHost Boolean    @default(false)
   status      UserStatus @default(ACTIVE)
 
@@ -78,13 +79,22 @@ model User {
   conciergePlansHosted   ConciergePlan[]       @relation("HostConciergePlans")
   conciergePlansAsGuest  ConciergePlan[]       @relation("GuestConciergePlans")
   conciergePlansAssigned ConciergePlan[]       @relation("AgentConciergePlans")
+  guideProfile           GuideProfile?
+  guideApplications      GuideApplication[]    @relation("ApplicantGuideApplications")
+  sponsoredGuideApplications GuideApplication[] @relation("SponsorGuideApplications")
+  managedGuideProfiles   GuideProfile[]        @relation("HostGuideProfiles")
   membershipPlan         MembershipPlan?       @relation(fields: [membershipPlanId], references: [id], onDelete: SetNull)
+  membershipPurchases    MembershipPurchase[]
   following              UserFollow[]          @relation("UserFollowing")
   followers              UserFollow[]          @relation("UserFollowers")
   hostPayouts            HostPayout[]
+  hostPayoutAccount      HostPayoutAccount?
   hostApplications       HostApplication[]
   promotionsCreated      Promotion[]           @relation("HostPromotions")
   promotionRedemptions   PromotionRedemption[]
+  locationRequestsMade   LocationRequest[]     @relation("LocationRequestedBy")
+  locationRequestsApproved LocationRequest[]   @relation("LocationApprovedBy")
+  settings               UserSettings?
 
   @@index([referralCode], map: "users_referralCode_idx")
   @@map("users")
@@ -275,9 +285,34 @@ model MembershipPlan {
   updatedAt         DateTime @updatedAt
 
   members User[]
+  purchases MembershipPurchase[]
 
   @@index([displayOrder])
   @@map("membership_plans")
+}
+
+model MembershipPurchase {
+  id            String                   @id @default(auto()) @map("_id") @db.ObjectId
+  userId        String                   @db.ObjectId
+  planId        String                   @db.ObjectId
+  billingCycle  MembershipBillingCycle
+  amount        Int
+  paymentMethod MembershipPaymentMethod
+  status        MembershipPurchaseStatus @default(PENDING)
+  referenceCode String
+  planSnapshot  Json?
+  transferInfo  Json?
+  adminNotes    String?
+  confirmedBy   String?                  @db.ObjectId
+  confirmedAt   DateTime?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+
+  user User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan MembershipPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status])
+  @@map("membership_purchases")
 }
 
 model UserBadge {
@@ -436,6 +471,25 @@ model HostProfile {
   @@map("host_profiles")
 }
 
+model HostPayoutAccount {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  hostId         String   @unique @db.ObjectId
+  bankName       String
+  bankBranch     String?
+  accountNumber  String
+  accountName    String
+  qrCodeImage    String?
+  taxId          String?
+  notes          String?
+  updatedBy      String?  @db.ObjectId
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  host User @relation(fields: [hostId], references: [id], onDelete: Cascade)
+
+  @@map("host_payout_accounts")
+}
+
 model HostApplication {
   id                      String                @id @default(auto()) @map("_id") @db.ObjectId
   userId                  String                @db.ObjectId
@@ -454,6 +508,82 @@ model HostApplication {
   @@index([userId])
   @@index([status])
   @@map("host_applications")
+}
+
+// ============================================
+// GUIDE MODELS
+// ============================================
+
+model GuideProfile {
+  id                  String                  @id @default(auto()) @map("_id") @db.ObjectId
+  userId              String                  @unique @db.ObjectId
+  hostUserId          String?                 @db.ObjectId
+  displayName         String
+  tagline             String?
+  bio                 String?
+  languages           String[]
+  serviceAreas        String[]
+  specialties         String[]
+  yearsExperience     Int?
+  pricingStructure    Json?
+  status              GuideStatus             @default(PENDING)
+  subscriptionStatus  GuideSubscriptionStatus @default(INACTIVE)
+  subscriptionStarted DateTime?
+  subscriptionExpires DateTime?
+  monthlyFee          Float                   @default(399000)
+  adminCommissionRate Float                   @default(0.1)
+  adminNotes          String?
+  averageRating       Float                   @default(0)
+  totalReviews        Int                     @default(0)
+  totalBookings       Int                     @default(0)
+  totalEarnings       Float                   @default(0)
+  totalPayouts        Float                   @default(0)
+  spotlight           Boolean                 @default(false)
+  verificationFiles   Json?
+  featuredHighlights  String[]                @default([])
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  host        User?            @relation("HostGuideProfiles", fields: [hostUserId], references: [id], onDelete: SetNull)
+  experiences Experience[]
+  applications GuideApplication[] @relation("GuideProfileApplications")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([subscriptionStatus])
+  @@map("guide_profiles")
+}
+
+model GuideApplication {
+  id                       String                @id @default(auto()) @map("_id") @db.ObjectId
+  applicantId              String                @db.ObjectId
+  sponsorId                String?               @db.ObjectId
+  guideProfileId           String?               @db.ObjectId
+  status                   GuideApplicationStatus @default(PENDING)
+  displayName              String
+  tagline                  String?
+  introduction             String
+  experienceSummary        String
+  languages                String[]
+  serviceAreas             String[]
+  specialties              String[]
+  availabilityNotes        String?
+  portfolioLinks           String[]              @default([])
+  documents                Json?
+  subscriptionAcknowledged Boolean               @default(false)
+  adminNotes               String?
+  reviewedBy               String?               @db.ObjectId
+  reviewedAt               DateTime?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+
+  applicant    User          @relation("ApplicantGuideApplications", fields: [applicantId], references: [id], onDelete: Cascade)
+  sponsor      User?         @relation("SponsorGuideApplications", fields: [sponsorId], references: [id], onDelete: SetNull)
+  guideProfile GuideProfile? @relation("GuideProfileApplications", fields: [guideProfileId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@map("guide_applications")
 }
 
 model TeamMember {
@@ -501,6 +631,7 @@ model Listing {
   latitude     Float
   longitude    Float
   neighborhood String?
+  nearbyPlaces Json[] @default([]) // Auto-detected nearby places from SerpAPI
 
   // Pricing
   basePrice       Float
@@ -521,7 +652,7 @@ model Listing {
   floorPlanUrl      String?
 
   // Amenities
-  amenities String[] @db.ObjectId
+  amenities String[]
 
   // Rules & Policies
   checkInTime        String             @default("14:00")
@@ -575,6 +706,12 @@ model Listing {
   posts             Post[]
   conciergePlans    ConciergePlan[]
 
+  // Indexes for performance optimization
+  @@index([status, isSecret, featured, averageRating(sort: Desc)])
+  @@index([status, isSecret, city, averageRating(sort: Desc)])
+  @@index([status, isSecret, propertyType, createdAt(sort: Desc)])
+  @@index([status, isSecret, totalBookings(sort: Desc)])
+  @@index([hostId, status])
   @@map("listings")
 }
 
@@ -712,6 +849,9 @@ model Booking {
   cancellationReason String?
   refundAmount       Float?
 
+  // Reschedule & Metadata
+  metadata Json? // Store reschedule history, custom data
+
   // Timestamps
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -730,6 +870,11 @@ model Booking {
   hostPayout           HostPayout?           @relation("PayoutBookings", fields: [hostPayoutRequestId], references: [id], onDelete: SetNull)
   promotionRedemptions PromotionRedemption[] @relation("BookingPromotionRedemptions")
 
+  // Indexes for performance optimization
+  @@index([guestId, status, createdAt(sort: Desc)])
+  @@index([hostId, status, createdAt(sort: Desc)])
+  @@index([listingId, status, checkIn(sort: Desc)])
+  @@index([status, checkIn, checkOut])
   @@index([contactPhoneNormalized])
   @@map("bookings")
 }
@@ -876,11 +1021,14 @@ model HostPayout {
   id           String       @id @default(auto()) @map("_id") @db.ObjectId
   hostId       String       @db.ObjectId
   amount       Float
+  feeAmount    Float        @default(0)
+  grossAmount  Float        @default(0)
   status       PayoutStatus @default(PENDING)
   bookingIds   String[]
   payoutMethod String?
   notes        String?
   adminNotes   String?
+  accountSnapshot Json?
   requestedAt  DateTime     @default(now())
   processedAt  DateTime?
   host         User         @relation(fields: [hostId], references: [id], onDelete: Cascade)
@@ -940,6 +1088,11 @@ model Review {
   reviewer User    @relation("ReviewsWritten", fields: [reviewerId], references: [id], onDelete: Restrict)
   reviewee User    @relation("ReviewsReceived", fields: [revieweeId], references: [id], onDelete: Restrict)
 
+  // Indexes for performance
+  @@index([listingId, createdAt(sort: Desc)])
+  @@index([reviewerId, createdAt(sort: Desc)])
+  @@index([revieweeId, createdAt(sort: Desc)])
+  @@index([type, createdAt(sort: Desc)])
   @@map("reviews")
 }
 
@@ -975,7 +1128,10 @@ model Message {
   sender       User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
   booking      Booking?     @relation(fields: [bookingId], references: [id], onDelete: SetNull)
 
-  @@index([conversationId])
+  // Indexes for performance
+  @@index([conversationId, createdAt(sort: Desc)])
+  @@index([senderId, createdAt(sort: Desc)])
+  @@index([conversationId, isRead])
   @@index([senderId])
   @@map("messages")
 }
@@ -1005,6 +1161,8 @@ model Notification {
 
   createdAt DateTime @default(now())
 
+  @@index([userId, isRead, createdAt(sort: Desc)])
+  @@index([userId, isRead])
   @@map("notifications")
 }
 
@@ -1076,6 +1234,30 @@ model Collection {
   updatedAt DateTime @updatedAt
 
   @@map("collections")
+}
+
+model CuratedCollection {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  slug           String   @unique
+  title          String
+  subtitle       String
+  description    String
+  heroImage      String
+  cardImage      String
+  tags           String[]
+  location       String?
+  category       String
+  listingsCount  Int
+  listingIds     String[] @db.ObjectId
+  featured       Boolean  @default(false)
+  curatorName    String?
+  curatorTitle   String?
+  curatorAvatar  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([category, featured], map: "curated_collections_category_featured_idx")
+  @@map("curated_collections")
 }
 
 // ============================================
@@ -1212,6 +1394,7 @@ enum LoyaltyTier {
 
 enum MembershipStatus {
   INACTIVE
+  PENDING
   ACTIVE
   EXPIRED
   CANCELLED
@@ -1220,6 +1403,18 @@ enum MembershipStatus {
 enum MembershipBillingCycle {
   MONTHLY
   ANNUAL
+}
+
+enum MembershipPurchaseStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+enum MembershipPaymentMethod {
+  CREDIT_CARD
+  BANK_TRANSFER
+  E_WALLET
 }
 
 enum TokenType {
@@ -1303,6 +1498,27 @@ enum RewardCatalogCategory {
   CASHBACK
   DONATION
   OTHER
+}
+
+enum GuideStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum GuideSubscriptionStatus {
+  INACTIVE
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+enum GuideApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NEEDS_REVISION
 }
 
 enum TeamRole {
@@ -1424,6 +1640,8 @@ enum TransactionType {
   PAYOUT
   FEE
   REWARD
+  MEMBERSHIP
+  LOCATION_EXPANSION
 }
 
 enum TransactionStatus {
@@ -1477,6 +1695,7 @@ enum NotificationType {
   BOOKING_CANCELLED
   PAYMENT_RECEIVED
   PAYMENT_FAILED
+  PAYOUT_REQUEST
   REVIEW_RECEIVED
   MESSAGE_RECEIVED
   PRICE_DROP
@@ -1742,8 +1961,9 @@ enum PostStatus {
 // ============================================
 
 model Experience {
-  id     String @id @default(auto()) @map("_id") @db.ObjectId
-  hostId String @db.ObjectId
+  id            String @id @default(auto()) @map("_id") @db.ObjectId
+  hostId        String @db.ObjectId
+  guideProfileId String? @db.ObjectId
 
   // Basic Info
   title       String
@@ -1791,14 +2011,16 @@ model Experience {
   totalBookings Int   @default(0)
 
   // Relations
-  host     User                @relation(fields: [hostId], references: [id], onDelete: Cascade)
-  bookings ExperienceBooking[]
-  reviews  ExperienceReview[]
+  host         User          @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  guideProfile GuideProfile? @relation(fields: [guideProfileId], references: [id], onDelete: SetNull)
+  bookings     ExperienceBooking[]
+  reviews      ExperienceReview[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([hostId])
+  @@index([guideProfileId])
   @@index([category])
   @@index([city])
   @@map("experiences")
@@ -1936,4 +2158,107 @@ model LiveChatMessage {
 
   @@index([sessionId, createdAt])
   @@map("live_chat_messages")
+}
+
+// ============================================
+// LOCATION MANAGEMENT MODELS
+// ============================================
+
+model Location {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  city        String
+  state       String
+  country     String   @default("Vietnam")
+  latitude    Float?
+  longitude   Float?
+  isActive    Boolean  @default(true)
+  description String?
+  imageUrl    String?
+  createdBy   String?  @db.ObjectId
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([city, state, country])
+  @@index([city])
+  @@index([state])
+  @@index([country])
+  @@index([isActive])
+  @@map("locations")
+}
+
+model LocationRequest {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  city         String
+  state        String
+  country      String
+  reason       String
+  requestedBy  String   @db.ObjectId
+  approvedBy   String?  @db.ObjectId
+  status       LocationRequestStatus @default(PENDING)
+  approvedAt   DateTime?
+  rejectionReason String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  requestedByUser User  @relation("LocationRequestedBy", fields: [requestedBy], references: [id], onDelete: Cascade)
+  approvedByUser  User? @relation("LocationApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
+
+  @@index([requestedBy])
+  @@index([status])
+  @@map("location_requests")
+}
+
+enum LocationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ============================================
+// USER SETTINGS MODEL
+// ============================================
+
+model UserSettings {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @unique @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Notification Settings
+  emailNotifications      Boolean @default(true)
+  pushNotifications       Boolean @default(true)
+  smsNotifications        Boolean @default(false)
+  bookingNotifications    Boolean @default(true)
+  messageNotifications    Boolean @default(true)
+  reviewNotifications     Boolean @default(true)
+  promotionNotifications  Boolean @default(true)
+  
+  // Privacy Settings
+  profileVisibility       String  @default("PUBLIC") // PUBLIC, FRIENDS, PRIVATE
+  showEmail               Boolean @default(false)
+  showPhone               Boolean @default(false)
+  showLastSeen            Boolean @default(true)
+  
+  // Language & Display
+  language                String  @default("vi")
+  currency                String  @default("VND")
+  timezone                String  @default("Asia/Ho_Chi_Minh")
+  theme                   String  @default("system") // light, dark, system
+  
+  // Host Settings (if user is host)
+  autoAcceptBookings      Boolean @default(false)
+  instantBookingEnabled   Boolean @default(false)
+  minimumStay             Int     @default(1)
+  maximumStay             Int     @default(30)
+  advanceBookingTime      Int     @default(0) // hours
+  checkInTime             String  @default("14:00")
+  checkOutTime            String  @default("12:00")
+  
+  // Guest Settings
+  autoReview              Boolean @default(false)
+  savePaymentMethods      Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_settings")
 }

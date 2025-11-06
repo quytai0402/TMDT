@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Crown, Sparkles, Zap, CreditCard, Building, Wallet, Check, ArrowLeft, Shield, Lock, Loader2 } from "lucide-react"
+import { Crown, Sparkles, Zap, CreditCard, Building, Wallet, Check, ArrowLeft, Shield, Lock, Loader2, Clock } from "lucide-react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
@@ -107,7 +107,7 @@ export default function MembershipCheckoutPage() {
 
   const price = plan ? (billing === "monthly" ? plan.monthlyPrice : plan.annualPrice) : 0
   const pricePerMonth = plan ? (billing === "monthly" ? plan.monthlyPrice : Math.round(plan.annualPrice / 12)) : 0
-  const savings = plan ? plan.savings ?? Math.max(plan.monthlyPrice * 12 - plan.annualPrice, 0) : 0
+  const { savingsAmount, savingsPercent } = resolveSavings(plan ?? null)
   const iconKey = plan?.icon?.toLowerCase() ?? 'crown'
   const IconComponent = iconComponents[iconKey] ?? Crown
   const gradient = plan?.color ?? 'from-yellow-400 to-yellow-600'
@@ -169,6 +169,8 @@ export default function MembershipCheckoutPage() {
         body: JSON.stringify({
           planSlug: plan.slug,
           billingCycle: billing,
+          paymentMethod,
+          referenceCode: membershipReference,
         }),
       })
 
@@ -179,7 +181,12 @@ export default function MembershipCheckoutPage() {
         toast.error(message)
         return
       }
-
+      const result = await response.json()
+      if (result.status === 'PENDING') {
+        toast.success('Đã ghi nhận chuyển khoản. Membership sẽ được kích hoạt sau khi xác nhận.')
+        router.push(`/membership/success?tier=${plan.slug}&billing=${billing}&status=pending`)
+        return
+      }
       toast.success('Membership đã được kích hoạt thành công!')
       router.push(`/membership/success?tier=${plan.slug}&billing=${billing}`)
     } catch (error) {
@@ -323,6 +330,13 @@ export default function MembershipCheckoutPage() {
                   {/* Bank Transfer Instructions */}
                   {paymentMethod === "bank_transfer" && (
                     <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
+                      <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        <Clock className="h-4 w-4" />
+                        <span>
+                          Trạng thái sau khi chuyển khoản:&nbsp;
+                          <strong>Chờ xác nhận</strong>
+                        </span>
+                      </div>
                       <div className="space-y-2 text-sm">
                         <p className="text-sm font-medium">Thông tin chuyển khoản:</p>
                         <div className="flex justify-between">
@@ -429,7 +443,7 @@ export default function MembershipCheckoutPage() {
                     ) : (
                       <>
                         <Lock className="h-4 w-4 mr-2" />
-                        Thanh toán {formatPrice(price)}
+                        {paymentMethod === "bank_transfer" ? "Gửi yêu cầu chuyển khoản" : "Thanh toán"} {formatPrice(price)}
                       </>
                     )}
                   </Button>
@@ -498,12 +512,15 @@ export default function MembershipCheckoutPage() {
                           <span className="text-muted-foreground">Giá trị mỗi tháng</span>
                           <span className="font-medium">{formatPrice(pricePerMonth)}</span>
                         </div>
-                        <div className="flex justify-between text-sm text-green-600">
-                          <span>Tiết kiệm</span>
-                          <span className="font-semibold">
-                            {formatPrice(savings)}
-                          </span>
-                        </div>
+                        {savingsAmount > 0 && (
+                          <div className="flex justify-between text-sm text-green-600">
+                            <span>Tiết kiệm</span>
+                            <span className="font-semibold">
+                              {formatPrice(savingsAmount)}
+                              {savingsPercent > 0 ? ` (~${savingsPercent}%)` : ""}
+                            </span>
+                          </div>
+                        )}
                       </>
                     )}
 
@@ -563,8 +580,11 @@ export default function MembershipCheckoutPage() {
             <AlertDialogHeader>
               <AlertDialogTitle>Xác nhận thanh toán membership</AlertDialogTitle>
               <AlertDialogDescription>
-                LuxeStay đang giữ chỗ gói {plan?.name}. Vui lòng xác nhận bạn đã hoàn tất thanh toán{" "}
-                {billing === "monthly" ? "tháng đầu tiên" : "trọn gói 12 tháng"} để kích hoạt đặc quyền.
+                {paymentMethod === "bank_transfer"
+                  ? "Sau khi bạn chuyển khoản thành công, đội ngũ LuxeStay sẽ kiểm tra giao dịch và kích hoạt đặc quyền trong tối đa 24 giờ làm việc."
+                  : `LuxeStay đang giữ chỗ gói ${plan?.name}. Vui lòng xác nhận bạn đã hoàn tất thanh toán ${
+                      billing === "monthly" ? "tháng đầu tiên" : "trọn gói 12 tháng"
+                    } để kích hoạt đặc quyền.`}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <div className="space-y-3 rounded-md border bg-muted/20 p-4 text-sm">
@@ -588,7 +608,7 @@ export default function MembershipCheckoutPage() {
             <AlertDialogFooter>
               <AlertDialogCancel disabled={isProcessing}>Hủy</AlertDialogCancel>
               <AlertDialogAction onClick={confirmMembershipPurchase} disabled={isProcessing}>
-                Tôi đã thanh toán
+                {paymentMethod === "bank_transfer" ? "Tôi đã chuyển khoản" : "Tôi đã thanh toán"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

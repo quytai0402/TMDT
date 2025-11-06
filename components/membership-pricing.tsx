@@ -81,6 +81,13 @@ export function MembershipPricing() {
     }).format(price)
   }
 
+  const resolveSavings = (plan: MembershipPlan) => {
+    const yearlyValue = plan.monthlyPrice * 12
+    const savingsAmount = Math.max(yearlyValue - plan.annualPrice, 0)
+    const savingsPercent = yearlyValue > 0 ? Math.round((savingsAmount / yearlyValue) * 100) : 0
+    return { savingsAmount, savingsPercent }
+  }
+
   const handleSubscribe = (tierId: string) => {
     // Redirect to payment page with membership tier and billing cycle
     router.push(`/membership/checkout?tier=${tierId}&billing=${billingCycle}`)
@@ -168,7 +175,7 @@ export function MembershipPricing() {
             const IconComponent = iconComponents[iconKey] ?? Sparkles
             const gradient = plan.color ?? 'from-slate-400 to-slate-600'
             const pricePerMonth = billingCycle === "monthly" ? plan.monthlyPrice : Math.round(plan.annualPrice / 12)
-            const savings = plan.savings ?? Math.max(plan.monthlyPrice * 12 - plan.annualPrice, 0)
+            const { savingsAmount, savingsPercent } = resolveSavings(plan)
 
             return (
               <Card
@@ -206,9 +213,10 @@ export function MembershipPricing() {
                         Thanh toán {formatPrice(plan.annualPrice)} mỗi năm
                       </p>
                     )}
-                    {billingCycle === "annually" && savings > 0 && (
+                    {billingCycle === "annually" && savingsAmount > 0 && (
                       <p className="text-sm text-green-600 font-medium mt-1">
-                        Tiết kiệm {formatPrice(savings)}/năm
+                        Tiết kiệm {formatPrice(savingsAmount)}/năm
+                        {savingsPercent > 0 ? ` (~${savingsPercent}%)` : ""}
                       </p>
                     )}
                   </div>

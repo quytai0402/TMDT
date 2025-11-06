@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { useSession } from 'next-auth/react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -10,18 +11,47 @@ import { useMessages } from '@/hooks/use-messages'
 import { format } from 'date-fns'
 import { vi } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
+import { pusherClient } from '@/lib/pusher'
 
 interface ConversationsListProps {
   selectedId?: string
   onSelect: (conversationId: string, otherUser: any) => void
+  conversations?: any[]
+  loading?: boolean
 }
 
-export function ConversationsList({ selectedId, onSelect }: ConversationsListProps) {
-  const { conversations, getConversations, loading } = useMessages()
+export function ConversationsList({ selectedId, onSelect, conversations: conversationsProp, loading: loadingProp }: ConversationsListProps) {
+  const { data: session } = useSession()
+  const { conversations: fetchedConversations, getConversations, loading: hookLoading } = useMessages()
 
   useEffect(() => {
-    getConversations()
-  }, [getConversations])
+    if (!conversationsProp) {
+      getConversations()
+    }
+  }, [conversationsProp, getConversations])
+
+  // Subscribe to real-time updates for new messages in conversations
+  useEffect(() => {
+    if (!session?.user?.id) return
+
+    const channelName = `user-${session.user.id}`
+    const channel = pusherClient.subscribe(channelName)
+    
+    channel.bind('new-conversation-message', () => {
+      // Refresh conversations when new message arrives
+      if (!conversationsProp) {
+        getConversations()
+      }
+    })
+
+    return () => {
+      channel.unbind_all()
+      pusherClient.unsubscribe(channelName)
+    }
+  }, [session?.user?.id, conversationsProp, getConversations])
+
+  const conversations = conversationsProp ?? fetchedConversations
+  const loading = loadingProp ?? hookLoading
 
   if (loading && conversations.length === 0) {
     return (
@@ -58,10 +88,13 @@ export function ConversationsList({ selectedId, onSelect }: ConversationsListPro
           ) : (
             <div className="space-y-1">
               {conversations.map((conversation: any) => {
-                const otherUser = conversation.participants.find(
+                const otherUser = conversation.otherParticipant || conversation.participants?.find(
                   (p: any) => p.id !== conversation.currentUserId
                 )
-                const lastMessage = conversation.messages[0]
+                const lastMessage = conversation.messages?.[0] || (conversation.lastMessage ? {
+                  content: conversation.lastMessage,
+                  createdAt: conversation.lastMessageAt
+                } : null)
                 const unreadCount = conversation.unreadCount || 0
 
                 return (
@@ -74,14 +107,14 @@ export function ConversationsList({ selectedId, onSelect }: ConversationsListPro
                     )}
                   >
                     <Avatar className="h-12 w-12">
-                      <AvatarImage src={otherUser?.image} />
-                      <AvatarFallback>{otherUser?.name?.[0]}</AvatarFallback>
+                      <AvatarImage src={otherUser?.image || '/placeholder.svg'} />
+                      <AvatarFallback>{otherUser?.name?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
                     </Avatar>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
                         <h3 className="font-semibold truncate">
-                          {otherUser?.name}
+                          {otherUser?.name || 'Người dùng'}
                         </h3>
                         {lastMessage && (
                           <span className="text-xs text-muted-foreground">

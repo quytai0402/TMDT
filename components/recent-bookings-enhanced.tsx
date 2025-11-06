@@ -137,16 +137,16 @@ export function RecentBookingsEnhanced({ type, limit = 5 }: RecentBookingsProps)
             key={booking.id}
             className="flex gap-4 p-4 border rounded-lg hover:border-primary transition-colors"
           >
-            <div className="flex-1 space-y-2">
+            <div className="flex-1 space-y-2 min-w-0">
               <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="font-semibold">{booking.listing?.title}</h3>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold truncate">{booking.listing?.title}</h3>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                    <MapPin className="h-4 w-4" />
-                    <span>{booking.listing?.city}</span>
+                    <MapPin className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate">{booking.listing?.city}</span>
                   </div>
                 </div>
-                <Badge className={statusColors[booking.status] ?? 'bg-gray-100 text-gray-800'}>
+                <Badge className={`${statusColors[booking.status] ?? 'bg-gray-100 text-gray-800'} flex-shrink-0`}>
                   {statusLabels[booking.status] ?? booking.status}
                 </Badge>
               </div>

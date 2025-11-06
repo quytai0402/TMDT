@@ -5,6 +5,10 @@ import { prisma } from '@/lib/prisma'
 import { getConversationId, triggerPusherEvent } from '@/lib/pusher'
 import { z } from 'zod'
 
+// Cache for messages (10 seconds TTL - short because messages change frequently)
+const messagesCache = new Map<string, { data: any; timestamp: number }>()
+const CACHE_TTL = 10000 // 10 seconds
+
 const sendMessageSchema = z.object({
   receiverId: z.string(),
   content: z.string().min(1, 'Message cannot be empty'),
@@ -26,10 +30,27 @@ export async function GET(req: NextRequest) {
     const conversationId = searchParams.get('conversationId')
 
     if (conversationId) {
+      // Check cache for conversation messages
+      const cacheKey = `conv-${conversationId}`
+      const cached = messagesCache.get(cacheKey)
+      const now = Date.now()
+
+      if (cached && now - cached.timestamp < CACHE_TTL) {
+        return NextResponse.json(cached.data)
+      }
+
       // Get messages for a specific conversation
       const messages = await prisma.message.findMany({
         where: { conversationId },
-        include: {
+        select: {
+          id: true,
+          content: true,
+          messageType: true,
+          attachments: true,
+          isRead: true,
+          readAt: true,
+          createdAt: true,
+          senderId: true,
           sender: {
             select: {
               id: true,
@@ -65,53 +86,91 @@ export async function GET(req: NextRequest) {
         },
       })
 
-      return NextResponse.json({ messages })
+      // Cache the result
+      const result = { messages }
+      messagesCache.set(cacheKey, { data: result, timestamp: now })
+
+      return NextResponse.json(result)
     }
 
-    // Get all conversations for user
-    const messages = await prisma.message.findMany({
+    // Check cache for user conversations
+    const cacheKey = `user-${session.user.id}`
+    const cached = messagesCache.get(cacheKey)
+    const now = Date.now()
+
+    if (cached && now - cached.timestamp < CACHE_TTL) {
+      return NextResponse.json(cached.data)
+    }
+
+    // Get all conversations for user from Conversation model
+    const conversations = await prisma.conversation.findMany({
       where: {
-        conversationId: {
-          contains: session.user.id,
+        participants: {
+          has: session.user.id,
         },
       },
-      include: {
-        sender: {
+      select: {
+        id: true,
+        participants: true,
+        listingId: true,
+        lastMessage: true,
+        lastMessageAt: true,
+        unreadCount: true,
+        createdAt: true,
+        messages: {
+          take: 1,
+          orderBy: { createdAt: 'desc' },
           select: {
             id: true,
-            name: true,
-            image: true,
+            content: true,
+            messageType: true,
+            isRead: true,
+            createdAt: true,
+            senderId: true,
+            sender: {
+              select: {
+                id: true,
+                name: true,
+                image: true,
+              },
+            },
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { lastMessageAt: 'desc' },
     })
 
-    // Group by conversation and get latest message
-    const conversationsMap = new Map()
-    
-    messages.forEach(message => {
-      if (!conversationsMap.has(message.conversationId)) {
-        conversationsMap.set(message.conversationId, {
-          conversationId: message.conversationId,
-          lastMessage: message,
-          unreadCount: 0,
-        })
-      }
-
-      // Count unread
-      if (!message.isRead && message.senderId !== session.user.id) {
-        const conv = conversationsMap.get(message.conversationId)
-        conv.unreadCount++
+    // Format conversations
+    const formattedConversations = conversations.map(conv => {
+      const otherParticipantId = conv.participants.find(p => p !== session.user.id)
+      const lastMsg = conv.messages[0]
+      
+      return {
+        conversationId: conv.id,
+        participants: conv.participants,
+        lastMessage: lastMsg || null,
+        unreadCount: conv.unreadCount ? (conv.unreadCount as any)[session.user.id] || 0 : 0,
+        createdAt: conv.createdAt,
       }
     })
 
-    const conversations = Array.from(conversationsMap.values())
+    // Cache the result
+    const result = { conversations: formattedConversations }
+    messagesCache.set(cacheKey, { data: result, timestamp: now })
 
-    return NextResponse.json({ conversations })
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Get messages error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    
+    // Return proper error format that the hook expects
+    return NextResponse.json(
+      { 
+        error: error instanceof Error ? error.message : 'Internal server error',
+        conversations: [],
+        messages: []
+      }, 
+      { status: 500 }
+    )
   }
 }
 

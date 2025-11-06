@@ -73,26 +73,22 @@ export async function POST(req: NextRequest) {
     }> = []
 
     for (const quest of quests) {
-      let userQuest = await prisma.userQuest.findUnique({
+      let userQuest = await prisma.userQuest.upsert({
         where: {
           userId_questId: {
             userId: session.user.id,
             questId: quest.id,
           },
         },
+        update: {},
+        create: {
+          userId: session.user.id,
+          questId: quest.id,
+          currentCount: 0,
+          isCompleted: false,
+          lastResetAt: new Date(),
+        },
       })
-
-      if (!userQuest) {
-        userQuest = await prisma.userQuest.create({
-          data: {
-            userId: session.user.id,
-            questId: quest.id,
-            currentCount: 0,
-            isCompleted: false,
-            lastResetAt: new Date(),
-          },
-        })
-      }
 
       const now = new Date()
       const isRepeating = quest.isDaily || quest.isWeekly

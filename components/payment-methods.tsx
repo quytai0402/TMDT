@@ -75,7 +75,9 @@ export function PaymentMethods({ bookingId, amount, bookingCode, disabled = fals
         title: "Đã ghi nhận yêu cầu",
         description: note,
       })
-      router.push(`/booking/success?bookingId=${bookingId}&method=${paymentMethod}`)
+      // Note: Booking status stays PENDING until admin confirms payment
+      // User will see "Chờ xác nhận thanh toán" on success page
+      router.push(`/booking/success?bookingId=${bookingId}&method=${paymentMethod}&pending=true`)
       return
     }
 

@@ -3,6 +3,151 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import type { Prisma } from '@prisma/client'
+import { BookingStatus, TransactionStatus, TransactionType } from '@prisma/client'
+
+const PLATFORM_COMMISSION_FALLBACK_RATE = 0.1
+
+const toNumber = (value?: number | null) => {
+  if (typeof value === 'number') {
+    return value
+  }
+  if (value === null || value === undefined) {
+    return 0
+  }
+  return Number(value)
+}
+
+function buildBookingWhere(
+  extra?: Prisma.BookingWhereInput,
+  condition?: Prisma.BookingWhereInput
+): Prisma.BookingWhereInput {
+  const clauses: Prisma.BookingWhereInput[] = [{ status: BookingStatus.COMPLETED }]
+  if (extra) clauses.push(extra)
+  if (condition) clauses.push(condition)
+  if (clauses.length === 1) {
+    return clauses[0]
+  }
+  return { AND: clauses }
+}
+
+async function calculateBookingRevenue(todayStart: Date) {
+  const platformRecordedCondition: Prisma.BookingWhereInput = {
+    platformCommission: { gt: 0 },
+  }
+
+  const serviceFeeFallbackCondition: Prisma.BookingWhereInput = {
+    serviceFee: { gt: 0 },
+    OR: [
+      { platformCommission: { lte: 0 } },
+      { platformCommission: null },
+    ],
+  }
+
+  const missingCommissionCondition: Prisma.BookingWhereInput = {
+    totalPrice: { gt: 0 },
+    AND: [
+      {
+        OR: [
+          { platformCommission: { lte: 0 } },
+          { platformCommission: null },
+        ],
+      },
+      {
+        OR: [
+          { serviceFee: { lte: 0 } },
+          { serviceFee: null },
+        ],
+      },
+    ],
+  }
+
+  const [
+    recordedTotal,
+    fallbackServiceTotal,
+    missingTotal,
+    recordedToday,
+    fallbackServiceToday,
+    missingToday,
+    todayCount,
+  ] = await Promise.all([
+    prisma.booking.aggregate({
+      where: buildBookingWhere(undefined, platformRecordedCondition),
+      _sum: { platformCommission: true },
+    }),
+    prisma.booking.aggregate({
+      where: buildBookingWhere(undefined, serviceFeeFallbackCondition),
+      _sum: { serviceFee: true },
+    }),
+    prisma.booking.aggregate({
+      where: buildBookingWhere(undefined, missingCommissionCondition),
+      _sum: { totalPrice: true },
+    }),
+    prisma.booking.aggregate({
+      where: buildBookingWhere({ completedAt: { gte: todayStart } }, platformRecordedCondition),
+      _sum: { platformCommission: true },
+    }),
+    prisma.booking.aggregate({
+      where: buildBookingWhere({ completedAt: { gte: todayStart } }, serviceFeeFallbackCondition),
+      _sum: { serviceFee: true },
+    }),
+    prisma.booking.aggregate({
+      where: buildBookingWhere({ completedAt: { gte: todayStart } }, missingCommissionCondition),
+      _sum: { totalPrice: true },
+    }),
+    prisma.booking.count({
+      where: buildBookingWhere({ completedAt: { gte: todayStart } }),
+    }),
+  ])
+
+  const total =
+    toNumber(recordedTotal._sum.platformCommission) +
+    toNumber(fallbackServiceTotal._sum.serviceFee) +
+    toNumber(missingTotal._sum.totalPrice) * PLATFORM_COMMISSION_FALLBACK_RATE
+
+  const today =
+    toNumber(recordedToday._sum.platformCommission) +
+    toNumber(fallbackServiceToday._sum.serviceFee) +
+    toNumber(missingToday._sum.totalPrice) * PLATFORM_COMMISSION_FALLBACK_RATE
+
+  return {
+    total,
+    today,
+    todayCount,
+  }
+}
+
+async function calculateAncillaryRevenue(todayStart: Date) {
+  const baseWhere: Prisma.TransactionWhereInput = {
+    status: TransactionStatus.COMPLETED,
+    amount: { gt: 0 },
+    type: { in: [TransactionType.FEE, TransactionType.LOCATION_EXPANSION] },
+  }
+
+  const todayWhere: Prisma.TransactionWhereInput = {
+    ...baseWhere,
+    createdAt: { gte: todayStart },
+  }
+
+  const [totalAggregate, todayAggregate, todayCount] = await Promise.all([
+    prisma.transaction.aggregate({
+      where: baseWhere,
+      _sum: { amount: true },
+    }),
+    prisma.transaction.aggregate({
+      where: todayWhere,
+      _sum: { amount: true },
+    }),
+    prisma.transaction.count({
+      where: todayWhere,
+    }),
+  ])
+
+  return {
+    total: toNumber(totalAggregate._sum.amount),
+    today: toNumber(todayAggregate._sum.amount),
+    todayCount,
+  }
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -65,30 +210,24 @@ export async function GET(req: NextRequest) {
       take: 50,
     })
 
-    // Get stats for today
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
 
-    const todayPayments = await prisma.payment.findMany({
-      where: {
-        createdAt: { gte: today },
-        status: 'COMPLETED'
-      }
-    })
+    const [bookingRevenue, ancillaryRevenue, completedCount, pendingCount, failedCount] = await Promise.all([
+      calculateBookingRevenue(todayStart),
+      calculateAncillaryRevenue(todayStart),
+      prisma.payment.count({ where: { status: 'COMPLETED' } }),
+      prisma.payment.count({ where: { status: 'PENDING' } }),
+      prisma.payment.count({ where: { status: 'FAILED' } }),
+    ])
 
-    const todayRevenue = todayPayments.reduce((sum, payment) => sum + payment.amount, 0)
-
-    const completedCount = await prisma.payment.count({ where: { status: 'COMPLETED' } })
-    const pendingCount = await prisma.payment.count({ where: { status: 'PENDING' } })
-    const failedCount = await prisma.payment.count({ where: { status: 'FAILED' } })
-
-    // Calculate total platform revenue (assuming 10% platform fee)
-    const totalRevenue = await prisma.payment.aggregate({
-      where: { status: 'COMPLETED' },
-      _sum: { amount: true }
-    })
-
-    const platformFee = (totalRevenue._sum.amount || 0) * 0.10
+    const bookingRevenueTotal = Math.round(bookingRevenue.total)
+    const bookingRevenueToday = Math.round(bookingRevenue.today)
+    const ancillaryRevenueTotal = Math.round(ancillaryRevenue.total)
+    const ancillaryRevenueToday = Math.round(ancillaryRevenue.today)
+    const totalRevenue = bookingRevenueTotal + ancillaryRevenueTotal
+    const todayRevenue = bookingRevenueToday + ancillaryRevenueToday
+    const todayCount = bookingRevenue.todayCount + ancillaryRevenue.todayCount
 
     const formattedPayments = payments.map(payment => {
       const guestContact = {
@@ -108,12 +247,25 @@ export async function GET(req: NextRequest) {
       payments: formattedPayments,
       stats: {
         todayRevenue,
-        todayCount: todayPayments.length,
+        todayCount,
         completedCount,
         pendingCount,
         failedCount,
-        totalRevenue: totalRevenue._sum.amount || 0,
-        platformFee,
+        totalRevenue,
+        platformFee: bookingRevenueTotal,
+        ancillaryRevenue: ancillaryRevenueTotal,
+        breakdown: {
+          bookingCommission: {
+            total: bookingRevenueTotal,
+            today: bookingRevenueToday,
+            todayCount: bookingRevenue.todayCount,
+          },
+          ancillary: {
+            total: ancillaryRevenueTotal,
+            today: ancillaryRevenueToday,
+            todayCount: ancillaryRevenue.todayCount,
+          },
+        },
       }
     })
   } catch (error) {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import {
   Sheet,
@@ -37,6 +37,9 @@ export function NotificationCenter() {
   const [unreadCount, setUnreadCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [isConnected, setIsConnected] = useState(false)
+  const [isPollingActive, setIsPollingActive] = useState(false)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const userId = session?.user?.id ?? null
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -57,36 +60,40 @@ export function NotificationCenter() {
   const loadUnreadCount = useCallback(async () => {
     try {
       const res = await fetch('/api/notifications?unreadOnly=true&limit=1')
-      if (res.ok) {
-        const data = await res.json()
-        const newUnreadCount = data.unreadCount
-
-        setUnreadCount(prev => {
-          if (newUnreadCount > prev && prev > 0) {
-            toast.success("Thông báo mới", {
-              description: `Bạn có ${newUnreadCount - prev} thông báo mới`,
-              action: {
-                label: "Xem",
-                onClick: () => setOpen(true),
-              },
-            })
-
-            try {
-              const audio = new Audio("/notification.mp3")
-              audio.volume = 0.5
-              audio.play().catch(() => {
-                // Ignore if autoplay is blocked
-              })
-            } catch (error) {
-              // Ignore audio errors
-            }
-          }
-
-          return newUnreadCount
-        })
+      if (!res.ok) {
+        // Silently ignore if API not available or returns error
+        return
       }
+      
+      const data = await res.json()
+      const newUnreadCount = data.unreadCount
+
+      setUnreadCount(prev => {
+        if (newUnreadCount > prev && prev > 0) {
+          toast.success("Thông báo mới", {
+            description: `Bạn có ${newUnreadCount - prev} thông báo mới`,
+            action: {
+              label: "Xem",
+              onClick: () => setOpen(true),
+            },
+          })
+
+          try {
+            const audio = new Audio("/notification.mp3")
+            audio.volume = 0.5
+            audio.play().catch(() => {
+              // Ignore if autoplay is blocked
+            })
+          } catch (error) {
+            // Ignore audio errors
+          }
+        }
+
+        return newUnreadCount
+      })
     } catch (error) {
-      console.error('Error loading unread count:', error)
+      // Silently ignore fetch errors
+      console.debug('Notification API not available:', error)
     }
   }, [])
 
@@ -133,9 +140,9 @@ export function NotificationCenter() {
   }, [unreadCount, updateFaviconBadge])
 
   useEffect(() => {
-    if (!session?.user?.id || !pusherClient) return
+    if (!userId || !pusherClient) return
 
-    const channelName = `private-user-${session.user.id}-notifications`
+    const channelName = `private-user-${userId}-notifications`
     try {
       const channel = pusherClient.subscribe(channelName)
       setIsConnected(true)
@@ -174,18 +181,16 @@ export function NotificationCenter() {
     } catch (error) {
       console.error("Pusher subscription error:", error)
     }
-  }, [session?.user?.id, open])
+  }, [userId, open])
 
   useEffect(() => {
-    if (session?.user && open) {
+    if (userId && open) {
       void loadNotifications()
     }
-  }, [session?.user, open, loadNotifications])
+  }, [userId, open, loadNotifications])
 
   useEffect(() => {
-    if (!session?.user) return
-
-    let interval: ReturnType<typeof setInterval> | null = null
+    if (!userId) return
 
     const poll = () => {
       void loadUnreadCount()
@@ -195,16 +200,16 @@ export function NotificationCenter() {
     }
 
     const startPolling = () => {
-      if (interval !== null) return
-      setIsConnected(true)
-      interval = setInterval(poll, 30000)
+      if (pollingRef.current) return
+      pollingRef.current = setInterval(poll, 30000)
+      setIsPollingActive(true)
     }
 
     const stopPolling = () => {
-      if (interval === null) return
-      clearInterval(interval)
-      interval = null
-      setIsConnected(false)
+      if (!pollingRef.current) return
+      clearInterval(pollingRef.current)
+      pollingRef.current = null
+      setIsPollingActive(false)
     }
 
     const handleVisibility = () => {
@@ -229,7 +234,7 @@ export function NotificationCenter() {
       window.removeEventListener('focus', poll)
       document.removeEventListener('visibilitychange', handleVisibility)
     }
-  }, [session?.user, open, loadUnreadCount, loadNotifications])
+  }, [userId, open, loadUnreadCount, loadNotifications])
 
   const markAsRead = async (notificationIds: string[]) => {
     try {
@@ -341,7 +346,7 @@ export function NotificationCenter() {
                 {unreadCount > 0 ? `Bạn có ${unreadCount} thông báo chưa đọc` : 'Không có thông báo mới'}
               </SheetDescription>
             </div>
-            {isConnected && (
+            { (isConnected || isPollingActive) && (
               <div className="flex items-center gap-1">
                 <div className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
                 <span className="text-xs text-muted-foreground">Live</span>
@@ -404,16 +409,16 @@ export function NotificationCenter() {
                     <div className="text-2xl flex-shrink-0">
                       {getNotificationIcon(notification.type)}
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 overflow-hidden">
                       <div className="flex items-start justify-between gap-2">
-                        <h4 className="font-semibold text-sm leading-tight">
+                        <h4 className="font-semibold text-sm leading-tight truncate">
                           {notification.title}
                         </h4>
                         {!notification.isRead && (
                           <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0 mt-1 animate-pulse" />
                         )}
                       </div>
-                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                      <p className="text-sm text-muted-foreground mt-1 line-clamp-2 break-words">
                         {notification.message}
                       </p>
                       <div className="flex items-center justify-between mt-2">

@@ -1,8 +1,11 @@
+"use client"
+
 import { Calendar, DoorOpen, KeySquare, MapPin, MessageCircle, Navigation, Users, CheckCircle2, Sparkles, Gift, ClipboardCheck } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
+import { useSession } from "next-auth/react"
 
 const SERVICE_STATUS_BADGES: Record<string, { label: string; variant: "outline" | "secondary" | "default" }> = {
   PENDING: { label: "Concierge đang nhận", variant: "outline" },
@@ -75,6 +78,7 @@ interface TripHubProps {
     messagesUrl: string
     directionsUrl: string
   }
+  membershipTier?: string | null
 }
 
 const guideIconMap = {
@@ -83,7 +87,28 @@ const guideIconMap = {
   key: KeySquare,
 }
 
-export function TripHub({ trip }: TripHubProps) {
+export function TripHub({ trip, membershipTier }: TripHubProps) {
+  const { data: session } = useSession()
+  const normalizedTier = membershipTier?.toUpperCase() ?? null
+  const sessionTier = session?.user?.membership?.toUpperCase() ?? null
+  const MEMBERSHIP_ORDER: Record<string, number> = {
+    BRONZE: 0,
+    SILVER: 1,
+    GOLD: 2,
+    PLATINUM: 3,
+    DIAMOND: 4,
+  }
+
+  const resolvedTier = [normalizedTier, sessionTier].reduce<string | null>((highest, current) => {
+    if (!current) return highest
+    if (!highest) return current
+    const currentScore = MEMBERSHIP_ORDER[current] ?? -1
+    const highestScore = MEMBERSHIP_ORDER[highest] ?? -1
+    return currentScore > highestScore ? current : highest
+  }, null)
+
+  const hasConciergeAccess = resolvedTier === "DIAMOND"
+
   return (
     <div className="space-y-8">
       <section className="grid gap-6 lg:grid-cols-[2fr_1fr]">
@@ -399,6 +424,11 @@ export function TripHub({ trip }: TripHubProps) {
             <p>
               Đội concierge sẽ hỗ trợ bạn đặt xe, nhà hàng, tour trải nghiệm và xử lý mọi yêu cầu đặc biệt trong suốt kỳ nghỉ.
             </p>
+            {!hasConciergeAccess && (
+              <p className="text-xs text-muted-foreground">
+                Tính năng này dành riêng cho thành viên Diamond. Nâng cấp để được hỗ trợ ngay lập tức.
+              </p>
+            )}
             <div className="flex flex-wrap gap-2">
               {['Nhà hàng gần đây', 'Đặt tour trong ngày', 'Spa & wellness', 'Thuê xe riêng'].map((action) => (
                 <Badge key={action} variant="outline" className="rounded-full border-primary/30 bg-primary/5 text-primary">
@@ -406,9 +436,15 @@ export function TripHub({ trip }: TripHubProps) {
                 </Badge>
               ))}
             </div>
-            <Button className="w-full rounded-xl" asChild>
-              <Link href="/concierge">Chat với concierge</Link>
-            </Button>
+            {hasConciergeAccess ? (
+              <Button className="w-full rounded-xl" asChild>
+                <Link href="/concierge">Chat với concierge</Link>
+              </Button>
+            ) : (
+              <Button className="w-full rounded-xl" variant="outline" disabled>
+                Chỉ dành cho Diamond
+              </Button>
+            )}
           </CardContent>
         </Card>
       </section>

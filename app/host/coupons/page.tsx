@@ -5,9 +5,7 @@ import { format } from 'date-fns'
 import { TicketPercent, Loader2, Plus } from 'lucide-react'
 import { z } from 'zod'
 
-import { Header } from '@/components/header'
-import { Footer } from '@/components/footer'
-import { HostSidebar } from '@/components/host-sidebar'
+import { HostLayout } from '@/components/host-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -180,16 +178,10 @@ export default function HostCouponsPage() {
       const parsed = couponSchema.parse({
         ...form,
         discountValue: Number(form.discountValue),
-        maxDiscount: form.maxDiscount === null || form.maxDiscount === undefined || form.maxDiscount === '' ? null : Number(form.maxDiscount),
-        minBookingValue:
-          form.minBookingValue === null || form.minBookingValue === undefined || form.minBookingValue === ''
-            ? null
-            : Number(form.minBookingValue),
-        maxUses: form.maxUses === null || form.maxUses === undefined || form.maxUses === '' ? null : Number(form.maxUses),
-        maxUsesPerUser:
-          form.maxUsesPerUser === null || form.maxUsesPerUser === undefined || form.maxUsesPerUser === ''
-            ? null
-            : Number(form.maxUsesPerUser),
+        maxDiscount: form.maxDiscount ?? null,
+        minBookingValue: form.minBookingValue ?? null,
+        maxUses: form.maxUses ?? null,
+        maxUsesPerUser: form.maxUsesPerUser ?? null,
       })
 
       if (parsed.discountType === 'PERCENTAGE' && !percentageOptions.includes(Math.round(parsed.discountValue))) {
@@ -250,131 +242,124 @@ export default function HostCouponsPage() {
   }, [search, coupons])
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Header />
-      <main className="flex-1 bg-muted/20">
-        <div className="container mx-auto px-4 lg:px-8 py-8 flex flex-col lg:flex-row gap-8">
-          <HostSidebar />
-          <div className="flex-1 space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h1 className="text-3xl font-bold flex items-center gap-2">
-                  <TicketPercent className="h-6 w-6 text-primary" />
-                  Coupon của tôi
-                </h1>
-                <p className="text-muted-foreground mt-1">
-                  Tạo mã giảm giá riêng cho homestay của bạn. Bạn có thể giới hạn số lần sử dụng và thời gian hiệu lực.
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <Input
-                  placeholder="Tìm coupon..."
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  onBlur={() => {
-                    void loadCoupons(search.trim())
-                  }}
-                />
-                <Button onClick={openCreateDialog}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Tạo coupon
-                </Button>
-              </div>
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Danh sách coupon</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="flex items-center justify-center py-16">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  </div>
-                ) : filteredCoupons.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">Chưa có coupon nào.</div>
-                ) : (
-                  <div className="space-y-3">
-                    {filteredCoupons.map((coupon) => (
-                      <Card key={coupon.id} className="border border-primary/10">
-                        <CardContent className="p-4 space-y-3">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <Badge variant={coupon.isActive ? 'default' : 'outline'}>
-                                  {coupon.isActive ? 'Đang hoạt động' : 'Đã tắt'}
-                                </Badge>
-                                {coupon.stackWithPromotions && <Badge variant="secondary">Cho phép cộng dồn</Badge>}
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <span className="text-lg font-semibold">{coupon.name}</span>
-                                <Badge variant="outline" className="font-mono">
-                                  {coupon.code}
-                                </Badge>
-                              </div>
-                              {coupon.description && (
-                                <p className="text-sm text-muted-foreground">{coupon.description}</p>
-                              )}
-                            </div>
-                            <div className="flex flex-col gap-2 min-w-[200px]">
-                              <Button variant="outline" size="sm" onClick={() => openEditDialog(coupon)}>
-                                Chỉnh sửa
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-destructive border-destructive"
-                                onClick={() => handleDisable(coupon.id)}
-                                disabled={!coupon.isActive}
-                              >
-                                Vô hiệu hóa
-                              </Button>
-                            </div>
-                          </div>
-                          <div className="grid gap-3 md:grid-cols-4 text-sm">
-                            <div>
-                              <p className="text-xs text-muted-foreground uppercase">Giảm giá</p>
-                              <p className="font-semibold">
-                                {coupon.discountType === 'PERCENTAGE'
-                                  ? `${coupon.discountValue}%`
-                                  : formatCurrency(coupon.discountValue)}
-                              </p>
-                              {coupon.maxDiscount ? (
-                                <p className="text-xs text-muted-foreground">
-                                  Tối đa {formatCurrency(coupon.maxDiscount)}
-                                </p>
-                              ) : null}
-                            </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground uppercase">Hiệu lực</p>
-                              <p>
-                                {format(new Date(coupon.validFrom), 'dd/MM/yyyy')} -{' '}
-                                {format(new Date(coupon.validUntil), 'dd/MM/yyyy')}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground uppercase">Điều kiện</p>
-                              <p>Tối thiểu {formatCurrency(coupon.minBookingValue)}</p>
-                              <p className="text-xs text-muted-foreground">
-                                Tổng {coupon.maxUses ?? '∞'} • Mỗi khách {coupon.maxUsesPerUser ?? '∞'}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-muted-foreground uppercase">Thống kê</p>
-                              <p>{coupon.usedCount} lượt sử dụng</p>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+    <HostLayout>
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="flex items-center gap-2 text-3xl font-bold">
+              <TicketPercent className="h-6 w-6 text-primary" />
+              Coupon của tôi
+            </h1>
+            <p className="mt-1 text-muted-foreground">
+              Tạo mã giảm giá riêng cho homestay của bạn. Bạn có thể giới hạn số lần sử dụng và thời gian hiệu lực.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Input
+              placeholder="Tìm coupon..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              onBlur={() => {
+                void loadCoupons(search.trim())
+              }}
+            />
+            <Button onClick={openCreateDialog}>
+              <Plus className="mr-2 h-4 w-4" />
+              Tạo coupon
+            </Button>
           </div>
         </div>
-      </main>
-      <Footer />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Danh sách coupon</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : filteredCoupons.length === 0 ? (
+              <div className="py-12 text-center text-muted-foreground">Chưa có coupon nào.</div>
+            ) : (
+              <div className="space-y-3">
+                {filteredCoupons.map((coupon) => (
+                  <Card key={coupon.id} className="border border-primary/10">
+                    <CardContent className="space-y-3 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Badge variant={coupon.isActive ? 'default' : 'outline'}>
+                              {coupon.isActive ? 'Đang hoạt động' : 'Đã tắt'}
+                            </Badge>
+                            {coupon.stackWithPromotions && <Badge variant="secondary">Cho phép cộng dồn</Badge>}
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-lg font-semibold">{coupon.name}</span>
+                            <Badge variant="outline" className="font-mono">
+                              {coupon.code}
+                            </Badge>
+                          </div>
+                          {coupon.description && (
+                            <p className="text-sm text-muted-foreground">{coupon.description}</p>
+                          )}
+                        </div>
+                        <div className="flex min-w-[200px] flex-col gap-2">
+                          <Button variant="outline" size="sm" onClick={() => openEditDialog(coupon)}>
+                            Chỉnh sửa
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="border-destructive text-destructive"
+                            onClick={() => handleDisable(coupon.id)}
+                            disabled={!coupon.isActive}
+                          >
+                            Vô hiệu hóa
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="grid gap-3 text-sm md:grid-cols-4">
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground">Giảm giá</p>
+                          <p className="font-semibold">
+                            {coupon.discountType === 'PERCENTAGE'
+                              ? `${coupon.discountValue}%`
+                              : formatCurrency(coupon.discountValue)}
+                          </p>
+                          {coupon.maxDiscount ? (
+                            <p className="text-xs text-muted-foreground">
+                              Tối đa {formatCurrency(coupon.maxDiscount)}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground">Hiệu lực</p>
+                          <p>
+                            {format(new Date(coupon.validFrom), 'dd/MM/yyyy')} -{' '}
+                            {format(new Date(coupon.validUntil), 'dd/MM/yyyy')}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground">Điều kiện</p>
+                          <p>Tối thiểu {formatCurrency(coupon.minBookingValue)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Tổng {coupon.maxUses ?? '∞'} • Mỗi khách {coupon.maxUsesPerUser ?? '∞'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs uppercase text-muted-foreground">Thống kê</p>
+                          <p>{coupon.usedCount} lượt sử dụng</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Dialog
         open={dialogOpen}
@@ -567,7 +552,7 @@ export default function HostCouponsPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <Switch
                 id="stack-membership"
@@ -591,12 +576,12 @@ export default function HostCouponsPage() {
               Hủy
             </Button>
             <Button onClick={handleSave} disabled={submitting}>
-              {submitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {editingId ? 'Cập nhật' : 'Tạo mới'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </HostLayout>
   )
 }

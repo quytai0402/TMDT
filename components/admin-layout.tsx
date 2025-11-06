@@ -34,6 +34,8 @@ import {
   ChevronRight,
   LogOut,
   TicketPercent,
+  Compass,
+  Sparkles,
 } from "lucide-react"
 import { NotificationCenter } from "@/components/notification-center"
 
@@ -69,6 +71,16 @@ const NAV_ITEMS: NavItem[] = [
     title: "Hồ sơ host",
     href: "/admin/hosts/applications",
     icon: Home,
+  },
+  {
+    title: "Hướng dẫn viên",
+    href: "/admin/guides/applications",
+    icon: Compass,
+  },
+  {
+    title: "Trải nghiệm HDV",
+    href: "/admin/guides/experiences",
+    icon: Sparkles,
   },
   {
     title: "Chỗ nghỉ",

@@ -132,11 +132,12 @@ export async function GET(req: NextRequest) {
     }
 
     // Availability check (if dates provided)
+    // Only check CONFIRMED and COMPLETED bookings
     if (checkIn && checkOut) {
       // Find listings that don't have conflicting bookings
       const unavailableListings = await prisma.booking.findMany({
         where: {
-          status: { in: ['PENDING', 'CONFIRMED'] },
+          status: { in: ['CONFIRMED', 'COMPLETED'] },
           OR: [
             {
               checkIn: { lte: new Date(checkOut) },

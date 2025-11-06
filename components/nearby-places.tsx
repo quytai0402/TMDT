@@ -4,15 +4,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { MapPin, Star, ChevronDown, ChevronUp } from 'lucide-react'
+import { MapPin, Star, ChevronDown, ChevronUp, Navigation } from 'lucide-react'
 
 interface NearbyPlace {
   name: string
   type: string
-  distance: number
+  distance: number | string // Support both number and formatted string
   rating?: number
-  lat: number
-  lng: number
+  lat?: number
+  lng?: number
+  address?: string
+  placeId?: string
 }
 
 interface NearbyPlacesProps {
@@ -20,6 +22,7 @@ interface NearbyPlacesProps {
   city: string
   lat: number
   lng: number
+  savedPlaces?: any[] // Pre-saved nearby places from database
 }
 
 const placeTypeLabels: Record<string, string> = {
@@ -46,12 +49,23 @@ const placeTypeColors: Record<string, string> = {
   transport: 'bg-gray-100 text-gray-700',
 }
 
-export function NearbyPlaces({ listingId, city, lat, lng }: NearbyPlacesProps) {
+export function NearbyPlaces({ listingId, city, lat, lng, savedPlaces }: NearbyPlacesProps) {
   const [places, setPlaces] = useState<NearbyPlace[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!savedPlaces || savedPlaces.length === 0)
   const [isExpanded, setIsExpanded] = useState(false)
 
+  // Memoize savedPlaces to prevent infinite loop
+  const hasSavedPlaces = useMemo(() => savedPlaces && savedPlaces.length > 0, [savedPlaces?.length])
+
   useEffect(() => {
+    // If we have saved places from database, use them directly
+    if (hasSavedPlaces && savedPlaces) {
+      setPlaces(savedPlaces as NearbyPlace[])
+      setLoading(false)
+      return
+    }
+
+    // Otherwise fetch from API
     async function fetchNearbyPlaces() {
       try {
         const res = await fetch(
@@ -67,7 +81,7 @@ export function NearbyPlaces({ listingId, city, lat, lng }: NearbyPlacesProps) {
     }
 
     fetchNearbyPlaces()
-  }, [listingId, city, lat, lng])
+  }, [listingId, city, lat, lng, hasSavedPlaces])
 
   const summaryPlaces = useMemo(() => places.slice(0, 3), [places])
   const expandedPlaces = useMemo(() => places.slice(0, 12), [places])
@@ -135,9 +149,11 @@ export function NearbyPlaces({ listingId, city, lat, lng }: NearbyPlacesProps) {
                   <p className="text-sm font-medium line-clamp-1">{place.name}</p>
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <span>
-                      {place.distance >= 1000
-                        ? `${(place.distance / 1000).toFixed(1)} km`
-                        : `${place.distance}m`}
+                      {typeof place.distance === 'string' 
+                        ? place.distance 
+                        : place.distance >= 1000
+                          ? `${(place.distance / 1000).toFixed(1)} km`
+                          : `${place.distance}m`}
                     </span>
                     <Badge className={`text-xs ${placeTypeColors[place.type] || 'bg-gray-100 text-gray-700'}`}>
                       {placeTypeLabels[place.type] || place.type}
@@ -175,9 +191,11 @@ export function NearbyPlaces({ listingId, city, lat, lng }: NearbyPlacesProps) {
                     </div>
                     <div className="flex items-center gap-4 text-sm text-gray-600">
                       <span>
-                        {place.distance >= 1000
-                          ? `${(place.distance / 1000).toFixed(1)} km`
-                          : `${place.distance}m`}
+                        {typeof place.distance === 'string' 
+                          ? place.distance 
+                          : place.distance >= 1000
+                            ? `${(place.distance / 1000).toFixed(1)} km`
+                            : `${place.distance}m`}
                       </span>
                       {place.rating && (
                         <div className="flex items-center gap-1">
@@ -187,30 +205,32 @@ export function NearbyPlaces({ listingId, city, lat, lng }: NearbyPlacesProps) {
                       )}
                     </div>
                   </div>
-                  <a
-                    href={`https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-blue-600 hover:underline whitespace-nowrap ml-4"
-                  >
-                    Chỉ đường
-                  </a>
+                  {place.lat && place.lng ? (
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&origin=${lat},${lng}&destination=${place.lat},${place.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-1 text-sm text-blue-600 hover:underline whitespace-nowrap ml-4"
+                    >
+                      <Navigation className="h-3 w-3" />
+                      Tìm đường
+                    </a>
+                  ) : (
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&origin=${lat},${lng}&destination=${encodeURIComponent(place.name + ', ' + city)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-1 text-sm text-blue-600 hover:underline whitespace-nowrap ml-4"
+                    >
+                      <Navigation className="h-3 w-3" />
+                      Tìm đường
+                    </a>
+                  )}
                 </div>
               ))}
             </div>
-
-            {process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY && (
-              <div className="mt-6">
-                <iframe
-                  width="100%"
-                  height="320"
-                  style={{ border: 0 }}
-                  loading="lazy"
-                  allowFullScreen
-                  src={`https://www.google.com/maps/embed/v1/place?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&q=${lat},${lng}&zoom=14`}
-                />
-              </div>
-            )}
           </CardContent>
         </Card>
       )}

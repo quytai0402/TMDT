@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -8,9 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { 
   Users,
-  Plus,
   UserPlus,
-  MessageCircle,
   Check,
   X,
   Crown,
@@ -18,9 +16,7 @@ import {
   Share2,
   Link as LinkIcon
 } from "lucide-react"
-import { cn } from "@/lib/utils"
-
-interface TripMember {
+export interface TripMember {
   id: string
   name: string
   email: string
@@ -29,47 +25,25 @@ interface TripMember {
   status: "active" | "pending"
   joinedAt?: string
 }
+interface SharedTripPlanningProps {
+  bookingId?: string | null
+  shareUrl?: string | null
+  initialMembers?: TripMember[]
+}
 
-export function SharedTripPlanning() {
-  const [members, setMembers] = useState<TripMember[]>([
-    {
-      id: "1",
-      name: "Nguyễn Văn A",
-      email: "nguyenvana@email.com",
-      avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=1",
-      role: "owner",
-      status: "active",
-      joinedAt: "2025-10-01",
-    },
-    {
-      id: "2",
-      name: "Trần Thị B",
-      email: "tranthib@email.com",
-      avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=2",
-      role: "editor",
-      status: "active",
-      joinedAt: "2025-10-05",
-    },
-    {
-      id: "3",
-      name: "Lê Văn C",
-      email: "levanc@email.com",
-      avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=3",
-      role: "viewer",
-      status: "active",
-      joinedAt: "2025-10-08",
-    },
-    {
-      id: "4",
-      name: "Phạm Thị D",
-      email: "phamthid@email.com",
-      role: "editor",
-      status: "pending",
-    },
-  ])
+export function SharedTripPlanning({ bookingId, shareUrl, initialMembers }: SharedTripPlanningProps) {
+  const [members, setMembers] = useState<TripMember[]>([])
 
   const [inviteEmail, setInviteEmail] = useState("")
   const [selectedRole, setSelectedRole] = useState<"editor" | "viewer">("editor")
+
+  useEffect(() => {
+    if (Array.isArray(initialMembers) && initialMembers.length) {
+      setMembers(initialMembers)
+    } else {
+      setMembers([])
+    }
+  }, [initialMembers])
 
   const inviteMember = () => {
     if (inviteEmail) {
@@ -95,8 +69,22 @@ export function SharedTripPlanning() {
     ))
   }
 
+  const handleCopyLink = () => {
+    if (!resolvedShareUrl) return
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(resolvedShareUrl)
+    }
+  }
+
   const activeMembers = members.filter(m => m.status === "active")
   const pendingMembers = members.filter(m => m.status === "pending")
+
+  const resolvedShareUrl = useMemo(() => {
+    if (shareUrl) return shareUrl
+    if (!bookingId) return null
+    if (typeof window === "undefined") return null
+    return `${window.location.origin}/trips/${bookingId}`
+  }, [bookingId, shareUrl])
 
   return (
     <div className="space-y-6">
@@ -128,16 +116,18 @@ export function SharedTripPlanning() {
             <div className="flex items-center space-x-2">
               <Input
                 readOnly
-                value="https://luxestay.com/trip/abc123xyz"
+                value={resolvedShareUrl ?? "Chưa tạo link chia sẻ"}
                 className="bg-background"
               />
-              <Button variant="outline">
+              <Button variant="outline" disabled={!resolvedShareUrl} onClick={handleCopyLink}>
                 <LinkIcon className="w-4 h-4 mr-2" />
                 Sao chép
               </Button>
             </div>
             <p className="text-sm text-muted-foreground mt-2">
-              Bất kỳ ai có link này đều có thể xem chuyến đi của bạn
+              {resolvedShareUrl
+                ? "Bất kỳ ai có link này đều có thể xem chuyến đi của bạn"
+                : "Chia sẻ sẽ khả dụng sau khi planner được lưu."}
             </p>
           </div>
         </div>
@@ -154,7 +144,12 @@ export function SharedTripPlanning() {
               placeholder="nhap@email.com"
               value={inviteEmail}
               onChange={(e) => setInviteEmail(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && inviteMember()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  inviteMember()
+                }
+              }}
             />
           </div>
           <div>
@@ -183,6 +178,11 @@ export function SharedTripPlanning() {
           </h3>
         </div>
         <div className="space-y-3">
+          {activeMembers.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-6">
+              Chưa có ai cùng lập kế hoạch. Mời bạn đồng hành để chia sẻ cập nhật nhanh chóng.
+            </p>
+          )}
           {activeMembers.map(member => (
             <div
               key={member.id}

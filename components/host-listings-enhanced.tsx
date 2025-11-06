@@ -16,9 +16,13 @@ import { MoreVertical, Eye, Edit, Trash2, Star } from 'lucide-react'
 import Link from 'next/link'
 import Image from 'next/image'
 
-export function HostListingsEnhanced() {
+interface HostListingsEnhancedProps {
+  initialListings?: any[]
+}
+
+export function HostListingsEnhanced({ initialListings }: HostListingsEnhancedProps) {
   const { getMyListings, deleteListing, loading } = useListings()
-  const [listings, setListings] = useState<any[]>([])
+  const [listings, setListings] = useState<any[]>(initialListings ?? [])
 
   const formatCurrency = (value: unknown): string | null => {
     if (value === null || value === undefined) {
@@ -35,8 +39,17 @@ export function HostListingsEnhanced() {
   }
 
   useEffect(() => {
-    fetchListings()
+    if (!initialListings) {
+      fetchListings()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (initialListings) {
+      setListings(initialListings)
+    }
+  }, [initialListings])
 
   const fetchListings = async () => {
     try {
@@ -58,7 +71,7 @@ export function HostListingsEnhanced() {
     }
   }
 
-  if (loading) {
+  if (loading && !listings.length) {
     return (
       <Card>
         <CardHeader>
@@ -73,7 +86,7 @@ export function HostListingsEnhanced() {
     )
   }
 
-  if (listings.length === 0) {
+  if (!listings.length) {
     return (
       <Card>
         <CardHeader>
@@ -124,7 +137,7 @@ export function HostListingsEnhanced() {
               >
               <div className="relative w-32 h-24 rounded-lg overflow-hidden flex-shrink-0">
                 <Image
-                  src={listing.photos?.[0] || '/placeholder.jpg'}
+                  src={listing.images?.[0] || '/placeholder.jpg'}
                   alt={listing.title}
                   fill
                   className="object-cover"

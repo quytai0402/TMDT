@@ -1,267 +1,352 @@
 "use client"
 
-import { useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Loader2, RefreshCw } from "lucide-react"
+import {
+  addDays,
+  differenceInCalendarDays,
+  endOfMonth,
+  format,
+  formatDistanceToNowStrict,
+  max,
+  min,
+  startOfDay,
+  startOfMonth,
+  subDays,
+  subMonths,
+} from "date-fns"
+import { vi } from "date-fns/locale"
+
 import { HostLayout } from "@/components/host-layout"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { 
-  BarChart3, 
-  Users, 
-  Calendar, 
-  Target,
-  Download,
-  RefreshCw,
-  TrendingUp
-} from "lucide-react"
-import { AnalyticsOverview } from "@/components/analytics-overview"
-import { AdvancedRevenueChart } from "@/components/advanced-revenue-chart"
-import { GuestDemographics } from "@/components/guest-demographics"
-import { SeasonalInsights } from "@/components/seasonal-insights"
-import { CompetitorAnalysis } from "@/components/competitor-analysis"
+import { DashboardStats } from "@/components/dashboard-stats"
+import { RevenueChart } from "@/components/revenue-chart"
+import { HostInsights, HostInsight } from "@/components/host-insights"
+import { useBooking } from "@/hooks/use-booking"
+import { useListings } from "@/hooks/use-listings"
+
+type BookingRecord = {
+  id: string
+  status: string
+  totalPrice?: number | null
+  checkIn: string
+  checkOut: string
+  createdAt?: string
+}
+
+type ListingRecord = {
+  id: string
+  status?: string | null
+  rating?: number | null
+  averageRating?: number | null
+  reviewCount?: number | null
+}
+
+const CONFIRMED_STATUSES = new Set(["CONFIRMED", "COMPLETED", "CHECKED_IN", "CHECKED_OUT"])
+
+const asDate = (value: string | Date | undefined): Date | null => {
+  if (!value) return null
+  const date = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat("vi-VN", { style: "currency", currency: "VND", maximumFractionDigits: 0 }).format(value)
+
+function computeDelta(current: number, previous: number) {
+  if (!previous && current) return 100
+  if (!previous && !current) return 0
+  if (!Number.isFinite(current) || !Number.isFinite(previous) || previous === 0) return 0
+  return ((current - previous) / previous) * 100
+}
+
+function calculateAverageRating(listings: ListingRecord[]) {
+  const ratings = listings
+    .map((listing) => listing.averageRating ?? listing.rating)
+    .filter((rating): rating is number => typeof rating === "number" && !Number.isNaN(rating))
+
+  if (!ratings.length) {
+    return undefined
+  }
+
+  const sum = ratings.reduce((acc, value) => acc + value, 0)
+  return Number((sum / ratings.length).toFixed(2))
+}
+
+function calculateOccupiedNights(bookings: BookingRecord[], listingsCount: number) {
+  if (!listingsCount) return 0
+
+  const referenceStart = startOfDay(new Date())
+  const referenceEnd = addDays(referenceStart, 30)
+
+  return bookings.reduce((acc, booking) => {
+    if (!CONFIRMED_STATUSES.has(booking.status)) return acc
+
+    const checkIn = asDate(booking.checkIn)
+    const checkOut = asDate(booking.checkOut)
+    if (!checkIn || !checkOut) return acc
+
+    const overlapStart = max([checkIn, referenceStart])
+    const overlapEnd = min([checkOut, referenceEnd])
+
+    if (!overlapStart || !overlapEnd || overlapEnd <= overlapStart) return acc
+
+    const nights = differenceInCalendarDays(overlapEnd, overlapStart)
+    return nights > 0 ? acc + nights : acc
+  }, 0)
+}
+
+function buildRevenueSeries(bookings: BookingRecord[]) {
+  const now = new Date()
+  const series: { label: string; revenue: number }[] = []
+
+  for (let i = 5; i >= 0; i -= 1) {
+    const monthDate = subMonths(now, i)
+    const monthStart = startOfMonth(monthDate)
+    const monthEnd = endOfMonth(monthDate)
+    const label = format(monthDate, "'T' M", { locale: vi })
+
+    const revenue = bookings.reduce((acc, booking) => {
+      if (!CONFIRMED_STATUSES.has(booking.status)) return acc
+      const checkIn = asDate(booking.checkIn)
+      if (!checkIn || checkIn < monthStart || checkIn > monthEnd) return acc
+      return acc + (booking.totalPrice ?? 0)
+    }, 0)
+
+    series.push({ label, revenue })
+  }
+
+  return series
+}
+
+function buildInsights(bookings: BookingRecord[], listings: ListingRecord[]): HostInsight[] {
+  if (!bookings.length && !listings.length) return []
+
+  const now = startOfDay(new Date())
+  const sevenDaysAgo = subDays(now, 7)
+  const fourteenDaysAgo = subDays(sevenDaysAgo, 7)
+
+  const bookingsLastWeek = bookings.filter((booking) => {
+    const createdAt = asDate(booking.createdAt) ?? asDate(booking.checkIn)
+    return createdAt ? createdAt > sevenDaysAgo : false
+  })
+
+  const bookingsPrevWeek = bookings.filter((booking) => {
+    const createdAt = asDate(booking.createdAt) ?? asDate(booking.checkIn)
+    if (!createdAt) return false
+    return createdAt > fourteenDaysAgo && createdAt <= sevenDaysAgo
+  })
+
+  const bookingPaceDelta = computeDelta(bookingsLastWeek.length, bookingsPrevWeek.length)
+
+  const revenueLastWeek = bookingsLastWeek.reduce((acc, booking) => {
+    if (!CONFIRMED_STATUSES.has(booking.status)) return acc
+    return acc + (booking.totalPrice ?? 0)
+  }, 0)
+
+  const revenuePrevWeek = bookingsPrevWeek.reduce((acc, booking) => {
+    if (!CONFIRMED_STATUSES.has(booking.status)) return acc
+    return acc + (booking.totalPrice ?? 0)
+  }, 0)
+
+  const nextCheckIn = bookings
+    .filter((booking) => {
+      if (!CONFIRMED_STATUSES.has(booking.status)) return false
+      const checkIn = asDate(booking.checkIn)
+      return checkIn ? checkIn >= now : false
+    })
+    .sort((a, b) => {
+      const aDate = asDate(a.checkIn)?.getTime() ?? 0
+      const bDate = asDate(b.checkIn)?.getTime() ?? 0
+      return aDate - bDate
+    })[0]
+
+  const insights: HostInsight[] = []
+
+  insights.push({
+    id: "booking-pace",
+    title: "Booking pace",
+    value: `${bookingsLastWeek.length} đặt phòng/7 ngày`,
+    trend: (bookingPaceDelta > 0 ? "up" : bookingPaceDelta < 0 ? "down" : "neutral") as HostInsight["trend"],
+    trendLabel:
+      bookingsPrevWeek.length === 0 && bookingsLastWeek.length > 0
+        ? "Tăng so với tuần trước"
+        : `${bookingPaceDelta > 0 ? "+" : ""}${bookingPaceDelta.toFixed(1)}% so với tuần trước`,
+    helperText: "Số booking mới trong 7 ngày gần nhất",
+  })
+
+  insights.push({
+    id: "weekly-revenue",
+    title: "Doanh thu 7 ngày",
+    value: formatCurrency(revenueLastWeek),
+    trend: (revenuePrevWeek === 0 && revenueLastWeek === 0 ? "neutral" : revenueLastWeek >= revenuePrevWeek ? "up" : "down") as HostInsight["trend"],
+    trendLabel:
+      revenuePrevWeek === 0 && revenueLastWeek > 0
+        ? "Doanh thu đầu tiên"
+        : `${computeDelta(revenueLastWeek, revenuePrevWeek).toFixed(1)}% so với tuần trước`,
+    helperText: "Bao gồm các booking đã xác nhận",
+  })
+
+  if (nextCheckIn) {
+    const nextCheckInDate = asDate(nextCheckIn.checkIn)!
+    insights.push({
+      id: "next-check-in",
+      title: "Lượt check-in kế tiếp",
+      value: format(nextCheckInDate, "dd/MM", { locale: vi }),
+  trend: "neutral" as HostInsight["trend"],
+      trendLabel: `Còn ${formatDistanceToNowStrict(nextCheckInDate, { locale: vi })}`,
+      helperText: "Chuẩn bị sẵn sàng cho khách tiếp theo",
+    })
+  }
+
+  insights.push({
+    id: "listing-count",
+    title: "Listing đang hoạt động",
+    value: `${listings.filter((listing) => listing.status === "ACTIVE").length}/${listings.length}`,
+  trend: "neutral" as HostInsight["trend"],
+    helperText: "Số lượng listing đã duyệt và đang mở đặt phòng",
+  })
+
+  return insights.slice(0, 4)
+}
 
 export default function HostAnalyticsPage() {
+  const { getBookings } = useBooking()
+  const { getMyListings } = useListings()
+  const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [bookings, setBookings] = useState<BookingRecord[]>([])
+  const [listings, setListings] = useState<ListingRecord[]>([])
 
-  const handleRefresh = () => {
-    setRefreshing(true)
-    setTimeout(() => setRefreshing(false), 1500)
-  }
+  const loadAnalytics = useCallback(async () => {
+    try {
+      setRefreshing(true)
+      const [bookingResponse, listingResponse] = await Promise.all([
+        getBookings("host"),
+        getMyListings(),
+      ])
 
-  const handleExport = () => {
-    alert("Đang tải xuống báo cáo... (Tính năng đang phát triển)")
-  }
+      const bookingsData = Array.isArray(bookingResponse?.bookings)
+        ? (bookingResponse.bookings as BookingRecord[])
+        : []
+
+      const listingsData = Array.isArray(listingResponse)
+        ? (listingResponse as ListingRecord[])
+        : Array.isArray((listingResponse as { listings?: unknown })?.listings)
+          ? (((listingResponse as { listings?: ListingRecord[] }).listings ?? []) as ListingRecord[])
+          : []
+
+      setBookings(bookingsData)
+      setListings(listingsData)
+    } catch (error) {
+      console.error("Failed to load analytics data", error)
+      setBookings([])
+      setListings([])
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
+  }, [getBookings, getMyListings])
+
+  useEffect(() => {
+    void loadAnalytics()
+  }, [loadAnalytics])
+
+  const stats = useMemo(() => {
+    if (!bookings.length) {
+      return {
+        totalRevenue: 0,
+        monthlyBookings: 0,
+        totalRevenueChange: 0,
+        monthlyBookingsChange: 0,
+        averageRating: listings.length ? calculateAverageRating(listings) : undefined,
+        occupancyRate: listings.length ? 0 : undefined,
+      }
+    }
+
+    const now = new Date()
+    const monthStart = startOfMonth(now)
+    const previousMonthStart = startOfMonth(subMonths(now, 1))
+    const previousMonthEnd = endOfMonth(subMonths(now, 1))
+
+    let totalRevenue = 0
+    let revenueThisMonth = 0
+    let revenuePreviousMonth = 0
+    let bookingsThisMonth = 0
+    let bookingsPreviousMonth = 0
+
+    bookings.forEach((booking) => {
+      const checkIn = asDate(booking.checkIn)
+      const createdAt = asDate(booking.createdAt) ?? checkIn
+      const isRevenueBooking = booking.totalPrice && CONFIRMED_STATUSES.has(booking.status)
+
+      if (isRevenueBooking) {
+        totalRevenue += booking.totalPrice ?? 0
+      }
+
+      if (createdAt && createdAt >= monthStart && createdAt <= now) {
+        bookingsThisMonth += 1
+        if (isRevenueBooking) {
+          revenueThisMonth += booking.totalPrice ?? 0
+        }
+      }
+
+      if (createdAt && createdAt >= previousMonthStart && createdAt <= previousMonthEnd) {
+        bookingsPreviousMonth += 1
+        if (isRevenueBooking) {
+          revenuePreviousMonth += booking.totalPrice ?? 0
+        }
+      }
+    })
+
+    const totalAvailableNights = listings.length * 30
+    const occupiedNights = calculateOccupiedNights(bookings, listings.length)
+    const occupancyRate = totalAvailableNights > 0 ? Math.min(100, Math.round((occupiedNights / totalAvailableNights) * 100)) : undefined
+
+    return {
+      totalRevenue,
+      totalRevenueChange: computeDelta(revenueThisMonth, revenuePreviousMonth),
+      monthlyBookings: bookingsThisMonth,
+      monthlyBookingsChange: computeDelta(bookingsThisMonth, bookingsPreviousMonth),
+      averageRating: listings.length ? calculateAverageRating(listings) : undefined,
+      averageRatingChange: undefined,
+      occupancyRate,
+      occupancyRateChange: undefined,
+    }
+  }, [bookings, listings])
+
+  const revenueSeries = useMemo(() => buildRevenueSeries(bookings), [bookings])
+  const insights = useMemo(() => buildInsights(bookings, listings), [bookings, listings])
 
   return (
     <HostLayout>
       <div className="space-y-6">
-        {/* Header */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold mb-2">Phân tích & Thống kê</h1>
-              <p className="text-muted-foreground">
-                Tổng quan hiệu suất listing và insights để tăng doanh thu
-              </p>
-            </div>
-            <div className="flex items-center space-x-3">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={handleRefresh}
-                disabled={refreshing}
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-                {refreshing ? 'Đang tải...' : 'Làm mới'}
-              </Button>
-              <Button size="sm" onClick={handleExport}>
-                <Download className="w-4 h-4 mr-2" />
-                Xuất báo cáo
-              </Button>
-            </div>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold">Phân tích & Thống kê</h1>
+            <p className="text-muted-foreground">Tổng hợp dữ liệu booking và hiệu suất thực tế của bạn.</p>
           </div>
-
-          {/* Period Selector */}
-          <div className="flex items-center space-x-2">
-            <Badge variant="outline">Tháng này</Badge>
-            <Badge variant="outline">30 ngày</Badge>
-            <Badge variant="outline">90 ngày</Badge>
-            <Badge>Năm nay</Badge>
-            <Badge variant="outline">Tùy chỉnh</Badge>
-          </div>
+          <Button variant="outline" size="sm" onClick={() => void loadAnalytics()} disabled={refreshing}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? "Đang cập nhật" : "Làm mới"}
+          </Button>
         </div>
 
-        {/* Overview Stats */}
-        <div className="mb-8">
-          <AnalyticsOverview />
-        </div>
+        {loading ? (
+          <div className="flex h-[280px] items-center justify-center text-muted-foreground">
+            <Loader2 className="mr-2 h-6 w-6 animate-spin" />
+            <span>Đang tải dữ liệu phân tích...</span>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <DashboardStats stats={stats} loading={refreshing} />
 
-        {/* Main Content Tabs */}
-        <Tabs defaultValue="revenue" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="revenue" className="flex items-center space-x-2">
-              <BarChart3 className="w-4 h-4" />
-              <span>Doanh thu</span>
-            </TabsTrigger>
-            <TabsTrigger value="guests" className="flex items-center space-x-2">
-              <Users className="w-4 h-4" />
-              <span>Khách hàng</span>
-            </TabsTrigger>
-            <TabsTrigger value="seasonal" className="flex items-center space-x-2">
-              <Calendar className="w-4 h-4" />
-              <span>Theo mùa</span>
-            </TabsTrigger>
-            <TabsTrigger value="competitor" className="flex items-center space-x-2">
-              <Target className="w-4 h-4" />
-              <span>Đối thủ</span>
-            </TabsTrigger>
-            <TabsTrigger value="insights" className="flex items-center space-x-2">
-              <TrendingUp className="w-4 h-4" />
-              <span>Insights</span>
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="revenue">
-            <AdvancedRevenueChart />
-          </TabsContent>
-
-          <TabsContent value="guests">
-            <GuestDemographics />
-          </TabsContent>
-
-          <TabsContent value="seasonal">
-            <SeasonalInsights />
-          </TabsContent>
-
-          <TabsContent value="competitor">
-            <CompetitorAnalysis />
-          </TabsContent>
-
-          <TabsContent value="insights">
-            <div className="space-y-6">
-              {/* Performance Score */}
-              <Card className="p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h3 className="text-xl font-bold mb-2">Điểm hiệu suất tổng thể</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Đánh giá toàn diện về listing của bạn
-                    </p>
-                  </div>
-                  <div className="text-center">
-                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center mb-2">
-                      <span className="text-3xl font-bold text-white">8.7</span>
-                    </div>
-                    <Badge className="bg-green-600">Xuất sắc</Badge>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <h4 className="font-semibold mb-3">Điểm mạnh</h4>
-                    <ul className="space-y-2 text-sm">
-                      <li className="flex items-center space-x-2">
-                        <span className="text-green-600">●</span>
-                        <span>Đánh giá xuất sắc (4.8/5) - Top 15%</span>
-                      </li>
-                      <li className="flex items-center space-x-2">
-                        <span className="text-green-600">●</span>
-                        <span>Tỷ lệ lấp đầy cao (85%) - Top 20%</span>
-                      </li>
-                      <li className="flex items-center space-x-2">
-                        <span className="text-green-600">●</span>
-                        <span>Tỷ lệ phản hồi tuyệt vời (98%)</span>
-                      </li>
-                      <li className="flex items-center space-x-2">
-                        <span className="text-green-600">●</span>
-                        <span>Giá cạnh tranh và hợp lý</span>
-                      </li>
-                    </ul>
-                  </div>
-                  <div>
-                    <h4 className="font-semibold mb-3">Cơ hội phát triển</h4>
-                    <ul className="space-y-2 text-sm">
-                      <li className="flex items-center space-x-2">
-                        <span className="text-orange-600">●</span>
-                        <span>Tăng lượt xem với ảnh chất lượng cao</span>
-                      </li>
-                      <li className="flex items-center space-x-2">
-                        <span className="text-orange-600">●</span>
-                        <span>Tối ưu giá trong mùa cao điểm</span>
-                      </li>
-                      <li className="flex items-center space-x-2">
-                        <span className="text-orange-600">●</span>
-                        <span>Thêm amenities độc đáo</span>
-                      </li>
-                      <li className="flex items-center space-x-2">
-                        <span className="text-orange-600">●</span>
-                        <span>Chạy khuyến mãi dài hạn (7+ ngày)</span>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Top Actions */}
-              <Card className="p-6">
-                <h3 className="text-xl font-bold mb-4">Hành động đề xuất</h3>
-                <div className="space-y-4">
-                  <div className="flex items-start space-x-4 p-4 border rounded-lg hover:shadow-md transition-shadow">
-                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                      <span className="text-xl">📸</span>
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold mb-1">Cập nhật ảnh chuyên nghiệp</h4>
-                      <p className="text-sm text-muted-foreground mb-2">
-                        Listings với ảnh chất lượng cao nhận được 40% lượt xem nhiều hơn
-                      </p>
-                      <Badge variant="outline" className="text-xs">+40% views dự kiến</Badge>
-                    </div>
-                    <Button size="sm">Thuê photographer</Button>
-                  </div>
-
-                  <div className="flex items-start space-x-4 p-4 border rounded-lg hover:shadow-md transition-shadow">
-                    <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                      <span className="text-xl">💰</span>
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold mb-1">Điều chỉnh giá mùa hè</h4>
-                      <p className="text-sm text-muted-foreground mb-2">
-                        Tăng giá 15% trong T6-T8 để tối đa hóa doanh thu mùa cao điểm
-                      </p>
-                      <Badge variant="outline" className="text-xs">+18M doanh thu dự kiến</Badge>
-                    </div>
-                    <Button size="sm">Xem Smart Pricing</Button>
-                  </div>
-
-                  <div className="flex items-start space-x-4 p-4 border rounded-lg hover:shadow-md transition-shadow">
-                    <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
-                      <span className="text-xl">🎯</span>
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold mb-1">Chạy khuyến mãi dài hạn</h4>
-                      <p className="text-sm text-muted-foreground mb-2">
-                        Giảm 15% cho booking 7+ ngày để tăng occupancy mùa thấp điểm
-                      </p>
-                      <Badge variant="outline" className="text-xs">+12% occupancy dự kiến</Badge>
-                    </div>
-                    <Button size="sm">Tạo khuyến mãi</Button>
-                  </div>
-                </div>
-              </Card>
-
-              {/* Market Trends */}
-              <Card className="p-6 bg-gradient-to-r from-indigo-500/10 to-purple-500/10">
-                <h3 className="text-xl font-bold mb-4">📈 Xu hướng thị trường</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-4 bg-white rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">Giá TB thị trường</p>
-                    <p className="text-2xl font-bold mb-2">₫1,980,000</p>
-                    <Badge variant="outline" className="text-xs">
-                      <TrendingUp className="w-3 h-3 mr-1" />
-                      +8% so với tháng trước
-                    </Badge>
-                  </div>
-                  <div className="p-4 bg-white rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">Occupancy TB khu vực</p>
-                    <p className="text-2xl font-bold mb-2">78%</p>
-                    <Badge variant="outline" className="text-xs">
-                      Bạn cao hơn +7%
-                    </Badge>
-                  </div>
-                  <div className="p-4 bg-white rounded-lg">
-                    <p className="text-sm text-muted-foreground mb-1">Nhu cầu tháng tới</p>
-                    <p className="text-2xl font-bold mb-2">Cao</p>
-                    <Badge className="bg-green-600 text-xs">
-                      Mùa cao điểm
-                    </Badge>
-                  </div>
-                </div>
-              </Card>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <RevenueChart data={revenueSeries} loading={refreshing} />
+              <HostInsights insights={insights} />
             </div>
-          </TabsContent>
-        </Tabs>
+          </div>
+        )}
       </div>
     </HostLayout>
   )

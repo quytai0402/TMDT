@@ -40,51 +40,61 @@ export async function trackQuestProgress(
   metadata?: Record<string, any>
 ) {
   try {
-    const baseUrl =
-      process.env.NEXTAUTH_URL ??
-      process.env.NEXT_PUBLIC_APP_URL ??
-      'http://localhost:3000'
-    if (typeof window === 'undefined') {
-      // Server-side: use fetch with internal API
-      const response = await fetch(`${baseUrl}/api/quests/track`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          trigger,
-          metadata
-        })
-      })
+    const payload = JSON.stringify({ trigger, metadata })
+    const headers = { 'Content-Type': 'application/json' }
+    const baseInit: RequestInit = {
+      method: 'POST',
+      headers,
+      body: payload,
+      cache: 'no-store',
+    }
 
-      if (!response.ok) {
-        console.error('Failed to track quest progress:', await response.text())
-        return null
+    const logFailure = async (response: Response) => {
+      let detail: string | undefined
+
+      try {
+        detail = await response.text()
+      } catch (error) {
+        detail = undefined
       }
 
-      return await response.json()
-    } else {
-      // Client-side: use fetch
-      const response = await fetch('/api/quests/track', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          trigger,
-          metadata
-        })
-      })
+      const context = detail && detail.length > 0 ? ` (${detail})` : ''
+      const message = `Quest tracking failed [${response.status}]: ${response.statusText}${context}`
+
+      if (response.status >= 500) {
+        console.error(message)
+      } else {
+        console.warn(message)
+      }
+    }
+
+    if (typeof window === 'undefined') {
+      const baseUrl =
+        process.env.NEXTAUTH_URL ??
+        process.env.NEXT_PUBLIC_APP_URL ??
+        'http://localhost:3000'
+
+      const response = await fetch(`${baseUrl}/api/quests/track`, baseInit)
 
       if (!response.ok) {
-        console.error('Failed to track quest progress')
+        await logFailure(response)
         return null
       }
 
       return await response.json()
     }
+
+    const response = await fetch('/api/quests/track', {
+      ...baseInit,
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      await logFailure(response)
+      return null
+    }
+
+    return await response.json()
   } catch (error) {
     console.error('Error tracking quest progress:', error)
     return null

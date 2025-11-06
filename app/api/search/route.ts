@@ -58,6 +58,89 @@ const DESTINATION_LOOKUP = DESTINATIONS.map((destination) => {
   }
 })
 
+const FLEX_MODE_CONFIG: Record<string, { maxNights?: number; minNights?: number; maxPrice?: number; minGuests?: number }> = {
+  weekends: { minNights: 1, maxNights: 4, maxPrice: 4000000, minGuests: 2 },
+  weeks: { minNights: 3, maxNights: 10, maxPrice: 3000000, minGuests: 2 },
+  month: { minNights: 7, maxNights: 21, maxPrice: 3500000, minGuests: 2 },
+}
+
+const FLEX_MONTH_CONFIG: Record<
+  string,
+  {
+    region?: string
+    maxPrice?: number
+    minPrice?: number
+  }
+> = {
+  jan: { region: 'south', maxPrice: 1200000 },
+  feb: { region: 'south', maxPrice: 1300000 },
+  mar: { region: 'central', maxPrice: 1100000 },
+  apr: { region: 'central', maxPrice: 1400000 },
+  may: { region: 'islands', maxPrice: 1300000 },
+  jun: { region: 'islands', maxPrice: 1600000, minPrice: 600000 },
+}
+
+function parseTripLengthRange(value?: string | null) {
+  if (!value) return null
+  const normalized = value.trim()
+  if (!normalized) return null
+  const plusMatch = normalized.match(/^(\d+)\+$/)
+  if (plusMatch) {
+    return { minNights: parseInt(plusMatch[1], 10) || undefined }
+  }
+  const rangeMatch = normalized.match(/^(\d+)\s*-\s*(\d+)$/)
+  if (rangeMatch) {
+    const min = parseInt(rangeMatch[1], 10)
+    const max = parseInt(rangeMatch[2], 10)
+    return {
+      minNights: Number.isFinite(min) ? min : undefined,
+      maxNights: Number.isFinite(max) ? max : undefined,
+    }
+  }
+  return null
+}
+
+const INTENT_FILTERS: Record<
+  string,
+  {
+    region?: string
+    cities?: string[]
+    minGuests?: number
+    minBedrooms?: number
+    propertyTypes?: string[]
+    maxPrice?: number
+    requiresPool?: boolean
+  }
+> = {
+  'family-fun': {
+    region: 'south',
+    minGuests: 6,
+    minBedrooms: 3,
+    propertyTypes: ['VILLA', 'HOUSE', 'BUNGALOW'],
+    requiresPool: true,
+  },
+  'coastal-retreat': {
+    region: 'islands',
+    propertyTypes: ['VILLA', 'BUNGALOW', 'HOUSE'],
+    maxPrice: 6000000,
+  },
+  'executive-workation': {
+    minGuests: 2,
+    minBedrooms: 1,
+    propertyTypes: ['APARTMENT', 'CONDO', 'LOFT', 'STUDIO'],
+    maxPrice: 3500000,
+  },
+  'wellness-retreat': {
+    region: 'highlands',
+    minGuests: 2,
+    minBedrooms: 2,
+    propertyTypes: ['VILLA', 'BUNGALOW', 'HOUSE'],
+  },
+  'personalized': {
+    propertyTypes: ['VILLA', 'APARTMENT', 'HOUSE', 'BUNGALOW'],
+  },
+}
+
 function normalizeRegionInput(value: string | null): string | null {
   if (!value) return null
   return value
@@ -75,14 +158,24 @@ export async function GET(req: NextRequest) {
     const rawQuery = searchParams.get('q') || ''
     const query = rawQuery.trim()
     const city = searchParams.get('city')
-    const regionParam = normalizeRegionInput(searchParams.get('region'))
+    let regionParam = normalizeRegionInput(searchParams.get('region'))
     const checkIn = searchParams.get('checkIn')
     const checkOut = searchParams.get('checkOut')
     const guests = parseInt(searchParams.get('guests') || '1')
-    
+    const flexible = searchParams.get('flexible') === 'true'
+    const flexModeParam = searchParams.get('flexMode') ?? undefined
+    const tripLengthRaw = searchParams.get('tripLength') ?? undefined
+    const flexDurationParam = searchParams.get('duration') ?? undefined
+    const flexMonthParam = searchParams.get('month')?.toLowerCase() ?? null
+    const parsedTripLength = parseTripLengthRange(tripLengthRaw ?? flexDurationParam)
+    let requestedMinNights = parsedTripLength?.minNights
+    let requestedMaxNights = parsedTripLength?.maxNights
+    const intentParam = searchParams.get('intent')?.toLowerCase() ?? null
+    const intentFilters = intentParam ? INTENT_FILTERS[intentParam] ?? null : null
+
     // Advanced filters
     const minPrice = parseFloat(searchParams.get('minPrice') || '0')
-    const maxPrice = parseFloat(searchParams.get('maxPrice') || '999999999')
+    let maxPrice = parseFloat(searchParams.get('maxPrice') || '999999999')
     const propertyTypes = searchParams.get('propertyTypes')?.split(',')
     const amenities = searchParams.get('amenities')?.split(',')
     const bedrooms = parseInt(searchParams.get('bedrooms') || '0')
@@ -121,6 +214,10 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const skip = (page - 1) * limit
 
+    if (!regionParam && intentFilters?.region) {
+      regionParam = normalizeRegionInput(intentFilters.region)
+    }
+
     // Build where clause
     const where: any = {
       status: 'ACTIVE',
@@ -148,8 +245,16 @@ export async function GET(req: NextRequest) {
       ]
     }
 
+    const preferredCities = !city && intentFilters?.cities?.length ? intentFilters.cities : null
+    const flexMonthConfig = flexMonthParam ? FLEX_MONTH_CONFIG[flexMonthParam] : null
+
     if (city) {
       where.city = { contains: city, mode: 'insensitive' }
+    } else if (preferredCities) {
+      where.city = {
+        in: preferredCities,
+        mode: 'insensitive',
+      }
     } else if (matchedDestination && matchedDestination.cities.length > 0) {
       where.city = {
         in: matchedDestination.cities,
@@ -180,21 +285,60 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    if (!where.city && flexMonthConfig?.region) {
+      const normalizedRegion = REGION_ALIASES[flexMonthConfig.region] ?? flexMonthConfig.region
+      const regionCities = REGION_MAP[normalizedRegion]
+      if (regionCities && regionCities.size > 0) {
+        where.city = {
+          in: Array.from(regionCities),
+          mode: 'insensitive',
+        }
+      }
+    }
+
     if (propertyTypes && propertyTypes.length > 0) {
       where.propertyType = { in: propertyTypes }
+    } else if (intentFilters?.propertyTypes?.length) {
+      where.propertyType = { in: intentFilters.propertyTypes }
     }
 
     if (bedrooms > 0) {
       where.bedrooms = { gte: bedrooms }
     }
 
+    if (intentFilters?.minBedrooms) {
+      const minBedrooms = intentFilters.minBedrooms
+      const current = typeof where.bedrooms?.gte === 'number' ? where.bedrooms.gte : 0
+      if (!where.bedrooms || minBedrooms > current) {
+        where.bedrooms = { gte: minBedrooms }
+      }
+    }
+
     if (bathrooms > 0) {
       where.bathrooms = { gte: bathrooms }
+    }
+
+    if (intentFilters?.maxPrice) {
+      maxPrice = Math.min(maxPrice, intentFilters.maxPrice)
     }
 
     where.basePrice = {
       gte: minPrice,
       lte: maxPrice,
+    }
+
+    if (flexMonthConfig?.maxPrice) {
+      where.basePrice.lte = Math.min(where.basePrice.lte, flexMonthConfig.maxPrice)
+    }
+
+    if (flexMonthConfig?.minPrice) {
+      where.basePrice.gte = Math.max(where.basePrice.gte, flexMonthConfig.minPrice)
+    }
+
+    if (intentFilters?.requiresPool) {
+      where.amenities = {
+        has: 'Hồ bơi',
+      }
     }
 
     if (allowPets) {
@@ -278,6 +422,51 @@ export async function GET(req: NextRequest) {
       ]
     }
 
+    if (flexible) {
+      const flexConfig = FLEX_MODE_CONFIG[flexModeParam ?? 'weekends']
+      if (flexConfig?.maxNights) {
+        requestedMaxNights =
+          typeof requestedMaxNights === 'number'
+            ? Math.min(requestedMaxNights, flexConfig.maxNights)
+            : flexConfig.maxNights
+      }
+      if (flexConfig?.minNights) {
+        requestedMinNights =
+          typeof requestedMinNights === 'number'
+            ? Math.max(requestedMinNights, flexConfig.minNights)
+            : flexConfig.minNights
+      }
+      if (flexConfig?.maxPrice) {
+        where.basePrice.lte = Math.min(where.basePrice.lte, flexConfig.maxPrice)
+      }
+      if (flexConfig?.minGuests) {
+        const currentMin = typeof where.maxGuests?.gte === 'number' ? where.maxGuests.gte : guests
+        where.maxGuests = { gte: Math.max(currentMin, flexConfig.minGuests) }
+      }
+      if (!Array.isArray(orderings) || orderings.length === 0) {
+        orderings = [{ averageRating: 'desc' }, { basePrice: 'asc' }]
+      } else {
+        orderings.unshift({ averageRating: 'desc' })
+      }
+    }
+
+    if (typeof requestedMaxNights === 'number') {
+      const currentLte = typeof where.minNights?.lte === 'number' ? where.minNights.lte : Infinity
+      const nextLte = Math.min(currentLte, requestedMaxNights)
+      where.minNights = { lte: nextLte }
+    }
+
+    if (typeof requestedMinNights === 'number') {
+      const currentGte = typeof where.maxNights?.gte === 'number' ? where.maxNights.gte : 0
+      const nextGte = Math.max(currentGte, requestedMinNights)
+      where.maxNights = { gte: nextGte }
+    }
+
+    if (intentFilters?.minGuests) {
+      const currentMinGuests = typeof where.maxGuests?.gte === 'number' ? where.maxGuests.gte : guests
+      where.maxGuests = { gte: Math.max(currentMinGuests, intentFilters.minGuests) }
+    }
+
     // Fetch listings
     let listings = await prisma.listing.findMany({
       where,
@@ -328,6 +517,7 @@ export async function GET(req: NextRequest) {
       const checkOutDate = new Date(checkOut)
       
       // Get listings with conflicting bookings or blocked dates
+      // Only check CONFIRMED and COMPLETED bookings
       const listingsWithConflicts = await prisma.listing.findMany({
         where: {
           id: { in: listings.map((l) => l.id) },
@@ -335,7 +525,7 @@ export async function GET(req: NextRequest) {
             {
               bookings: {
                 some: {
-                  status: { in: ['CONFIRMED', 'PENDING'] },
+                  status: { in: ['CONFIRMED', 'COMPLETED'] },
                   OR: [
                     {
                       AND: [

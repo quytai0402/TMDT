@@ -48,18 +48,18 @@ type AdminListing = {
   updatedAt?: string | null
 }
 
-type StatusKey = "all" | "PENDING" | "ACTIVE" | "REJECTED" | "INACTIVE"
+type StatusKey = "all" | "PENDING_REVIEW" | "ACTIVE" | "REJECTED" | "INACTIVE"
 
 const STATUS_OPTIONS: Array<{ label: string; value: StatusKey }> = [
   { label: "Tất cả", value: "all" },
-  { label: "Chờ duyệt", value: "PENDING" },
+  { label: "Chờ duyệt", value: "PENDING_REVIEW" },
   { label: "Đang hoạt động", value: "ACTIVE" },
   { label: "Bị từ chối", value: "REJECTED" },
   { label: "Tạm dừng", value: "INACTIVE" },
 ]
 
 const SUMMARY_TARGETS: Array<{ label: string; value: StatusKey; icon: React.ComponentType<{ className?: string }> }> = [
-  { label: "Chờ duyệt", value: "PENDING", icon: Clock },
+  { label: "Chờ duyệt", value: "PENDING_REVIEW", icon: Clock },
   { label: "Đang hoạt động", value: "ACTIVE", icon: Check },
   { label: "Bị từ chối", value: "REJECTED", icon: X },
   { label: "Tổng hoạt động", value: "ACTIVE", icon: Home },
@@ -103,7 +103,7 @@ const formatRelativeTime = (value?: string | null) => {
 }
 
 export function ListingModeration() {
-  const [statusFilter, setStatusFilter] = useState<StatusKey>("PENDING")
+  const [statusFilter, setStatusFilter] = useState<StatusKey>("PENDING_REVIEW")
   const [searchQuery, setSearchQuery] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [listings, setListings] = useState<AdminListing[]>([])
@@ -111,7 +111,7 @@ export function ListingModeration() {
   const [error, setError] = useState<string | null>(null)
   const [summary, setSummary] = useState<Record<StatusKey, number>>({
     all: 0,
-    PENDING: 0,
+    PENDING_REVIEW: 0,
     ACTIVE: 0,
     REJECTED: 0,
     INACTIVE: 0,
@@ -387,7 +387,7 @@ export function ListingModeration() {
                     >
                       Xem chi tiết
                     </Button>
-                    {listing.status === "PENDING" ? (
+                    {listing.status === "PENDING_REVIEW" ? (
                       <div className="flex gap-2">
                         <Button
                           variant="secondary"

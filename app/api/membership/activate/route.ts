@@ -2,15 +2,13 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { mapMembershipPlanToLoyaltyTier } from "@/lib/membership"
 import {
-  LoyaltyTier,
   MembershipBillingCycle,
+  MembershipPaymentMethod,
   MembershipStatus,
-  RewardSource,
-  RewardTransactionType,
   Prisma,
 } from "@prisma/client"
+import { createPendingMembershipPurchase, activateMembershipForUser } from "@/lib/membership-activation"
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,7 +20,8 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const planSlug: string | undefined = body?.planSlug
     const billingCycle: string | undefined = body?.billingCycle
-    const paymentMethod: string | undefined = body?.paymentMethod
+    const paymentMethodInput: string | undefined = body?.paymentMethod
+    const referenceCode: string | undefined = body?.referenceCode
 
     if (!planSlug) {
       return NextResponse.json({ error: "Missing membership plan" }, { status: 400 })
@@ -54,6 +53,8 @@ export async function POST(req: NextRequest) {
         id: true,
         loyaltyPoints: true,
         loyaltyTier: true,
+        email: true,
+        name: true,
       },
     })
 
@@ -61,73 +62,70 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 })
     }
 
-    const now = new Date()
     const cycle = billingCycle === "monthly" ? MembershipBillingCycle.MONTHLY : MembershipBillingCycle.ANNUAL
-    const expiresAt = new Date(now)
-    if (cycle === MembershipBillingCycle.MONTHLY) {
-      expiresAt.setMonth(expiresAt.getMonth() + 1)
-    } else {
-      expiresAt.setFullYear(expiresAt.getFullYear() + 1)
+    const normalizedPaymentMethod: MembershipPaymentMethod =
+      paymentMethodInput === "bank_transfer"
+        ? MembershipPaymentMethod.BANK_TRANSFER
+        : paymentMethodInput === "e_wallet"
+          ? MembershipPaymentMethod.E_WALLET
+          : MembershipPaymentMethod.CREDIT_CARD
+
+    const amount = cycle === MembershipBillingCycle.MONTHLY ? plan.monthlyPrice : plan.annualPrice
+    if (!amount || amount <= 0) {
+      return NextResponse.json({ error: "Invalid membership pricing configuration" }, { status: 400 })
     }
 
-    const combinedFeatures = Array.from(
-      new Set([...(plan.features ?? []), ...(plan.exclusiveFeatures ?? [])])
-    )
+    const planSnapshot = {
+      id: plan.id,
+      slug: plan.slug,
+      name: plan.name,
+      features: plan.features,
+      exclusiveFeatures: plan.exclusiveFeatures,
+      monthlyPrice: plan.monthlyPrice,
+      annualPrice: plan.annualPrice,
+      color: plan.color,
+      icon: plan.icon,
+    }
 
-    const targetTier: LoyaltyTier = mapMembershipPlanToLoyaltyTier(plan.slug, user.loyaltyTier)
-    const bonusPoints = cycle === MembershipBillingCycle.ANNUAL ? 2000 : 800
-    const newBalance = user.loyaltyPoints + bonusPoints
+    if (normalizedPaymentMethod === MembershipPaymentMethod.BANK_TRANSFER) {
+      if (!referenceCode) {
+        return NextResponse.json({ error: "Missing transfer reference" }, { status: 400 })
+      }
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        membershipPlanId: plan.id,
-        membershipStatus: MembershipStatus.ACTIVE,
-        membershipStartedAt: now,
-        membershipExpiresAt: expiresAt,
-        membershipBillingCycle: cycle,
-        membershipFeatures: combinedFeatures,
-        loyaltyTier: targetTier,
-        loyaltyPoints: {
-          increment: bonusPoints,
+      const purchase = await createPendingMembershipPurchase({
+        user,
+        plan: planSnapshot,
+        billingCycle: cycle,
+        amount,
+        referenceCode,
+        paymentMethod: normalizedPaymentMethod,
+      })
+
+      return NextResponse.json({
+        success: true,
+        status: MembershipStatus.PENDING,
+        pendingPurchase: {
+          id: purchase.id,
+          referenceCode: purchase.referenceCode,
+          amount: purchase.amount,
+          createdAt: purchase.createdAt,
+          paymentMethod: paymentMethodInput ?? "bank_transfer",
         },
-      },
-    })
+      })
+    }
 
-    await prisma.rewardTransaction.create({
-      data: {
-        userId: user.id,
-        transactionType: RewardTransactionType.CREDIT,
-        source: RewardSource.MEMBERSHIP,
-        points: bonusPoints,
-        balanceAfter: newBalance,
-        description: `Thưởng kích hoạt membership ${plan.name}`,
-        metadata: {
-          planSlug: plan.slug,
-          billingCycle: cycle,
-          paymentMethod: paymentMethod ?? "unspecified",
-        },
-      },
+    const activation = await activateMembershipForUser({
+      user,
+      plan: planSnapshot,
+      billingCycle: cycle,
+      paymentMethod: normalizedPaymentMethod,
+      amount,
+      referenceCode,
     })
 
     return NextResponse.json({
       success: true,
-      membership: {
-        status: MembershipStatus.ACTIVE,
-        startedAt: now,
-        expiresAt,
-        billingCycle: cycle,
-        loyaltyTier: targetTier,
-        bonusPoints,
-        features: combinedFeatures,
-        plan: {
-          slug: plan.slug,
-          name: plan.name,
-          color: plan.color,
-          icon: plan.icon,
-          exclusiveFeatures: plan.exclusiveFeatures,
-        },
-      },
+      membership: activation.membership,
     })
   } catch (error) {
     console.error("Membership activation error:", error)

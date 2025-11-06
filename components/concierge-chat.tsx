@@ -111,8 +111,24 @@ function formatDistanceLabel(distanceKm?: number | null) {
   return distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(1)}km`
 }
 
+function normalizeVietnamese(input: string) {
+  return input
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
 function matches(query: string, keywords: string[]) {
-  return keywords.some((keyword) => query.includes(keyword))
+  const normalizedQuery = normalizeVietnamese(query)
+  return keywords.some((keyword) => {
+    const keywordValue = keyword.toLowerCase()
+    const normalizedKeyword = normalizeVietnamese(keyword)
+    return query.includes(keywordValue) || normalizedQuery.includes(normalizedKeyword)
+  })
 }
 
 export function ConciergeChat() {
@@ -216,6 +232,7 @@ export function ConciergeChat() {
   const craftBotResponse = useCallback(
     async (query: string): Promise<Message> => {
       const lowerQuery = query.toLowerCase()
+      const normalizedQuery = normalizeVietnamese(lowerQuery)
       const timestamp = new Date()
 
       const listing = assistantContext?.listingContext
@@ -385,6 +402,60 @@ export function ConciergeChat() {
             suggestions: ['Đặt xe 4 chỗ', 'Đặt xe 7 chỗ', 'Xem thêm gói di chuyển'],
           }
         }
+
+        if (matches(lowerQuery, ['dịch vụ', 'add service', 'service', 'thêm dịch vụ'])) {
+          const serviceSuggestions = ['Đặt thêm bữa sáng', 'Trang trí kỷ niệm', 'Thêm hoạt động vào planner']
+
+          if (booking) {
+            const checkIn = new Date(booking.checkIn).toLocaleDateString('vi-VN')
+            const checkOut = new Date(booking.checkOut).toLocaleDateString('vi-VN')
+
+            return {
+              id: `services-${timestamp.getTime()}`,
+              type: 'bot',
+              content: `Chuyến đi của bạn tại ${booking.listing.title} (${booking.listing.city}) từ ${checkIn} đến ${checkOut} có thể bổ sung bữa sáng, xe đưa đón hoặc trải nghiệm địa phương. Bạn mô tả nhu cầu (thời gian, số khách) tôi sẽ giữ lịch và báo giá giúp ngay.`,
+              timestamp,
+              suggestions: serviceSuggestions,
+            }
+          }
+
+          return {
+            id: `services-${timestamp.getTime()}`,
+            type: 'bot',
+            content: `Tôi có thể chuẩn bị bữa sáng, đặt xe hoặc sắp xếp hoạt động cho khách lưu trú tại ${listing.title}. Bạn cần dịch vụ nào, cứ mô tả chi tiết nhé.`,
+            timestamp,
+            suggestions: serviceSuggestions,
+          }
+        }
+
+        if (matches(lowerQuery, ['giữ phòng', 'giu phong', 'giữ chỗ', 'giu cho', 'thanh toán', 'cọc', 'deposit'])) {
+          const availability = listing.availability
+          const statusNote = availability.status === 'BOOKED'
+            ? `Hiện căn đang được đặt đến ${availability.nextAvailableFrom ?? 'khi có lịch trống mới.'}`
+            : 'Căn đang trống. Tôi có thể giữ phòng tạm tối đa 12 giờ để bạn hoàn tất thanh toán.'
+
+          return {
+            id: `hold-${timestamp.getTime()}`,
+            type: 'bot',
+            content: `${statusNote} Tôi cũng có thể gửi đường dẫn thanh toán bảo đảm hoặc hỗ trợ chuyển khoản nếu bạn cho biết số đêm và số khách.`,
+            timestamp,
+            suggestions: ['Giữ phòng 48 giờ', 'Thanh toán ngay', 'Trao đổi với host'],
+          }
+        }
+
+        if (matches(lowerQuery, ['thông báo', 'notify', 'nhắc tôi', 'follow up'])) {
+          const availability = listing.availability
+
+          return {
+            id: `alert-${timestamp.getTime()}`,
+            type: 'bot',
+            content: availability.status === 'BOOKED'
+              ? `Tôi sẽ theo dõi lịch và nhắc bạn ngay khi ${listing.title} trống từ ${availability.nextAvailableFrom ?? 'ngày gần nhất'}. Bạn cũng có thể giữ phòng ở thời điểm hiện tại nếu muốn chắc chắn.`
+              : `Căn ${listing.title} đang trống. Bạn muốn tôi thiết lập lời nhắc hay giữ phòng giúp bạn trong bao lâu?`,
+            timestamp,
+            suggestions: ['Giữ phòng ngay', 'Nhắc tôi qua email', 'Liên hệ concierge'],
+          }
+        }
       }
 
       // Booking specific queries
@@ -403,12 +474,28 @@ export function ConciergeChat() {
         }
       }
 
+      if (/^[0-9]+$/.test(normalizedQuery.replace(/\s+/g, ''))) {
+        return {
+          id: `code-${timestamp.getTime()}`,
+          type: 'bot',
+          content: 'Tôi nhận được một chuỗi số. Nếu đây là mã đặt phòng hoặc yêu cầu, bạn có thể cho tôi biết rõ hơn để tôi kiểm tra chính xác?',
+          timestamp,
+          suggestions: assistantContext?.quickReplies ?? undefined,
+        }
+      }
+
       // Default fallback
       return {
         id: `default-${timestamp.getTime()}`,
         type: 'bot',
-        content:
-          'Tôi có thể hỗ trợ đặt dịch vụ, kiểm tra tình trạng phòng hoặc gợi ý ăn uống cho bạn. Bạn cứ cho tôi biết nhu cầu cụ thể nhé!',
+        content: (() => {
+          const hintReplies = (assistantContext?.quickReplies ?? []).slice(0, 3)
+          if (hintReplies.length === 0) {
+            return 'Tôi chưa rõ nhu cầu cụ thể nên chưa phản hồi chính xác được. Bạn có thể hỏi tôi về dịch vụ, ăn uống hoặc lịch trình nhé.'
+          }
+
+          return `Tôi chưa rõ nhu cầu cụ thể nên chưa phản hồi chính xác được. Bạn có thể thử các gợi ý như ${hintReplies.join(', ')}.`
+        })(),
         timestamp,
         suggestions: assistantContext?.quickReplies ?? undefined,
       }

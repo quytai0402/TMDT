@@ -13,6 +13,112 @@ function isHexObjectId(value: string) {
   return /^[a-fA-F0-9]{24}$/.test(value)
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function coerceNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  return null
+}
+
+function buildGuideRecommendations(
+  places: unknown,
+  category: ConciergeRecommendation['category'],
+): ConciergeRecommendation[] {
+  if (!Array.isArray(places)) {
+    return []
+  }
+
+  return places
+    .filter(isPlainObject)
+    .map((place) => {
+      const distance = coerceNumber(place.distance)
+
+      return {
+        name: typeof place.name === 'string' ? place.name : 'Điểm tham quan nổi bật',
+        distanceKm: distance ?? null,
+        description: typeof place.description === 'string' ? place.description : null,
+        rating: null,
+        category,
+      }
+    })
+}
+
+function normalizeNearbyCategory(type: unknown): 'restaurant' | 'cafe' | 'attraction' | null {
+  if (typeof type !== 'string') {
+    return null
+  }
+
+  const normalized = type.toLowerCase()
+  if (normalized === 'restaurant') return 'restaurant'
+  if (normalized === 'cafe') return 'cafe'
+  if (normalized === 'attraction' || normalized === 'beach' || normalized === 'transport') {
+    return 'attraction'
+  }
+
+  return null
+}
+
+function categorizeNearbyPlaces(
+  places: unknown[],
+): Record<'restaurant' | 'cafe' | 'attraction', ConciergeRecommendation[]> {
+  const result = {
+    restaurant: [] as ConciergeRecommendation[],
+    cafe: [] as ConciergeRecommendation[],
+    attraction: [] as ConciergeRecommendation[],
+  }
+
+  for (const place of places) {
+    if (!isPlainObject(place)) continue
+
+    const category = normalizeNearbyCategory(place.type)
+    if (!category) continue
+
+    const distanceMeters = coerceNumber(place.distance)
+    const distanceKm = distanceMeters !== null
+      ? Math.round(((distanceMeters / 1000) + Number.EPSILON) * 10) / 10
+      : null
+
+    result[category].push({
+      name: typeof place.name === 'string' ? place.name : 'Địa điểm nổi bật',
+      distanceKm,
+      description: typeof place.description === 'string' ? place.description : null,
+      rating: coerceNumber(place.rating),
+      category,
+    })
+  }
+
+  return result
+}
+
+function mergeRecommendations(
+  primary: ConciergeRecommendation[],
+  fallback: ConciergeRecommendation[],
+): ConciergeRecommendation[] {
+  const merged: ConciergeRecommendation[] = []
+  const seen = new Set<string>()
+
+  for (const recommendation of [...primary, ...fallback]) {
+    const name = recommendation.name?.toLowerCase() ?? ''
+    const key = `${recommendation.category ?? ''}:${name}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    merged.push(recommendation)
+    if (merged.length >= 3) break
+  }
+
+  return merged
+}
+
 interface ConciergeContextOptions {
   listingIdentifier?: string
   bookingId?: string
@@ -213,11 +319,29 @@ async function buildListingContext(listingId: string) {
   const availability = await computeAvailability(listing.id)
 
   const neighborhood = listing.neighborhoodGuide
-  const recommendations = {
-    restaurants: neighborhood?.restaurants?.slice(0, 3) ?? [],
-    cafes: neighborhood?.cafes?.slice(0, 3) ?? [],
-    attractions: neighborhood?.attractions?.slice(0, 3) ?? [],
+  const nearbyPlaces = Array.isArray(listing.nearbyPlaces)
+    ? (listing.nearbyPlaces as unknown[])
+    : []
+
+  const nearbyRecommendations = categorizeNearbyPlaces(nearbyPlaces)
+  const guideRecommendations = {
+    restaurants: buildGuideRecommendations(neighborhood?.restaurants, 'restaurant'),
+    cafes: buildGuideRecommendations(neighborhood?.cafes, 'cafe'),
+    attractions: buildGuideRecommendations(neighborhood?.attractions, 'attraction'),
   }
+
+  const restaurants = mergeRecommendations(
+    guideRecommendations.restaurants,
+    nearbyRecommendations.restaurant,
+  )
+  const cafes = mergeRecommendations(
+    guideRecommendations.cafes,
+    nearbyRecommendations.cafe,
+  )
+  const attractions = mergeRecommendations(
+    guideRecommendations.attractions,
+    nearbyRecommendations.attraction,
+  )
 
   const hostProfile = listing.host?.hostProfile
   const host = listing.host
@@ -254,27 +378,9 @@ async function buildListingContext(listingId: string) {
       `${listing.maxGuests} khách`,
     ],
     recommendations: {
-      restaurants: recommendations.restaurants.map((place) => ({
-        name: place.name,
-        distanceKm: place.distance ?? null,
-        description: place.description,
-        rating: null,
-        category: 'restaurant',
-      })),
-      cafes: recommendations.cafes.map((place) => ({
-        name: place.name,
-        distanceKm: place.distance ?? null,
-        description: place.description,
-        rating: null,
-        category: 'cafe',
-      })),
-      attractions: recommendations.attractions.map((place) => ({
-        name: place.name,
-        distanceKm: place.distance ?? null,
-        description: place.description,
-        rating: null,
-        category: 'attraction',
-      })),
+      restaurants,
+      cafes,
+      attractions,
     },
   }
 

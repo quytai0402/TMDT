@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
-import { Shield, MessageCircle } from "lucide-react"
+import { Shield, MessageCircle, Phone } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -18,6 +18,7 @@ interface HostCardProps {
     verified: boolean
     responseRate: number
     responseTime: string
+    phone?: string | null
   }
   listingId?: string
 }
@@ -105,6 +106,21 @@ export function HostCard({ host, listingId }: HostCardProps) {
                 <div className="font-semibold text-foreground">{host.responseTime}</div>
               </div>
             </div>
+
+            {host.phone && (
+              <div className="mb-4 flex items-center gap-2 px-4 py-3 rounded-lg bg-muted/50 border border-border">
+                <Phone className="h-4 w-4 text-primary flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="text-xs text-muted-foreground">Số điện thoại</div>
+                  <a 
+                    href={`tel:${host.phone}`}
+                    className="font-semibold text-foreground hover:text-primary transition-colors"
+                  >
+                    {host.phone}
+                  </a>
+                </div>
+              </div>
+            )}
 
             <Button 
               className="w-full md:w-auto"

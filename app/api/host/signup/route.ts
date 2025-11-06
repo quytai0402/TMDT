@@ -8,7 +8,7 @@ import { hashPassword } from "@/lib/helpers"
 const signupSchema = z.object({
   name: z.string().min(2, "Vui lòng nhập họ tên tối thiểu 2 ký tự."),
   email: z.string().email("Email không hợp lệ."),
-  phone: z.string().min(8, "Số điện thoại không hợp lệ."),
+  phone: z.string().min(10, "Số điện thoại phải có ít nhất 10 số.").regex(/^[0-9+\s()-]+$/, "Số điện thoại chỉ chứa số và ký tự +, -, (, ), khoảng trắng"),
   password: z.string().min(8, "Mật khẩu cần tối thiểu 8 ký tự."),
   introduction: z.string().min(20, "Giới thiệu cần tối thiểu 20 ký tự."),
   experience: z.string().min(20, "Vui lòng mô tả thêm kinh nghiệm vận hành."),

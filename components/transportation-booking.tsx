@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,11 +18,14 @@ import {
   Plane,
   Info,
   Check,
-  Phone
+  Phone,
+  Loader2
 } from "lucide-react"
 import { format } from "date-fns"
 import { vi } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+import { useToast } from "@/components/ui/use-toast"
+import { useConciergeContext } from "@/components/concierge-context-provider"
 
 interface TransportOption {
   id: string
@@ -38,6 +41,8 @@ interface TransportOption {
 }
 
 export function TransportationBooking() {
+  const { toast } = useToast()
+  const { context } = useConciergeContext()
   const [selectedTransport, setSelectedTransport] = useState<string | null>(null)
   const [pickupDate, setPickupDate] = useState<Date>()
   const [pickupTime, setPickupTime] = useState("09:00")
@@ -45,6 +50,9 @@ export function TransportationBooking() {
   const [dropoffLocation, setDropoffLocation] = useState("")
   const [passengers, setPassengers] = useState(2)
   const [notes, setNotes] = useState("")
+  const [bookingId, setBookingId] = useState<string | null>(null)
+  const [bookingLoading, setBookingLoading] = useState(true)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const transportOptions: TransportOption[] = [
     {
@@ -122,10 +130,138 @@ export function TransportationBooking() {
   ]
 
   const selectedOption = transportOptions.find(t => t.id === selectedTransport)
+  const contextKey = useMemo(() => JSON.stringify(context ?? {}), [context])
 
-  const handleBooking = () => {
-    // Handle booking logic
-    alert("Đặt xe thành công! Chúng tôi sẽ liên hệ xác nhận trong ít phút.")
+  useEffect(() => {
+    let cancelled = false
+
+    const resolveBooking = async () => {
+      try {
+        if (context?.bookingId) {
+          if (!cancelled) {
+            setBookingId(context.bookingId)
+            setBookingLoading(false)
+          }
+          return
+        }
+
+        const params = new URLSearchParams({ includeLatestBooking: "true" })
+        const response = await fetch(`/api/concierge/context?${params.toString()}`, {
+          cache: 'no-store',
+        })
+
+        if (!response.ok) {
+          throw new Error('Không thể lấy thông tin đặt phòng gần nhất')
+        }
+
+        const data = await response.json() as { latestBooking?: { id?: string } }
+        if (!cancelled) {
+          setBookingId(data.latestBooking?.id ?? null)
+        }
+      } catch (error) {
+        console.error('Failed to resolve booking context for transport:', error)
+        if (!cancelled) {
+          setBookingId(null)
+        }
+      } finally {
+        if (!cancelled) {
+          setBookingLoading(false)
+        }
+      }
+    }
+
+    void resolveBooking()
+
+    return () => {
+      cancelled = true
+    }
+  }, [contextKey])
+
+  const handleBooking = async () => {
+    if (!selectedOption) {
+      toast({ variant: "destructive", title: "Chọn dịch vụ", description: "Vui lòng chọn loại xe trước khi xác nhận." })
+      return
+    }
+
+    if (!bookingId) {
+      toast({ variant: "destructive", title: "Chưa có chuyến đi", description: "Bạn cần có chuyến đi đang hoạt động để thêm dịch vụ. Concierge có thể hỗ trợ khi bạn đã đặt phòng." })
+      return
+    }
+
+    setIsSubmitting(true)
+
+    try {
+      const pickupDateIso = pickupDate ? pickupDate.toISOString() : undefined
+      const quantityLabelParts: string[] = []
+      if (passengers) quantityLabelParts.push(`${passengers} khách`)
+      if (pickupDateIso) {
+        const readable = pickupDate ? format(pickupDate, "dd/MM/yyyy", { locale: vi }) : ""
+        quantityLabelParts.push(`${readable} • ${pickupTime}`)
+      }
+
+      const payload = {
+        catalogId: selectedOption.id,
+        name: selectedOption.name,
+        type: selectedOption.type,
+        price: selectedOption.price,
+        currency: "VND",
+        quantityLabel: quantityLabelParts.join(" • ") || undefined,
+        notes: notes || undefined,
+        scheduledFor: pickupDateIso,
+        pickup: {
+          location: pickupLocation || undefined,
+          time: pickupTime,
+          date: pickupDateIso,
+        },
+        dropoffLocation: dropoffLocation || undefined,
+        planner: {
+          type: "activity" as const,
+          date: pickupDateIso,
+          time: pickupTime,
+          location: dropoffLocation || pickupLocation || undefined,
+          notes: notes || undefined,
+        },
+        metadata: {
+          passengers,
+          duration: selectedOption.duration,
+          vehicle: selectedOption.vehicle,
+        },
+      }
+
+      const response = await fetch(`/api/bookings/${bookingId}/services`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        throw new Error(errorBody.error || "Không thể tạo yêu cầu concierge")
+      }
+
+      toast({
+        title: "Đã gửi concierge",
+        description: "Concierge đang xử lý yêu cầu đặt xe của bạn. Chúng tôi sẽ liên hệ xác nhận trong ít phút.",
+      })
+
+      setSelectedTransport(null)
+      setPickupDate(undefined)
+      setPickupTime("09:00")
+      setPickupLocation("")
+      setDropoffLocation("")
+      setPassengers(2)
+      setNotes("")
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Đặt xe không thành công",
+        description: error instanceof Error ? error.message : "Vui lòng thử lại sau ít phút",
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -136,6 +272,11 @@ export function TransportationBooking() {
         <p className="text-muted-foreground">
           Dịch vụ di chuyển tiện lợi cho chuyến đi của bạn
         </p>
+        {!bookingLoading && !bookingId && (
+          <p className="text-sm text-amber-600 mt-2">
+            Bạn chưa có chuyến đi nào để gắn dịch vụ. Concierge sẽ lưu yêu cầu khi bạn có đặt phòng đang hoạt động.
+          </p>
+        )}
       </div>
 
       {/* Transport Options */}
@@ -337,9 +478,18 @@ export function TransportationBooking() {
             </div>
 
             {/* Submit */}
-            <Button className="w-full" size="lg" onClick={handleBooking}>
-              <Car className="w-4 h-4 mr-2" />
-              Xác nhận đặt xe
+            <Button className="w-full" size="lg" onClick={handleBooking} disabled={isSubmitting || bookingLoading}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Đang gửi concierge...
+                </>
+              ) : (
+                <>
+                  <Car className="w-4 h-4 mr-2" />
+                  Xác nhận đặt xe
+                </>
+              )}
             </Button>
 
             <p className="text-xs text-center text-muted-foreground">

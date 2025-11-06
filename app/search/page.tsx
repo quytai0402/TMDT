@@ -2,6 +2,9 @@ import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { SearchResultsView } from "@/components/search-results-view"
 
+// Enable page-level caching
+export const revalidate = 60 // 60 seconds
+
 interface SearchPageProps {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }

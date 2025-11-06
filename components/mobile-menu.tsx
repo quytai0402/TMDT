@@ -1,18 +1,26 @@
 "use client"
 
-import { useState } from "react"
-import { Menu, X, Home, Search, Heart, User, MessageSquare, Calendar, Trophy, Crown, Settings, LogOut, LogIn, LayoutDashboard } from "lucide-react"
+import { useMemo, useState, type ComponentType } from "react"
+import { Menu, Home, Search, Heart, User, MessageSquare, Calendar, Trophy, Crown, Settings, LogOut, LogIn, LayoutDashboard, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useSession, signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
+import { useConciergeAccess } from "@/hooks/use-concierge-access"
+
+interface MenuItem {
+  icon: ComponentType<{ className?: string }>
+  label: string
+  href: string
+  auth?: boolean
+}
 
 export function MobileMenu() {
   const [open, setOpen] = useState(false)
   const { data: session } = useSession()
+  const { hasAccess: conciergeAccess, loading: conciergeLoading } = useConciergeAccess()
   const router = useRouter()
 
   const handleNavigate = (href: string) => {
@@ -20,16 +28,37 @@ export function MobileMenu() {
     setOpen(false)
   }
 
-  const menuItems = [
-    { icon: Home, label: "Trang chủ", href: "/" },
-    { icon: Search, label: "Tìm kiếm", href: "/search" },
-    { icon: LayoutDashboard, label: "Chủ đề cá nhân hoá", href: "/personas" },
-    { icon: Home, label: "Trở thành chủ nhà", href: "/become-host" },
-    { icon: Heart, label: "Yêu thích", href: "/wishlist", auth: true },
-    { icon: Calendar, label: "Chuyến đi", href: "/trips", auth: true },
-    { icon: MessageSquare, label: "Tin nhắn", href: "/messages", auth: true },
-    { icon: Trophy, label: "Loyalty", href: "/loyalty", auth: true },
-  ]
+  const menuItems = useMemo<MenuItem[]>(() => {
+    const items: MenuItem[] = [
+      { icon: Home, label: "Trang chủ", href: "/" },
+      { icon: Search, label: "Tìm kiếm", href: "/search" },
+      { icon: LayoutDashboard, label: "Chủ đề cá nhân hoá", href: "/personas" },
+      { icon: Heart, label: "Yêu thích", href: "/wishlist", auth: true },
+      { icon: Calendar, label: "Chuyến đi", href: "/trips", auth: true },
+      { icon: MessageSquare, label: "Tin nhắn", href: "/messages", auth: true },
+      { icon: Trophy, label: "Loyalty", href: "/loyalty", auth: true },
+    ]
+
+    if (conciergeAccess && !conciergeLoading) {
+      items.splice(3, 0, {
+        icon: MessageSquare,
+        label: "Concierge 24/7",
+        href: "/concierge",
+        auth: true,
+      })
+    }
+
+    if (session?.user?.isGuide) {
+      items.splice(3, 0, {
+        icon: Sparkles,
+        label: "Dashboard hướng dẫn viên",
+        href: "/guide/dashboard",
+        auth: true,
+      })
+    }
+
+    return items
+  }, [conciergeAccess, conciergeLoading, session?.user?.isGuide])
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>

@@ -11,6 +11,7 @@ import {
 } from '@prisma/client'
 import type { Prisma } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { getNearbyPlaces } from '../lib/nearby-places'
 
 const prisma = new PrismaClient()
 const prismaAny = prisma as any
@@ -21,6 +22,28 @@ const ensureJsonObject = (value: Prisma.JsonValue | null | undefined): Prisma.Js
   }
 
   return {}
+}
+
+const buildNearbyPlaces = (city: string, latitude: number, longitude: number) => {
+  try {
+    const places = getNearbyPlaces(city, latitude, longitude)
+    if (!places.length) {
+      return []
+    }
+
+    return places.map((place) => ({
+      name: place.name,
+      type: place.type,
+      distance: place.distance,
+      rating: typeof place.rating === 'number' ? place.rating : null,
+      description: place.description ?? null,
+      lat: place.lat,
+      lng: place.lng,
+    }))
+  } catch (error) {
+    console.warn('Unable to build nearby places for seed entry:', city, error)
+    return []
+  }
 }
 
 async function main() {
@@ -122,6 +145,65 @@ async function main() {
       referralCode: 'GUESTHAI',
     }
   })
+
+  const guideApplicant = await prisma.user.upsert({
+    where: { email: 'quytaii424@gmail.com' },
+    update: {
+      name: 'Quý Tài',
+      bio: 'Đam mê dẫn tour khám phá Sài Gòn về đêm với các trải nghiệm ẩm thực bản địa.',
+      phone: '0978123456',
+      languages: ['Tiếng Việt', 'English'],
+    },
+    create: {
+      email: 'quytaii424@gmail.com',
+      name: 'Quý Tài',
+      password: hashedPassword,
+      role: 'GUEST',
+      emailVerified: new Date(),
+      phone: '0978123456',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=guidetai',
+      bio: 'Đam mê dẫn tour khám phá Sài Gòn về đêm với các trải nghiệm ẩm thực bản địa.',
+      languages: ['Tiếng Việt', 'English'],
+    },
+  })
+
+  const guideApplicationPayload = {
+    displayName: 'Tai Quy Experiences',
+    tagline: 'Khám phá Sài Gòn về đêm cùng local insider',
+    introduction:
+      'Tôi là Quý Tài, sinh ra và lớn lên tại Sài Gòn. Suốt 6 năm qua tôi dẫn khách trải nghiệm những khu phố đêm, ẩm thực đường phố và câu chuyện văn hoá bản địa độc đáo.',
+    experienceSummary:
+      'Hơn 200 buổi tour ẩm thực và nghệ thuật đường phố trong 3 năm gần đây, hợp tác cùng các hướng dẫn viên trẻ và nhà báo địa phương.',
+    languages: ['Tiếng Việt', 'English'],
+    serviceAreas: ['TP.HCM', 'Quận 1', 'Quận 3'],
+    specialties: ['Ẩm thực', 'Văn hoá', 'Nightlife'],
+    availabilityNotes: 'Có thể dẫn tour buổi tối từ thứ Ba đến Chủ Nhật, nhận nhóm tối đa 6 khách.',
+    portfolioLinks: ['https://instagram.com/tai.saigon.nightlife'],
+    subscriptionAcknowledged: true,
+    status: 'PENDING' as const,
+    adminNotes: null,
+    reviewedAt: null,
+    guideProfileId: null,
+    sponsorId: null,
+  }
+
+  const existingGuideApplication = await prisma.guideApplication.findFirst({
+    where: { applicantId: guideApplicant.id },
+  })
+
+  if (existingGuideApplication) {
+    await prisma.guideApplication.update({
+      where: { id: existingGuideApplication.id },
+      data: guideApplicationPayload,
+    })
+  } else {
+    await prisma.guideApplication.create({
+      data: {
+        applicantId: guideApplicant.id,
+        ...guideApplicationPayload,
+      },
+    })
+  }
 
   console.log('✅ Users created')
 
@@ -1138,6 +1220,7 @@ async function main() {
       latitude: 12.2388,
       longitude: 109.1967,
       neighborhood: 'Bãi biển Trần Phú',
+  nearbyPlaces: buildNearbyPlaces('Nha Trang', 12.2388, 109.1967),
       basePrice: 3500000,
       cleaningFee: 500000,
       serviceFee: 350000,
@@ -1193,6 +1276,7 @@ async function main() {
       latitude: 12.2388,
       longitude: 109.1967,
       neighborhood: 'Bãi biển Trần Phú',
+  nearbyPlaces: buildNearbyPlaces('Nha Trang', 12.2388, 109.1967),
       basePrice: 3500000,
       cleaningFee: 500000,
       serviceFee: 350000,
@@ -1252,6 +1336,7 @@ async function main() {
       latitude: 11.9404,
       longitude: 108.4583,
       neighborhood: 'Trung tâm Đà Lạt',
+  nearbyPlaces: buildNearbyPlaces('Đà Lạt', 11.9404, 108.4583),
       basePrice: 2800000,
       cleaningFee: 400000,
       serviceFee: 280000,
@@ -1306,6 +1391,7 @@ async function main() {
       latitude: 11.9404,
       longitude: 108.4583,
       neighborhood: 'Trung tâm Đà Lạt',
+  nearbyPlaces: buildNearbyPlaces('Đà Lạt', 11.9404, 108.4583),
       basePrice: 2800000,
       cleaningFee: 400000,
       serviceFee: 280000,
@@ -1364,6 +1450,7 @@ async function main() {
       latitude: 10.1699,
       longitude: 103.9676,
       neighborhood: 'Bãi Sao',
+  nearbyPlaces: buildNearbyPlaces('Phú Quốc', 10.1699, 103.9676),
       basePrice: 8500000,
       cleaningFee: 1000000,
       serviceFee: 850000,
@@ -1419,6 +1506,7 @@ async function main() {
       latitude: 10.1699,
       longitude: 103.9676,
       neighborhood: 'Bãi Sao',
+  nearbyPlaces: buildNearbyPlaces('Phú Quốc', 10.1699, 103.9676),
       basePrice: 8500000,
       cleaningFee: 1000000,
       serviceFee: 850000,
@@ -1478,6 +1566,7 @@ async function main() {
       latitude: 10.7946,
       longitude: 106.7218,
       neighborhood: 'Vinhomes Central Park',
+  nearbyPlaces: buildNearbyPlaces('Hồ Chí Minh', 10.7946, 106.7218),
       basePrice: 5500000,
       cleaningFee: 600000,
       serviceFee: 550000,
@@ -1532,6 +1621,7 @@ async function main() {
       latitude: 10.7946,
       longitude: 106.7218,
       neighborhood: 'Vinhomes Central Park',
+  nearbyPlaces: buildNearbyPlaces('Hồ Chí Minh', 10.7946, 106.7218),
       basePrice: 5500000,
       cleaningFee: 600000,
       serviceFee: 550000,
@@ -1590,6 +1680,7 @@ async function main() {
       latitude: 15.8801,
       longitude: 108.3380,
       neighborhood: 'Phố cổ Hội An',
+  nearbyPlaces: buildNearbyPlaces('Hội An', 15.8801, 108.3380),
       basePrice: 1200000,
       cleaningFee: 200000,
       serviceFee: 120000,
@@ -1643,6 +1734,7 @@ async function main() {
       latitude: 15.8801,
       longitude: 108.3380,
       neighborhood: 'Phố cổ Hội An',
+  nearbyPlaces: buildNearbyPlaces('Hội An', 15.8801, 108.3380),
       basePrice: 1200000,
       cleaningFee: 200000,
       serviceFee: 120000,
@@ -1700,6 +1792,7 @@ async function main() {
       latitude: 21.0545,
       longitude: 105.8212,
       neighborhood: 'Hồ Tây',
+    nearbyPlaces: buildNearbyPlaces('Hà Nội', 21.0545, 105.8212),
       basePrice: 800000,
       cleaningFee: 150000,
       serviceFee: 80000,
@@ -1751,6 +1844,7 @@ async function main() {
       latitude: 21.0545,
       longitude: 105.8212,
       neighborhood: 'Hồ Tây',
+  nearbyPlaces: buildNearbyPlaces('Hà Nội', 21.0545, 105.8212),
       basePrice: 800000,
       cleaningFee: 150000,
       serviceFee: 80000,
@@ -1806,6 +1900,7 @@ async function main() {
       latitude: 10.9333,
       longitude: 108.2833,
       neighborhood: 'Bãi biển Mũi Né',
+    nearbyPlaces: buildNearbyPlaces('Phan Thiết', 10.9333, 108.2833),
       basePrice: 1500000,
       cleaningFee: 250000,
       serviceFee: 150000,
@@ -1857,6 +1952,7 @@ async function main() {
       latitude: 10.9333,
       longitude: 108.2833,
       neighborhood: 'Bãi biển Mũi Né',
+  nearbyPlaces: buildNearbyPlaces('Phan Thiết', 10.9333, 108.2833),
       basePrice: 1500000,
       cleaningFee: 250000,
       serviceFee: 150000,
@@ -1912,6 +2008,7 @@ async function main() {
       latitude: 10.0341,
       longitude: 105.7722,
       neighborhood: 'Ven sông Hậu',
+  nearbyPlaces: buildNearbyPlaces('Cần Thơ', 10.0341, 105.7722),
       basePrice: 1800000,
       cleaningFee: 300000,
       serviceFee: 180000,
@@ -1963,6 +2060,7 @@ async function main() {
       latitude: 10.0341,
       longitude: 105.7722,
       neighborhood: 'Ven sông Hậu',
+  nearbyPlaces: buildNearbyPlaces('Cần Thơ', 10.0341, 105.7722),
       basePrice: 1800000,
       cleaningFee: 300000,
       serviceFee: 180000,
@@ -2018,6 +2116,7 @@ async function main() {
       latitude: 10.3458,
       longitude: 107.0843,
       neighborhood: 'Bãi sau',
+  nearbyPlaces: buildNearbyPlaces('Vũng Tàu', 10.3458, 107.0843),
       basePrice: 2200000,
       cleaningFee: 350000,
       serviceFee: 220000,
@@ -2069,6 +2168,7 @@ async function main() {
       latitude: 10.3458,
       longitude: 107.0843,
       neighborhood: 'Bãi sau',
+  nearbyPlaces: buildNearbyPlaces('Vũng Tàu', 10.3458, 107.0843),
       basePrice: 2200000,
       cleaningFee: 350000,
       serviceFee: 220000,
@@ -2124,6 +2224,7 @@ async function main() {
       latitude: 22.3364,
       longitude: 103.8438,
       neighborhood: 'Vùng cao Sapa',
+  nearbyPlaces: buildNearbyPlaces('Sa Pa', 22.3364, 103.8438),
       basePrice: 1000000,
       cleaningFee: 200000,
       serviceFee: 100000,
@@ -2175,6 +2276,7 @@ async function main() {
       latitude: 22.3364,
       longitude: 103.8438,
       neighborhood: 'Vùng cao Sapa',
+  nearbyPlaces: buildNearbyPlaces('Sa Pa', 22.3364, 103.8438),
       basePrice: 1000000,
       cleaningFee: 200000,
       serviceFee: 100000,
@@ -2273,6 +2375,7 @@ async function main() {
         update: {
           status: 'ACTIVE',
           publishedAt: new Date(),
+          nearbyPlaces: buildNearbyPlaces(listingData.city, listingData.latitude, listingData.longitude),
         },
         create: {
           hostId: listingData.hostId,
@@ -2293,6 +2396,7 @@ async function main() {
           latitude: listingData.latitude,
           longitude: listingData.longitude,
           neighborhood: listingData.city,
+          nearbyPlaces: buildNearbyPlaces(listingData.city, listingData.latitude, listingData.longitude),
           basePrice: listingData.basePrice,
           cleaningFee: listingData.basePrice * 0.15,
           serviceFee: listingData.basePrice * 0.1,
@@ -2331,6 +2435,188 @@ async function main() {
   console.log(`✅ Additional ${additionalListings.length} listings created for regions`)
 
   console.log('✅ Listings created')
+
+  console.log('🧭 Creating curated collections...')
+
+  const curatedCollectionsConfig = [
+    {
+      slug: 'romantic-getaways',
+      title: 'Romantic Getaways',
+      subtitle: 'Những homestay lãng mạn hoàn hảo cho các cặp đôi.',
+      description:
+        'Bộ sưu tập tập trung vào không gian riêng tư, ánh sáng ấm áp và những trải nghiệm dành riêng cho hai người. Các homestay đều có bồn tắm thư giãn, khu vườn yên tĩnh cùng dịch vụ dinner lãng mạn theo yêu cầu.',
+      tags: ['Couple-friendly', 'Private', 'View đẹp', 'Bồn tắm'],
+      location: 'Đà Lạt, Phú Quốc',
+      category: 'experience',
+      featured: true,
+      curator: {
+        name: 'Thu Phương',
+        title: 'Travel Editor',
+        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&auto=format&fit=crop',
+      },
+      listingSlugs: [
+        'biet-thu-da-lat-view-doi-thong',
+        'resort-phu-quoc-bai-sao-villa-bien',
+        'villa-sang-trong-view-bien-nha-trang',
+      ],
+    },
+    {
+      slug: 'workation-spots',
+      title: 'Workation Paradise',
+      subtitle: 'Không gian làm việc truyền cảm hứng với WiFi mạnh và view đẹp.',
+      description:
+        'Các chỗ ở được tuyển chọn đều có bàn làm việc riêng, ghế ergonomic, WiFi từ 100Mbps trở lên cùng các tiện ích hỗ trợ remote work. Gần quán café, co-working và dịch vụ vệ sinh định kỳ.',
+      tags: ['WiFi cao tốc', 'Workspace', 'Yên tĩnh', 'Long stay'],
+      location: 'Đà Nẵng, TP.HCM',
+      category: 'workation',
+      featured: true,
+      curator: {
+        name: 'Minh Tuấn',
+        title: 'Digital Nomad',
+        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop',
+      },
+      listingSlugs: [
+        'penthouse-saigon-landmark-81',
+        'can-ho-studio-view-ho-tay-ha-noi',
+        'apartment-da-nang-beach-front',
+      ],
+    },
+    {
+      slug: 'beach-vibes',
+      title: 'Beach Vibes',
+      subtitle: 'Thức dậy cùng tiếng sóng và bãi biển trong tầm mắt.',
+      description:
+        'Các căn gần biển với ban công hoặc hồ bơi hướng biển, chỉ mất dưới 5 phút đi bộ để chạm cát. Phù hợp cho nhóm bạn mê hoạt động nước, BBQ tối và các trải nghiệm hồ bơi vô cực.',
+      tags: ['View biển', 'Beach club', 'Kayak', 'BBQ'],
+      location: 'Nha Trang, Vũng Tàu, Phú Quốc',
+      category: 'location',
+      featured: true,
+      curator: {
+        name: 'Hải Yến',
+        title: 'Beach Explorer',
+        avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&auto=format&fit=crop',
+      },
+      listingSlugs: [
+        'villa-sang-trong-view-bien-nha-trang',
+        'resort-phu-quoc-bai-sao-villa-bien',
+        'condo-vung-tau-front-beach-tang-cao',
+        'bungalow-mui-ne-view-bien-truc-dien',
+        'homestay-quy-nhon-seaside',
+      ],
+    },
+    {
+      slug: 'mountain-retreat',
+      title: 'Mountain Retreat',
+      subtitle: 'Chốn nghỉ dưỡng giữa núi rừng với khí hậu mát lạnh quanh năm.',
+      description:
+        'Các homestay tọa lạc tại Đà Lạt, Sa Pa với tầm nhìn ruộng bậc thang hoặc đồi thông. Mỗi nơi đều có không gian ngoài trời rộng, lò sưởi, dịch vụ picnic sáng và hướng dẫn trekking bản địa.',
+      tags: ['Ruộng bậc thang', 'Lò sưởi', 'Picnic', 'Trekking'],
+      location: 'Đà Lạt, Sa Pa',
+      category: 'experience',
+      featured: false,
+      curator: {
+        name: 'Khánh An',
+        title: 'Experience Curator',
+        avatar: 'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?w=200&auto=format&fit=crop',
+      },
+      listingSlugs: [
+        'biet-thu-da-lat-view-doi-thong',
+        'cabin-sapa-view-ruong-bac-thang',
+        'cloud-villa-fansipan',
+      ],
+    },
+    {
+      slug: 'eco-stays',
+      title: 'Eco-Friendly Stays',
+      subtitle: 'Trải nghiệm lưu trú bền vững, hài hòa cùng thiên nhiên.',
+      description:
+        'Lựa chọn các căn sử dụng vật liệu tái chế, hệ thống năng lượng xanh và chương trình giảm thiểu rác thải. Khách có thể tham gia workshop trồng cây, thu hoạch nông sản cùng người bản địa.',
+      tags: ['Eco', 'Vườn trái cây', 'Workshop', 'Local'],
+      location: 'Cần Thơ, Mũi Né',
+      category: 'special',
+      featured: false,
+      curator: {
+        name: 'Gia Linh',
+        title: 'Sustainability Lead',
+        avatar: 'https://images.unsplash.com/photo-1544723795-1f342f02e6d0?w=200&auto=format&fit=crop',
+      },
+      listingSlugs: [
+        'nha-vuon-can-tho-trai-nghiem-mien-tay',
+        'bungalow-mui-ne-view-bien-truc-dien',
+      ],
+    },
+  ] as const
+
+  const curatedListingSlugs = Array.from(
+    new Set(curatedCollectionsConfig.flatMap((collection) => collection.listingSlugs))
+  )
+
+  const curatedListings = await prisma.listing.findMany({
+    where: { slug: { in: curatedListingSlugs } },
+    select: {
+      id: true,
+      slug: true,
+      images: true,
+    },
+  })
+
+  const listingLookup = new Map(curatedListings.map((listing) => [listing.slug, listing]))
+  const defaultImage = 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=1200'
+
+  await prisma.curatedCollection.deleteMany()
+
+  for (const collection of curatedCollectionsConfig) {
+    const linkedListings = collection.listingSlugs
+      .map((slug) => listingLookup.get(slug))
+      .filter((listing): listing is typeof curatedListings[number] => Boolean(listing))
+
+    if (linkedListings.length === 0) {
+      console.warn(`⚠️  Skipping curated collection ${collection.slug} vì không tìm thấy listing phù hợp`)
+      continue
+    }
+
+    const heroImage = linkedListings[0]?.images?.[0] ?? defaultImage
+    const cardImage = linkedListings[0]?.images?.[1] ?? heroImage
+
+    await prisma.curatedCollection.upsert({
+      where: { slug: collection.slug },
+      update: {
+        title: collection.title,
+        subtitle: collection.subtitle,
+        description: collection.description,
+        heroImage,
+        cardImage,
+        tags: collection.tags,
+        location: collection.location,
+        category: collection.category,
+        listingsCount: linkedListings.length,
+        listingIds: linkedListings.map((listing) => listing.id),
+        featured: collection.featured,
+        curatorName: collection.curator?.name ?? null,
+        curatorTitle: collection.curator?.title ?? null,
+        curatorAvatar: collection.curator?.avatar ?? null,
+      },
+      create: {
+        slug: collection.slug,
+        title: collection.title,
+        subtitle: collection.subtitle,
+        description: collection.description,
+        heroImage,
+        cardImage,
+        tags: collection.tags,
+        location: collection.location,
+        category: collection.category,
+        listingsCount: linkedListings.length,
+        listingIds: linkedListings.map((listing) => listing.id),
+        featured: collection.featured,
+        curatorName: collection.curator?.name ?? null,
+        curatorTitle: collection.curator?.title ?? null,
+        curatorAvatar: collection.curator?.avatar ?? null,
+      },
+    })
+  }
+
+  console.log('✅ Curated collections created')
 
   // Create Amenities
   console.log('✨ Creating amenities...')

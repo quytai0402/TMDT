@@ -16,6 +16,7 @@ export async function GET(
 ) {
   try {
     const { id } = await resolveParams(context)
+    const session = await getServerSession(authOptions)
 
     const listing = await prisma.listing.findUnique({
       where: { id },
@@ -65,6 +66,15 @@ export async function GET(
 
     if (!listing) {
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
+    }
+
+    // Allow admin and host to view listing even if not ACTIVE
+    const isAdmin = session?.user?.role === 'ADMIN'
+    const isHost = session?.user?.id === listing.hostId
+    const canViewNonActive = isAdmin || isHost
+
+    if (listing.status !== 'ACTIVE' && !canViewNonActive) {
+      return NextResponse.json({ error: 'Listing not available' }, { status: 403 })
     }
 
     // Increment views

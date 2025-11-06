@@ -3,10 +3,9 @@
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Calendar } from '@/components/ui/calendar'
-import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CalendarX, Check, X } from 'lucide-react'
-import { format, isSameDay, isWithinInterval, parseISO } from 'date-fns'
+import { format, isBefore, isWithinInterval, parseISO, startOfDay } from 'date-fns'
 import { vi } from 'date-fns/locale'
 
 interface BlockedDate {
@@ -25,20 +24,53 @@ interface Booking {
 
 interface AvailabilityCalendarProps {
   listingId: string
+  initialCheckIn?: string
+  initialCheckOut?: string
+  onClose?: () => void
 }
 
-export function AvailabilityCalendar({ listingId }: AvailabilityCalendarProps) {
+export function AvailabilityCalendar({ listingId, initialCheckIn, initialCheckOut }: AvailabilityCalendarProps) {
   const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([])
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date())
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(() => {
+    if (initialCheckIn) {
+      try {
+        return parseISO(initialCheckIn)
+      } catch (error) {
+        // ignore parse issues and fallback below
+      }
+    }
+    if (initialCheckOut) {
+      try {
+        return parseISO(initialCheckOut)
+      } catch (error) {
+        // ignore parse issues and fallback below
+      }
+    }
+    return new Date()
+  })
+
+  useEffect(() => {
+    const target = initialCheckIn ?? initialCheckOut
+    if (!target) return
+
+    try {
+      const parsed = parseISO(target)
+      if (!Number.isNaN(parsed.getTime())) {
+        setSelectedDate(parsed)
+      }
+    } catch (error) {
+      // ignore parse issues and keep previous state
+    }
+  }, [initialCheckIn, initialCheckOut])
 
   useEffect(() => {
     async function fetchAvailability() {
       try {
         const [blockedRes, bookingsRes] = await Promise.all([
           fetch(`/api/listings/${listingId}/blocked-dates`),
-          fetch(`/api/listings/${listingId}/bookings?status=CONFIRMED,PENDING`),
+          fetch(`/api/listings/${listingId}/bookings?status=CONFIRMED,COMPLETED,PENDING&public=1`),
         ])
 
         if (blockedRes.ok) {
@@ -117,25 +149,7 @@ export function AvailabilityCalendar({ listingId }: AvailabilityCalendarProps) {
   }
 
   const selectedDateStatus = selectedDate ? getDateStatus(selectedDate) : null
-
-  // Get upcoming blocked/booked periods
-  const upcomingUnavailable = [
-    ...blockedDates.map(b => ({
-      type: 'blocked' as const,
-      start: parseISO(b.startDate),
-      end: parseISO(b.endDate),
-      reason: b.reason,
-    })),
-    ...bookings.map(b => ({
-      type: 'booked' as const,
-      start: parseISO(b.checkIn),
-      end: parseISO(b.checkOut),
-      reason: `Booking ${b.status}`,
-    })),
-  ]
-    .filter(item => item.end >= new Date())
-    .sort((a, b) => a.start.getTime() - b.start.getTime())
-    .slice(0, 5)
+  const today = startOfDay(new Date())
 
   if (loading) {
     return (
@@ -152,108 +166,82 @@ export function AvailabilityCalendar({ listingId }: AvailabilityCalendarProps) {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <CalendarX className="h-5 w-5" />
+    <Card className="mx-auto w-full max-w-[360px] overflow-hidden border border-primary/10 bg-gradient-to-br from-sky-50 via-white to-emerald-50 shadow-lg">
+      <CardHeader className="bg-white/80 backdrop-blur-sm pb-4">
+        <CardTitle className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+          <CalendarX className="h-5 w-5 text-primary" />
           Kiểm tra phòng trống
         </CardTitle>
-        <CardDescription>
-          Xem lịch trống và các ngày đã được đặt hoặc bị chặn
+        <CardDescription className="text-sm text-slate-600">
+          Xem nhanh ngày còn trống và những ngày đã được đặt hoặc tạm khoá.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Calendar */}
-        <div className="flex justify-center">
+      <CardContent className="space-y-4 pb-5 pt-4">
+        <div className="rounded-xl border border-white/70 bg-white/90 px-3 pb-3 pt-4 shadow-sm">
           <Calendar
             mode="single"
             selected={selectedDate}
             onSelect={setSelectedDate}
             locale={vi}
-            disabled={(date) => date < new Date() || isDateBlocked(date)}
+            disabled={(date) => isBefore(date, today) || isDateBlocked(date)}
             modifiers={{
               blocked: (date) => isDateBlocked(date),
-              available: (date) => !isDateBlocked(date) && date >= new Date(),
+              available: (date) => !isDateBlocked(date) && !isBefore(date, today),
             }}
             modifiersStyles={{
               blocked: {
                 backgroundColor: '#fee',
-                color: '#c00',
+                color: '#b91c1c',
                 textDecoration: 'line-through',
+                borderRadius: '0.75rem',
               },
               available: {
-                backgroundColor: '#efe',
+                backgroundColor: '#ecfdf5',
+                color: '#047857',
+                borderRadius: '0.75rem',
               },
             }}
-            className="rounded-md border"
+            className="mx-auto max-w-[240px] rounded-2xl border-none shadow-none [&_.rdp-day_selected]:bg-primary [&_.rdp-day_selected]:text-primary-foreground"
           />
         </div>
 
-        {/* Selected Date Status */}
-        {selectedDate && selectedDateStatus && (
-          <div
-            className={`p-4 rounded-lg border-2 ${selectedDateStatus.color}`}
-          >
-            <div className="flex items-center gap-2 mb-2">
-              {selectedDateStatus.status === 'available' ? (
-                <Check className="h-5 w-5 text-green-600" />
-              ) : (
-                <X className="h-5 w-5 text-red-600" />
-              )}
-              <span className="font-semibold">
-                {format(selectedDate, 'dd/MM/yyyy', { locale: vi })}
-              </span>
+        {selectedDate && selectedDateStatus ? (
+          <div className={`rounded-xl border border-transparent bg-white/80 p-4 shadow-sm ${selectedDateStatus.status === 'available' ? 'ring-1 ring-emerald-200' : 'ring-1 ring-red-200'}`}>
+            <div className="flex items-center gap-3">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${selectedDateStatus.status === 'available' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                {selectedDateStatus.status === 'available' ? (
+                  <Check className="h-5 w-5" />
+                ) : (
+                  <X className="h-5 w-5" />
+                )}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-900">
+                  {format(selectedDate, 'EEEE, dd/MM/yyyy', { locale: vi })}
+                </p>
+                <p className="text-sm text-slate-600">{selectedDateStatus.reason}</p>
+              </div>
             </div>
-            <p className="text-sm text-gray-700">{selectedDateStatus.reason}</p>
           </div>
-        )}
+        ) : null}
 
-        {/* Legend */}
-        <div className="space-y-2">
-          <h4 className="font-semibold text-sm">Chú thích:</h4>
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-green-100 border border-green-300" />
-              <span>Còn trống</span>
+        <div className="rounded-xl border border-white/80 bg-white/80 p-4 shadow-sm">
+          <h4 className="text-sm font-semibold text-slate-900">Chú thích</h4>
+          <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+            <div className="flex items-center gap-3 rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-emerald-700">
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500" />
+              Còn trống
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-orange-100 border border-orange-300" />
-              <span>Đã đặt</span>
+            <div className="flex items-center gap-3 rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2 text-amber-700">
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-500" />
+              Đã đặt
             </div>
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded bg-red-100 border border-red-300" />
-              <span>Bị chặn</span>
+            <div className="flex items-center gap-3 rounded-lg border border-rose-100 bg-rose-50/60 px-3 py-2 text-rose-700">
+              <span className="inline-block h-2.5 w-2.5 rounded-full bg-rose-500" />
+              Bị chặn
             </div>
           </div>
         </div>
-
-        {/* Upcoming Unavailable Periods */}
-        {upcomingUnavailable.length > 0 && (
-          <div className="space-y-2">
-            <h4 className="font-semibold text-sm">Các khoảng thời gian sắp tới:</h4>
-            <div className="space-y-2">
-              {upcomingUnavailable.map((item, index) => (
-                <div
-                  key={index}
-                  className="p-3 rounded-lg bg-gray-50 border text-sm"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium">
-                      {format(item.start, 'dd/MM/yyyy', { locale: vi })} -{' '}
-                      {format(item.end, 'dd/MM/yyyy', { locale: vi })}
-                    </span>
-                    <Badge variant={item.type === 'blocked' ? 'destructive' : 'secondary'}>
-                      {item.type === 'blocked' ? 'Bị chặn' : 'Đã đặt'}
-                    </Badge>
-                  </div>
-                  {item.reason && (
-                    <p className="text-xs text-gray-600">{item.reason}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
   )

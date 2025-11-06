@@ -34,6 +34,21 @@ export async function GET(request: Request) {
     const listingIdentifier = listingId ?? slug
     const session = await getServerSession(authOptions)
 
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Chưa đăng nhập' }, { status: 401 })
+    }
+
+    const membershipTier = session.user.membership ?? null
+    const userRole = session.user.role
+    const hasConciergePrivileges = userRole && userRole !== 'GUEST' ? true : membershipTier === 'DIAMOND'
+
+    if (!hasConciergePrivileges) {
+      return NextResponse.json(
+        { error: 'Concierge chỉ dành cho thành viên Diamond' },
+        { status: 403 },
+      )
+    }
+
     if (!listingIdentifier && !bookingId && !includeLatestBooking) {
       return NextResponse.json(
         { error: 'Thiếu thông tin bối cảnh. Cung cấp listingId, slug hoặc bookingId.' },
@@ -44,8 +59,8 @@ export async function GET(request: Request) {
     const payload = await buildConciergeContext({
       listingIdentifier: listingIdentifier ?? undefined,
       bookingId: bookingId ?? undefined,
-      userId: session?.user?.id,
-      includeLatestBooking: includeLatestBooking ?? Boolean(session?.user?.id),
+      userId: session.user.id,
+      includeLatestBooking: includeLatestBooking ?? Boolean(session.user.id),
     })
 
     if (listingIdentifier && !payload.listingContext) {

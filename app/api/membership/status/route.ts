@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { getMembershipForUser } from "@/lib/membership"
-import { Prisma, BookingStatus, RewardRedemptionStatus } from "@prisma/client"
+import { Prisma, BookingStatus, RewardRedemptionStatus, MembershipPurchaseStatus } from "@prisma/client"
 
 const MEMBERSHIP_CONFIG = {
   BRONZE: { freeNights: 0, upgrades: 0 },
@@ -124,6 +124,21 @@ export async function GET() {
       : null
 
     const membership = await getMembershipForUser(user.id)
+    const pendingPurchase = await prisma.membershipPurchase.findFirst({
+      where: {
+        userId: user.id,
+        status: MembershipPurchaseStatus.PENDING,
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        amount: true,
+        billingCycle: true,
+        paymentMethod: true,
+        referenceCode: true,
+        createdAt: true,
+      },
+    })
 
     return NextResponse.json({
       user: {
@@ -154,6 +169,7 @@ export async function GET() {
       },
       tiers,
       membership,
+      pendingPurchase,
     })
   } catch (error) {
     console.error('Membership status error:', error)

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Calendar } from "@/components/ui/calendar"
@@ -17,14 +17,26 @@ import {
   Coffee,
   HeartPulse,
   Briefcase,
+  SlidersHorizontal,
+  Loader2,
 } from "lucide-react"
 import { format } from "date-fns"
 import { vi } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import { useSearch } from "@/hooks/use-search"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 type FlexibleWindowOption = "weekend" | "week" | "month"
+
+const FLEXIBLE_META: Record<
+  FlexibleWindowOption,
+  { region: string; flexMode: string; tripLength: string }
+> = {
+  weekend: { region: "south", flexMode: "weekends", tripLength: "2-3" },
+  week: { region: "central", flexMode: "weeks", tripLength: "4-7" },
+  month: { region: "north", flexMode: "month", tripLength: "10-14" },
+}
 
 export function EnhancedSearchBar() {
   const router = useRouter()
@@ -38,6 +50,12 @@ export function EnhancedSearchBar() {
   const [stayMode, setStayMode] = useState<'exact' | 'flexible'>('exact')
   const [flexibleWindow, setFlexibleWindow] = useState<FlexibleWindowOption | null>(null)
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (checkIn && checkOut && checkOut <= checkIn) {
+      setCheckOut(undefined)
+    }
+  }, [checkIn, checkOut])
 
   const smartPresets = useMemo(
     () => [
@@ -77,54 +95,104 @@ export function EnhancedSearchBar() {
     ? smartPresets.find((preset) => preset.id === selectedPreset)
     : null
 
+  const buildSearchParams = useCallback(
+    (options?: { includeQuery?: boolean; queryOverride?: string }) => {
+      const params = new URLSearchParams()
+      const trimmedCity = city.trim()
+      const trimmedQuery = (options?.queryOverride ?? query).trim()
+
+      if (options?.includeQuery && trimmedQuery.length > 0) {
+        params.set("q", trimmedQuery)
+      }
+
+      if (trimmedCity) {
+        params.set("city", trimmedCity)
+      }
+
+      if (checkIn) {
+        params.set("checkIn", format(checkIn, "yyyy-MM-dd"))
+      }
+
+      if (checkOut) {
+        params.set("checkOut", format(checkOut, "yyyy-MM-dd"))
+      }
+
+      if (guests) {
+        params.set("guests", String(guests))
+      }
+
+      if (stayMode === "flexible") {
+        const meta = FLEXIBLE_META[flexibleWindow ?? "weekend"]
+        params.set("flexible", "true")
+        params.set("flexMode", meta.flexMode)
+        params.set("tripLength", meta.tripLength)
+        params.set("region", meta.region)
+      }
+
+      if (selectedPreset) {
+        params.set("intent", selectedPreset)
+      }
+
+      return params
+    },
+    [city, checkIn, checkOut, flexibleWindow, guests, query, selectedPreset, stayMode],
+  )
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (useAI && query) {
-      try {
-        await semanticSearch(query)
-        router.push(`/search?q=${encodeURIComponent(query)}`)
-      } catch (err) {
-        console.error('Search failed:', err)
-      }
-    } else {
-      const params: Record<string, string | number> = {}
+    const trimmedQuery = query.trim()
 
-      if (city) params.city = city
-      if (checkIn) params.checkIn = format(checkIn, 'yyyy-MM-dd')
-      if (checkOut) params.checkOut = format(checkOut, 'yyyy-MM-dd')
-      if (guests) params.guests = guests
-      if (stayMode === 'flexible') {
-        params.flexible = 'true'
-        if (flexibleWindow) {
-          params.flexibleWindow = flexibleWindow
-        }
-      }
-      if (selectedPreset) {
-        params.intent = selectedPreset
+    if (useAI) {
+      if (!trimmedQuery) {
+        toast.error("Vui lòng mô tả nhu cầu để AI hỗ trợ gợi ý.")
+        return
       }
 
-      const searchParams = new URLSearchParams()
-      Object.entries(params).forEach(([key, value]) => {
-        searchParams.append(key, String(value))
-      })
-      router.push(`/search?${searchParams.toString()}`)
+      const aiResult = await semanticSearch(trimmedQuery)
+      if (!aiResult) {
+        toast.error("Trợ lý tìm kiếm đang quá tải, thử lại sau ít phút nhé.")
+        return
+      }
+
+      const params = buildSearchParams({ includeQuery: true, queryOverride: trimmedQuery })
+      params.set("mode", "ai")
+      router.push(`/search?${params.toString()}`)
+      return
     }
+
+    const params = buildSearchParams({ includeQuery: Boolean(trimmedQuery) })
+    const searchQuery = params.toString()
+    router.push(searchQuery ? `/search?${searchQuery}` : "/search")
+  }
+
+  const openMapView = () => {
+    const params = buildSearchParams({ includeQuery: Boolean(query.trim()) && !useAI })
+    const qs = params.toString()
+    router.push(`/search?view=map${qs ? `&${qs}` : ""}`)
+  }
+
+  const openFilters = () => {
+    const params = buildSearchParams({ includeQuery: Boolean(query.trim()) && !useAI })
+    params.set("filters", "open")
+    router.push(`/search?${params.toString()}`)
   }
 
   const handlePresetSelect = (presetId: string, presetPrompt: string) => {
-    setSelectedPreset((current) => (current === presetId ? null : presetId))
-
-    const nextValue = selectedPreset === presetId ? '' : presetPrompt
-    setUseAI(true)
-    setQuery(nextValue)
+    setSelectedPreset((current) => {
+      const nextSelected = current === presetId ? null : presetId
+      const nextValue = nextSelected ? presetPrompt : ''
+      setUseAI(Boolean(nextSelected))
+      setQuery(nextValue)
+      return nextSelected
+    })
   }
 
   return (
     <form onSubmit={handleSearch} className="w-full">
       <div className="rounded-3xl border border-gray-200 bg-white/70 shadow-xl backdrop-blur-sm">
         <div className="flex flex-col gap-3 p-4 md:p-6">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                 <BrainCircuit className="h-4 w-4 text-primary" />
@@ -134,7 +202,17 @@ export function EnhancedSearchBar() {
                 Cá nhân hóa theo mục đích chuyến đi, đề xuất bởi AI.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="rounded-full text-primary hover:bg-primary/10"
+                onClick={openMapView}
+              >
+                <Compass className="mr-1 h-4 w-4" />
+                Bản đồ tương tác
+              </Button>
               {[
                 { id: 'exact' as const, label: 'Theo ngày cụ thể' },
                 { id: 'flexible' as const, label: 'Tôi linh hoạt' },
@@ -154,6 +232,38 @@ export function EnhancedSearchBar() {
                 </Button>
               ))}
             </div>
+          </div>
+
+          <div className="rounded-2xl border border-dashed border-primary/20 bg-white/80 p-4">
+            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Ví dụ: Biệt thự có hồ bơi riêng cho 10 người gần biển Vũng Tàu cuối tuần này
+            </label>
+            <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-center">
+              <div className="flex flex-1 items-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-2 shadow-inner">
+                <Sparkles className="h-5 w-5 text-primary" />
+                <Input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Mô tả nhu cầu hoặc địa điểm mong muốn..."
+                  className="border-0 p-0 focus-visible:ring-0"
+                />
+              </div>
+              <Button
+                type="button"
+                variant={useAI ? 'default' : 'outline'}
+                className="rounded-full"
+                onClick={() => setUseAI((prev) => !prev)}
+              >
+                <BrainCircuit className="mr-2 h-4 w-4" />
+                {useAI ? 'Đang bật AI' : 'Bật AI phân tích'}
+              </Button>
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              {useAI
+                ? 'AI sẽ phân tích chi tiết và ưu tiên kết quả phù hợp nhất.'
+                : 'Bạn có thể bật AI để mô tả tự nhiên hơn hoặc dùng các bộ lọc phía dưới.'}
+            </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -315,25 +425,25 @@ export function EnhancedSearchBar() {
               </Popover>
             </div>
 
-            {/* Search Button */}
-            <div className="flex gap-2 px-2">
+            {/* Actions */}
+            <div className="flex flex-wrap items-center justify-end gap-2 px-2">
               <Button
                 type="button"
-                variant={useAI ? 'default' : 'outline'}
+                variant="outline"
                 size="icon"
-                className="rounded-full"
-                onClick={() => setUseAI(!useAI)}
-                title="Tìm kiếm bằng AI"
+                className="h-12 w-12 rounded-2xl"
+                onClick={openFilters}
+                aria-label="Mở bộ lọc chi tiết"
               >
-                <Sparkles className={cn('h-5 w-5', useAI && 'text-white')} />
+                <SlidersHorizontal className="h-5 w-5" />
               </Button>
               <Button
                 type="submit"
-                size="icon"
-                className="bg-primary hover:bg-primary-hover rounded-full h-12 w-12"
+                className="flex h-12 items-center gap-2 rounded-2xl px-6 text-base"
                 disabled={loading}
               >
-                <Search className="h-5 w-5 text-white" />
+                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Search className="h-5 w-5" />}
+                <span>Tìm kiếm</span>
               </Button>
             </div>
           </div>

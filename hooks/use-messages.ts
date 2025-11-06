@@ -1,15 +1,18 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useSession } from 'next-auth/react'
 import { pusherClient } from '@/lib/pusher'
 import type { Channel } from 'pusher-js'
 
 export function useMessages(conversationId?: string) {
+  const { data: session } = useSession()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [conversations, setConversations] = useState<any[]>([])
   const [messages, setMessages] = useState<any[]>([])
   const [channel, setChannel] = useState<Channel | null>(null)
+  const [userChannel, setUserChannel] = useState<Channel | null>(null)
 
   // Get all conversations
   const getConversations = useCallback(async () => {
@@ -17,18 +20,23 @@ export function useMessages(conversationId?: string) {
     setError(null)
 
     try {
-      const response = await fetch('/api/messages')
+      // Use the correct API endpoint
+      const response = await fetch('/api/conversations')
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch conversations')
+        setError(data.error || 'Failed to fetch conversations')
+        setConversations([])
+        return []
       }
 
-      setConversations(data)
-      return data
+      setConversations(data.conversations || [])
+      return data.conversations || []
     } catch (err: any) {
-      setError(err.message)
-      throw err
+      console.error('Error fetching conversations:', err)
+      setError(err.message || 'Failed to fetch conversations')
+      setConversations([])
+      return []
     } finally {
       setLoading(false)
     }
@@ -40,18 +48,22 @@ export function useMessages(conversationId?: string) {
     setError(null)
 
     try {
-      const response = await fetch(`/api/messages?conversationId=${convId}`)
+      const response = await fetch(`/api/conversations/${convId}/messages`)
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch messages')
+        setError(data.error || 'Failed to fetch messages')
+        setMessages([])
+        return []
       }
 
-      setMessages(data)
-      return data
+      setMessages(data.messages || [])
+      return data.messages || []
     } catch (err: any) {
-      setError(err.message)
-      throw err
+      console.error('Error fetching messages:', err)
+      setError(err.message || 'Failed to fetch messages')
+      setMessages([])
+      return []
     } finally {
       setLoading(false)
     }
@@ -84,20 +96,27 @@ export function useMessages(conversationId?: string) {
     }
   }
 
-  // Subscribe to real-time updates
+  // Subscribe to real-time updates for specific conversation
   useEffect(() => {
     if (!conversationId) return
 
-    const newChannel = pusherClient.subscribe(`private-conversation-${conversationId}`)
+    const channelName = `conversation-${conversationId}`
+    const newChannel = pusherClient.subscribe(channelName)
     
     newChannel.bind('new-message', (data: any) => {
-      setMessages((prev) => [...prev, data])
+      setMessages((prev) => {
+        // Avoid duplicates
+        if (prev.some((m) => m.id === data.message?.id)) {
+          return prev
+        }
+        return [...prev, data.message]
+      })
     })
 
     newChannel.bind('message-read', (data: any) => {
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.id === data.messageId ? { ...msg, readAt: data.readAt } : msg
+          msg.id === data.messageId ? { ...msg, isRead: true, readAt: data.readAt } : msg
         )
       )
     })
@@ -107,10 +126,32 @@ export function useMessages(conversationId?: string) {
     return () => {
       if (newChannel) {
         newChannel.unbind_all()
-        newChannel.unsubscribe()
+        pusherClient.unsubscribe(channelName)
       }
     }
   }, [conversationId])
+
+  // Subscribe to real-time updates for user's conversations list
+  useEffect(() => {
+    if (!session?.user?.id) return
+
+    const channelName = `user-${session.user.id}`
+    const newUserChannel = pusherClient.subscribe(channelName)
+    
+    newUserChannel.bind('new-conversation-message', (data: any) => {
+      // Refresh conversations when new message arrives
+      getConversations()
+    })
+
+    setUserChannel(newUserChannel)
+
+    return () => {
+      if (newUserChannel) {
+        newUserChannel.unbind_all()
+        pusherClient.unsubscribe(channelName)
+      }
+    }
+  }, [session?.user?.id, getConversations])
 
   return {
     conversations,

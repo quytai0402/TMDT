@@ -8,6 +8,7 @@ import { Footer } from "@/components/footer"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { 
   MessageSquare,
   Utensils,
@@ -27,6 +28,8 @@ import { SpecialRequestsHandler } from "@/components/special-requests-handler"
 export default function ConciergePage() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const membershipTier = session?.user?.membership ?? null
+  const isDiamondMember = membershipTier === "DIAMOND"
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -60,6 +63,27 @@ export default function ConciergePage() {
             <p className="text-muted-foreground mb-4">
               Bạn cần đăng nhập để sử dụng dịch vụ Concierge
             </p>
+          </Card>
+        </main>
+        <Footer />
+      </div>
+    )
+  }
+
+  if (session && !isDiamondMember) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-1 flex items-center justify-center px-4">
+          <Card className="p-8 max-w-md text-center space-y-4">
+            <Lock className="h-16 w-16 mx-auto text-muted-foreground" />
+            <h2 className="text-2xl font-bold">Concierge chỉ dành cho Diamond</h2>
+            <p className="text-muted-foreground">
+              Dịch vụ Concierge 24/7 hiện chỉ khả dụng cho thành viên Diamond. Nâng cấp membership để mở khóa trợ lý cá nhân và các đặc quyền độc quyền.
+            </p>
+            <Button onClick={() => router.push("/membership")} className="w-full">
+              Nâng cấp membership
+            </Button>
           </Card>
         </main>
         <Footer />

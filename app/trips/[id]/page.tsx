@@ -5,7 +5,9 @@ import { useParams } from 'next/navigation'
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { TripHub } from "@/components/trip-hub"
-import { Loader2 } from 'lucide-react'
+import { BookingActionsDialog } from "@/components/booking-actions-dialog"
+import { Button } from "@/components/ui/button"
+import { Loader2, Calendar, X } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
 export default function TripDetailPage() {
@@ -13,22 +15,24 @@ export default function TripDetailPage() {
   const [trip, setTrip] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [actionMode, setActionMode] = useState<'reschedule' | 'cancel' | null>(null)
+
+  const fetchTrip = async () => {
+    try {
+      setLoading(true)
+      const res = await fetch(`/api/bookings/${params.id}`)
+      if (!res.ok) throw new Error('Không thể tải thông tin chuyến đi')
+      
+      const data = await res.json()
+      setTrip(data)
+    } catch (err: any) {
+      setError(err.message || 'Đã xảy ra lỗi')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const fetchTrip = async () => {
-      try {
-        const res = await fetch(`/api/bookings/${params.id}`)
-        if (!res.ok) throw new Error('Không thể tải thông tin chuyến đi')
-        
-        const data = await res.json()
-        setTrip(data)
-      } catch (err: any) {
-        setError(err.message || 'Đã xảy ra lỗi')
-      } finally {
-        setLoading(false)
-      }
-    }
-
     fetchTrip()
   }, [params.id])
 
@@ -192,15 +196,71 @@ export default function TripDetailPage() {
     directionsUrl: `https://maps.google.com/?q=${trip.listing.latitude},${trip.listing.longitude}`,
   }
 
+  // Check if user can modify booking
+  const canModify = 
+    trip.status !== 'CANCELLED' && 
+    trip.status !== 'COMPLETED' &&
+    new Date(trip.checkIn) > new Date()
+
   return (
     <div className="flex min-h-screen flex-col bg-muted/30">
       <Header />
       <main className="flex-1">
         <div className="container mx-auto px-4 py-10 lg:px-8">
-          <TripHub trip={tripData} />
+          {/* Action Buttons */}
+          {canModify && (
+            <div className="mb-6 flex gap-3 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setActionMode('reschedule')}
+                className="gap-2"
+              >
+                <Calendar className="h-4 w-4" />
+                Thay đổi ngày
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => setActionMode('cancel')}
+                className="gap-2"
+              >
+                <X className="h-4 w-4" />
+                Hủy phòng
+              </Button>
+            </div>
+          )}
+
+          <TripHub trip={tripData} membershipTier={trip.guest?.loyaltyTier ?? null} />
         </div>
       </main>
       <Footer />
+
+      {/* Booking Actions Dialog */}
+      {trip && (
+        <BookingActionsDialog
+          booking={{
+            id: trip.id,
+            checkIn: trip.checkIn,
+            checkOut: trip.checkOut,
+            totalPrice: trip.totalPrice,
+            status: trip.status,
+            listing: {
+              title: trip.listing.title,
+              cancellationPolicy: trip.listing.cancellationPolicy,
+            },
+            guest: {
+              membershipStatus: trip.guest?.membershipStatus,
+              loyaltyTier: trip.guest?.loyaltyTier,
+            },
+          }}
+          open={actionMode !== null}
+          onOpenChange={(open) => !open && setActionMode(null)}
+          mode={actionMode!}
+          onSuccess={() => {
+            fetchTrip()
+            setActionMode(null)
+          }}
+        />
+      )}
     </div>
   )
 }

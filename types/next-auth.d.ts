@@ -1,7 +1,18 @@
-import 'next-auth'
-import { UserRole } from '@prisma/client'
+import "next-auth"
+import { UserRole } from "@prisma/client"
 
-declare module 'next-auth' {
+type MembershipPlanSnapshot = {
+  slug: string
+  name: string
+  discountRate: number
+  applyDiscountToServices: boolean
+  color?: string | null
+  icon?: string | null
+  features?: string[] | null
+  exclusiveFeatures?: string[] | null
+}
+
+declare module "next-auth" {
   interface Session {
     user: {
       id: string
@@ -10,7 +21,11 @@ declare module 'next-auth' {
       image?: string | null
       role: UserRole
       isHost: boolean
+      isGuide: boolean
+      guideProfileId?: string | null
       membership?: string | null
+      membershipPlan?: MembershipPlanSnapshot | null
+      membershipStatus?: string | null
     }
   }
 
@@ -21,15 +36,23 @@ declare module 'next-auth' {
     image?: string | null
     role: UserRole
     isHost: boolean
+    isGuide: boolean
+    guideProfileId?: string | null
     membership?: string | null
+    membershipPlan?: MembershipPlanSnapshot | null
+    membershipStatus?: string | null
   }
 }
 
-declare module 'next-auth/jwt' {
+declare module "next-auth/jwt" {
   interface JWT {
     id: string
     role: UserRole
     isHost: boolean
+    isGuide: boolean
+    guideProfileId?: string | null
     membership?: string | null
+    membershipPlan?: MembershipPlanSnapshot | null
+    membershipStatus?: string | null
   }
 }

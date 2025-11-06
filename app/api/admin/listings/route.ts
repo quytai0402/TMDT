@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import type { Prisma } from "@prisma/client"
 import { ListingStatus } from "@prisma/client"
+import { notifyUser } from "@/lib/notifications"
 
 const STATUS_ALIASES: Record<string, ListingStatus> = {
   PENDING: ListingStatus.PENDING_REVIEW,
@@ -161,7 +162,26 @@ export async function PATCH(request: NextRequest) {
     const updatedListing = await prisma.listing.update({
       where: { id: listingId },
       data: { status: candidate as ListingStatus },
+      include: {
+        host: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
     })
+
+    // Send notification to host
+    if (updatedListing.hostId) {
+      const statusText = candidate === 'ACTIVE' ? 'đã được duyệt' : 'đã bị từ chối'
+      await notifyUser(updatedListing.hostId, {
+        type: candidate === 'ACTIVE' ? 'LISTING_APPROVED' : 'LISTING_REJECTED',
+        title: `Listing ${statusText}`,
+        message: `Listing "${updatedListing.title}" ${statusText} bởi admin`,
+        link: `/host/listings/${listingId}/edit`,
+      })
+    }
 
     return NextResponse.json({
       message: "Listing updated successfully",

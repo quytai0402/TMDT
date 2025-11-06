@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Sparkles } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
+import { pusherClient } from '@/lib/pusher'
 
 interface Conversation {
   id: string
@@ -52,6 +53,24 @@ export default function MessagesPage() {
       fetchConversations()
     }
   }, [status])
+
+  // Subscribe to real-time updates
+  useEffect(() => {
+    if (!session?.user?.id) return
+
+    const channelName = `user-${session.user.id}`
+    const channel = pusherClient.subscribe(channelName)
+    
+    channel.bind('new-conversation-message', () => {
+      // Refresh conversations when new message arrives
+      fetchConversations()
+    })
+
+    return () => {
+      channel.unbind_all()
+      pusherClient.unsubscribe(channelName)
+    }
+  }, [session?.user?.id])
 
   useEffect(() => {
     if (status !== 'authenticated') return

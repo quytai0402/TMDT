@@ -21,6 +21,10 @@ import {
   Award,
 } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
+import { toast } from '@/components/ui/use-toast'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Copy } from 'lucide-react'
+import { toast } from '@/components/ui/use-toast'
 
 interface MembershipStatusResponse {
   user: {
@@ -69,6 +73,14 @@ interface MembershipStatusResponse {
       features: string[]
       exclusiveFeatures: string[]
     } | null
+  } | null
+  pendingPurchase?: {
+    id: string
+    amount: number
+    billingCycle: 'MONTHLY' | 'ANNUAL'
+    paymentMethod: 'BANK_TRANSFER' | 'CREDIT_CARD' | 'E_WALLET'
+    referenceCode: string
+    createdAt: string
   } | null
 }
 
@@ -135,6 +147,7 @@ export function MembershipDashboard() {
 
   const currentTier = status?.currentTier
   const membership = status?.membership
+  const pendingPurchase = status?.pendingPurchase ?? null
   const userPoints = status?.user.loyaltyPoints ?? 0
   const minPoints = currentTier?.minPoints ?? 0
   const maxPoints = currentTier?.maxPoints ?? null
@@ -178,7 +191,7 @@ export function MembershipDashboard() {
   const nextTier = status.tiers.find((tier) => tier.name === nextTierName)
 
   const membershipPlan = membership?.plan
-  const membershipStatus = membership?.status ?? 'INACTIVE'
+  const membershipStatus = membership?.status ?? (pendingPurchase ? 'PENDING' : 'INACTIVE')
   const billingCycleLabel = membership?.billingCycle === 'MONTHLY' ? 'Hàng tháng' : membership?.billingCycle === 'ANNUAL' ? 'Hàng năm' : null
   const membershipFeatures = membership
     ? Array.from(
@@ -192,9 +205,45 @@ export function MembershipDashboard() {
   const exclusiveFeatureSet = new Set(membershipPlan?.exclusiveFeatures ?? [])
   const membershipStart = membership?.startedAt ? new Date(membership.startedAt) : null
   const membershipExpiry = membership?.expiresAt ? new Date(membership.expiresAt) : null
+  const copyReference = () => {
+    if (pendingPurchase?.referenceCode) {
+      navigator.clipboard.writeText(pendingPurchase.referenceCode).then(() => {
+        toast({
+          title: 'Đã sao chép nội dung chuyển khoản',
+          description: pendingPurchase.referenceCode,
+        })
+      })
+    }
+  }
 
   return (
     <div className="space-y-6">
+      {pendingPurchase && (
+        <Alert variant="default" className="border-amber-200 bg-amber-50/80">
+          <AlertTitle className="font-semibold text-amber-900 flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            Membership đang chờ xác nhận
+          </AlertTitle>
+          <AlertDescription className="mt-2 space-y-2 text-sm text-amber-900/80">
+            <p>
+              LuxeStay đã nhận được chuyển khoản cho gói {membershipPlan?.name ?? 'membership'}. Đội ngũ sẽ kích hoạt ngay khi xác nhận giao dịch (tối đa 24h làm việc).
+            </p>
+            <div className="rounded-md border border-amber-200 bg-white px-3 py-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Mã tham chiếu</span>
+                <button type="button" onClick={copyReference} className="text-primary hover:underline flex items-center gap-1">
+                  <Copy className="h-3.5 w-3.5" />
+                  Sao chép
+                </button>
+              </div>
+              <p className="font-semibold text-foreground text-base">{pendingPurchase.referenceCode}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Gửi lúc {new Date(pendingPurchase.createdAt).toLocaleString('vi-VN')}
+              </p>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
       <Card className="bg-gradient-to-br from-primary/10 to-purple-500/10 border-primary/20">
         <CardContent className="pt-6">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -205,8 +254,17 @@ export function MembershipDashboard() {
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <h2 className="text-2xl font-bold">{currentTier.name} Member</h2>
-                  <Badge variant="secondary" className="text-xs">
-                    Active
+                  <Badge
+                    variant={
+                      membershipStatus === 'PENDING'
+                        ? 'secondary'
+                        : membership?.isActive
+                          ? 'default'
+                          : 'outline'
+                    }
+                    className="text-xs"
+                  >
+                    {membershipStatus === 'PENDING' ? 'Chờ xác nhận' : membership?.isActive ? 'Đang hoạt động' : 'Chưa kích hoạt'}
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
@@ -244,7 +302,17 @@ export function MembershipDashboard() {
                   : 'Quyền lợi membership sẽ hiển thị tại đây khi bạn đăng ký.'}
               </CardDescription>
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                <Badge variant={membership.isActive ? 'default' : 'outline'}>{membershipStatus}</Badge>
+                <Badge
+                  variant={
+                    membershipStatus === 'PENDING'
+                      ? 'secondary'
+                      : membership?.isActive
+                        ? 'default'
+                        : 'outline'
+                  }
+                >
+                  {membershipStatus === 'PENDING' ? 'Chờ xác nhận' : membershipStatus}
+                </Badge>
                 {billingCycleLabel && <Badge variant="secondary">{billingCycleLabel}</Badge>}
                 {membershipStart && (
                   <span className="text-xs text-muted-foreground">

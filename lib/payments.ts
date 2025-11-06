@@ -7,7 +7,13 @@ const BANK_CONFIG = {
   branch: "Techcombank - Hội sở Hà Nội",
 }
 
-type TransferType = "BOOKING" | "MEMBERSHIP" | "SERVICE" | "CONCIERGE" | "EXPERIENCE"
+type TransferType =
+  | "BOOKING"
+  | "MEMBERSHIP"
+  | "SERVICE"
+  | "CONCIERGE"
+  | "EXPERIENCE"
+  | "LOCATION_EXPANSION"
 
 const TRANSFER_PREFIX: Record<TransferType, string> = {
   BOOKING: "BK",
@@ -15,6 +21,7 @@ const TRANSFER_PREFIX: Record<TransferType, string> = {
   SERVICE: "SV",
   CONCIERGE: "CX",
   EXPERIENCE: "EXP",
+  LOCATION_EXPANSION: "LOC",
 }
 
 const sanitizeReference = (value: string) => {

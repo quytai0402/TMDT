@@ -320,14 +320,69 @@ export function AdminLiveChat() {
         body: JSON.stringify({ action: "end" }),
       })
       if (!res.ok) {
-        throw new Error("Không thể kết thúc cuộc trò chuyện.")
+        const errorData = await res.json()
+        throw new Error(errorData.error || "Không thể kết thúc cuộc trò chuyện.")
       }
       await fetchSessions()
       await fetchMessages(selectedSessionId)
+      setActionError(null)
     } catch (err: any) {
+      console.error("Failed to end chat:", err)
       setActionError(err.message || "Không thể kết thúc cuộc trò chuyện.")
     }
   }, [fetchMessages, fetchSessions, selectedSessionId])
+
+  const handleEndChatAndNext = useCallback(async () => {
+    if (!selectedSessionId) return
+    try {
+      // End current chat
+      const res = await fetch(`/api/admin/live-chat/sessions/${selectedSessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "end" }),
+      })
+      if (!res.ok) {
+        const errorData = await res.json()
+        throw new Error(errorData.error || "Không thể kết thúc cuộc trò chuyện.")
+      }
+      
+      // Refresh sessions list
+      await fetchSessions()
+      
+      // Find next waiting conversation
+      const nextWaiting = conversations.find(
+        (conv) => conv.status === "WAITING" && conv.id !== selectedSessionId
+      )
+      
+      if (nextWaiting) {
+        // Select and accept next chat
+        setSelectedSessionId(nextWaiting.id)
+        
+        // Auto-accept the next waiting chat
+        const acceptRes = await fetch(`/api/admin/live-chat/sessions/${nextWaiting.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "connect" }),
+        })
+        
+        if (!acceptRes.ok) {
+          throw new Error("Không thể kết nối với khách tiếp theo.")
+        }
+        
+        await fetchSessions()
+        await fetchMessages(nextWaiting.id)
+        setActionError(null)
+      } else {
+        // No waiting chats, just clear selection
+        setSelectedSessionId(null)
+        setMessages([])
+        setActionError(null)
+      }
+    } catch (err: any) {
+      console.error("Failed to end chat and move to next:", err)
+      setActionError(err.message || "Có lỗi xảy ra khi chuyển sang cuộc trò chuyện tiếp theo.")
+    }
+  }, [conversations, fetchMessages, fetchSessions, selectedSessionId])
 
   const handleSendMessage = useCallback(async () => {
     if (!selectedSessionId || !inputMessage.trim()) return
@@ -565,9 +620,14 @@ export function AdminLiveChat() {
                     </Button>
                   )}
                   {selectedSession?.status !== "ENDED" && (
-                    <Button variant="outline" onClick={handleEndChat} disabled={loadingMessages}>
-                      Kết thúc
-                    </Button>
+                    <>
+                      <Button variant="outline" onClick={handleEndChat} disabled={loadingMessages}>
+                        Kết thúc
+                      </Button>
+                      <Button variant="default" onClick={handleEndChatAndNext} disabled={loadingMessages}>
+                        Kết thúc & Tiếp theo
+                      </Button>
+                    </>
                   )}
                 </div>
 

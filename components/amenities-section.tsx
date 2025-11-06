@@ -1,4 +1,19 @@
-import { Wifi, Wind, Tv, Waves, Dumbbell, Shield } from "lucide-react"
+import { 
+  Wifi, 
+  Wind, 
+  Tv, 
+  Waves, 
+  Dumbbell, 
+  Shield,
+  Car,
+  UtensilsCrossed,
+  Refrigerator,
+  Briefcase,
+  WashingMachine,
+  Droplet,
+  PawPrint,
+  Coffee
+} from "lucide-react"
 
 interface AmenitiesSectionProps {
   amenities: Array<{
@@ -7,13 +22,35 @@ interface AmenitiesSectionProps {
   }>
 }
 
+// Mapping from English keys to Vietnamese labels
+const amenityTranslations: Record<string, string> = {
+  WIFI: "WiFi",
+  AIR_CONDITIONING: "Điều hòa",
+  PARKING: "Bãi đậu xe",
+  GYM: "Phòng gym",
+  KITCHEN: "Nhà bếp",
+  POOL: "Hồ bơi",
+  WORKSPACE: "Không gian làm việc",
+  WASHER: "Máy giặt",
+  TV: "TV",
+  DRYER: "Máy sấy",
+  PET_FRIENDLY: "Thú cưng được phép",
+  BREAKFAST: "Bữa sáng",
+}
+
 const iconMap: Record<string, any> = {
-  WiFi: Wifi,
-  "Điều hòa": Wind,
+  WIFI: Wifi,
+  AIR_CONDITIONING: Wind,
+  PARKING: Car,
+  GYM: Dumbbell,
+  KITCHEN: Refrigerator,
+  POOL: Waves,
+  WORKSPACE: Briefcase,
+  WASHER: WashingMachine,
   TV: Tv,
-  "Hồ bơi riêng": Waves,
-  Gym: Dumbbell,
-  "Camera an ninh": Shield,
+  DRYER: Droplet,
+  PET_FRIENDLY: PawPrint,
+  BREAKFAST: Coffee,
 }
 
 export function AmenitiesSection({ amenities }: AmenitiesSectionProps) {
@@ -26,11 +63,13 @@ export function AmenitiesSection({ amenities }: AmenitiesSectionProps) {
             <h4 className="font-semibold text-foreground mb-3">{category.category}</h4>
             <div className="grid grid-cols-2 gap-4">
               {category.items.map((item, itemIndex) => {
-                const Icon = iconMap[item] || Wifi
+                // Translate if needed
+                const translatedItem = amenityTranslations[item] || item
+                const Icon = iconMap[item] || iconMap[translatedItem] || Wifi
                 return (
                   <div key={itemIndex} className="flex items-center space-x-3">
                     <Icon className="h-5 w-5 text-muted-foreground" />
-                    <span className="text-sm text-foreground">{item}</span>
+                    <span className="text-sm text-foreground">{translatedItem}</span>
                   </div>
                 )
               })}

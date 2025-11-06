@@ -13,13 +13,6 @@ import { prisma } from "@/lib/prisma"
 export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session?.user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      )
-    }
 
     const { searchParams } = new URL(request.url)
     const category = searchParams.get("category")
@@ -81,13 +74,15 @@ export async function GET(request: Request) {
     })
 
     // Get user's points for affordability check
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: {
-        loyaltyPoints: true,
-        loyaltyTier: true
-      }
-    })
+    const user = session?.user?.id
+      ? await prisma.user.findUnique({
+          where: { id: session.user.id },
+          select: {
+            loyaltyPoints: true,
+            loyaltyTier: true,
+          },
+        })
+      : null
 
     // Mark which items user can afford
     const itemsWithAffordability = items.map((item) => {
@@ -113,7 +108,7 @@ export async function GET(request: Request) {
         metadata: item.metadata,
         badgeId: item.badgeId,
         promotion: item.promotion,
-        canAfford: user ? user.loyaltyPoints >= item.pointsCost : false,
+        canAfford: user ? (user.loyaltyPoints ?? 0) >= item.pointsCost : false,
         userPoints: user?.loyaltyPoints || 0,
         requiredTier,
         validityDays,
@@ -128,7 +123,7 @@ export async function GET(request: Request) {
         total,
         totalPages: Math.ceil(total / limit)
       },
-      userTier: user?.loyaltyTier || "BRONZE",
+      userTier: user?.loyaltyTier || null,
       userPoints: user?.loyaltyPoints || 0
     })
   } catch (error) {

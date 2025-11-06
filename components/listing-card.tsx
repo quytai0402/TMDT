@@ -19,6 +19,7 @@ interface ListingCardProps {
   bedrooms?: number
   featured?: boolean
   isSecret?: boolean
+  nearbyPlacesCount?: number
 }
 
 export function ListingCard({
@@ -34,6 +35,7 @@ export function ListingCard({
   bedrooms = 2,
   featured = false,
   isSecret = false,
+  nearbyPlacesCount,
 }: ListingCardProps) {
   const [isFavorite, setIsFavorite] = useState(false)
 
@@ -80,6 +82,12 @@ export function ListingCard({
                 <Bed className="h-4 w-4" />
                 <span>{bedrooms} phòng ngủ</span>
               </div>
+              {nearbyPlacesCount && nearbyPlacesCount > 0 && (
+                <div className="flex items-center space-x-1">
+                  <MapPin className="h-4 w-4" />
+                  <span>{nearbyPlacesCount} địa điểm</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

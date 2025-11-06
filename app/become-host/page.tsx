@@ -1,7 +1,7 @@
 "use client"
 
+import Image from "next/image"
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 
 import { Header } from "@/components/header"
@@ -15,6 +15,8 @@ import { Badge } from "@/components/ui/badge"
 import { Loader2, ShieldCheck } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useAuthModal } from "@/hooks/use-auth-modal"
+import { createVietQRUrl, formatTransferReference, getBankTransferInfo } from "@/lib/payments"
 
 interface RegionOption {
   slug: string
@@ -23,6 +25,30 @@ interface RegionOption {
   country?: string | null
   listingCount: number
 }
+
+const HOST_POSITIONING_OPTIONS = [
+  {
+    value: "wellness",
+    label: "Retreat chăm sóc sức khỏe",
+    intro: "Homestay tập trung vào trải nghiệm detox, yoga và thiền với không gian xanh và menu lành mạnh.",
+    experience: "Có 4 năm vận hành các retreat nhỏ và hợp tác với những huấn luyện viên yoga quốc tế.",
+  },
+  {
+    value: "city-lux",
+    label: "Căn hộ hạng sang nội đô",
+    intro: "Chuỗi căn hộ cao cấp nằm tại trung tâm, hướng tới khách công tác và workation dài ngày.",
+    experience: "Đội ngũ có kinh nghiệm vận hành 20+ căn hộ dịch vụ, tỷ lệ lấp đầy trung bình 85%.",
+  },
+  {
+    value: "heritage",
+    label: "Trải nghiệm di sản bản địa",
+    intro: "Không gian lưu trú trong nhà cổ/biệt thự phong cách Đông Dương, kể câu chuyện văn hóa bản địa.",
+    experience: "Hợp tác cùng nghệ nhân địa phương, tổ chức workshop thủ công và tour khám phá di sản.",
+  },
+]
+
+const HOST_MAINTENANCE_FEE = 299_000
+const HOST_BANK_INFO = getBankTransferInfo()
 
 interface HostApplicationResponse {
   application?: {
@@ -40,7 +66,7 @@ interface HostApplicationResponse {
 
 export default function BecomeHostPage() {
   const { data: session, status } = useSession()
-  const router = useRouter()
+  const authModal = useAuthModal()
   const [regions, setRegions] = useState<RegionOption[]>([])
   const [regionsLoading, setRegionsLoading] = useState(true)
   const [applicationLoading, setApplicationLoading] = useState(false)
@@ -70,6 +96,39 @@ export default function BecomeHostPage() {
   const [registerSubmitting, setRegisterSubmitting] = useState(false)
   const [registerError, setRegisterError] = useState<string | null>(null)
   const [registerSuccess, setRegisterSuccess] = useState<string | null>(null)
+  const hostReference = useMemo(() => {
+    const identifier = session?.user?.id ?? session?.user?.email ?? session?.user?.name ?? "HOST299K"
+    return formatTransferReference("SERVICE", identifier)
+  }, [session?.user?.email, session?.user?.id, session?.user?.name])
+  const hostQrUrl = useMemo(() => createVietQRUrl(HOST_MAINTENANCE_FEE, hostReference), [hostReference])
+  const registerHostReference = useMemo(() => {
+    const identifier = registerForm.email || registerForm.phone || registerForm.name || "HOST299K"
+    return formatTransferReference("SERVICE", identifier)
+  }, [registerForm.email, registerForm.phone, registerForm.name])
+  const registerHostQrUrl = useMemo(
+    () => createVietQRUrl(HOST_MAINTENANCE_FEE, registerHostReference),
+    [registerHostReference],
+  )
+
+  const handleIntroTemplateSelect = (value: string) => {
+    const template = HOST_POSITIONING_OPTIONS.find((option) => option.value === value)
+    if (!template) return
+    setForm((prev) => ({
+      ...prev,
+      introduction: prev.introduction || template.intro,
+      experience: prev.experience || template.experience,
+    }))
+  }
+
+  const handleRegisterIntroTemplateSelect = (value: string) => {
+    const template = HOST_POSITIONING_OPTIONS.find((option) => option.value === value)
+    if (!template) return
+    setRegisterForm((prev) => ({
+      ...prev,
+      introduction: prev.introduction || template.intro,
+      experience: prev.experience || template.experience,
+    }))
+  }
 
   useEffect(() => {
     const loadRegions = async () => {
@@ -349,7 +408,21 @@ export default function BecomeHostPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Giới thiệu homestay</Label>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <Label>Giới thiệu homestay</Label>
+                        <Select onValueChange={handleRegisterIntroTemplateSelect}>
+                          <SelectTrigger className="w-full sm:w-56 text-xs">
+                            <SelectValue placeholder="Chọn mẫu mô tả nhanh" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {HOST_POSITIONING_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                       <Textarea
                         rows={4}
                         value={registerForm.introduction}
@@ -387,11 +460,35 @@ export default function BecomeHostPage() {
                       </Label>
                     </div>
 
+                    {registerForm.maintenanceAcknowledged ? (
+                      <div className="rounded-2xl border border-dashed border-primary/40 bg-white/80 p-4 flex flex-col gap-4 sm:flex-row sm:items-center">
+                        <Image
+                          src={registerHostQrUrl}
+                          alt="Mã QR thanh toán phí duy trì host"
+                          width={180}
+                          height={180}
+                          className="rounded-xl border border-primary/20 bg-white p-2"
+                        />
+                        <div className="space-y-2 text-sm">
+                          <p className="font-semibold text-foreground">
+                            Quét VietQR để thanh toán phí {HOST_MAINTENANCE_FEE.toLocaleString("vi-VN")}đ/tháng
+                          </p>
+                          <p>Ngân hàng: <strong>{HOST_BANK_INFO.bankName}</strong></p>
+                          <p>Chủ tài khoản: <strong>{HOST_BANK_INFO.accountName}</strong></p>
+                          <p>Số tài khoản: <strong>{HOST_BANK_INFO.accountNumber}</strong></p>
+                          <p>Mã tham chiếu: <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">{registerHostReference}</code></p>
+                          <p className="text-xs text-muted-foreground">
+                            Ghi rõ mã tham chiếu hoặc gửi biên lai tại mục hỗ trợ để được kích hoạt nhanh sau khi hồ sơ được duyệt.
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
+
                     {registerError && <p className="text-sm text-red-600">{registerError}</p>}
                     {registerSuccess && (
                       <p className="text-sm text-green-600">
                         {registerSuccess}{" "}
-                        <Button variant="link" className="px-1" onClick={() => router.push("/login")}>
+                        <Button variant="link" className="px-1" onClick={authModal.openLogin}>
                           Đăng nhập ngay
                         </Button>
                       </p>
@@ -404,7 +501,7 @@ export default function BecomeHostPage() {
                       </Button>
                       <div className="text-sm text-muted-foreground">
                         Đã có tài khoản?{" "}
-                        <Button variant="link" className="px-1" onClick={() => router.push("/login")}>
+                        <Button variant="link" className="px-1" onClick={authModal.openLogin}>
                           Đăng nhập
                         </Button>
                       </div>
@@ -487,7 +584,21 @@ export default function BecomeHostPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Giới thiệu ngắn gọn về chỗ nghỉ</label>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <label className="text-sm font-medium text-foreground">Giới thiệu ngắn gọn về chỗ nghỉ</label>
+                      <Select onValueChange={handleIntroTemplateSelect}>
+                        <SelectTrigger className="w-full sm:w-56 text-xs">
+                          <SelectValue placeholder="Chọn mẫu mô tả nhanh" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {HOST_POSITIONING_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <Textarea
                       placeholder="Mô tả điểm nổi bật, đối tượng khách hàng lý tưởng và kinh nghiệm vận hành hiện tại."
                       value={form.introduction}
@@ -518,6 +629,30 @@ export default function BecomeHostPage() {
                       Tôi đồng ý với phí duy trì nền tảng <strong>299.000đ/tháng</strong> và lệ phí dịch vụ <strong>10%/mỗi kỳ lưu trú</strong>. LuxeStay sẽ khấu trừ tự động trước khi thanh toán về ví host.
                     </label>
                   </div>
+
+                  {form.maintenanceAcknowledged ? (
+                    <div className="rounded-2xl border border-dashed border-primary/40 bg-white/80 p-4 flex flex-col gap-4 sm:flex-row sm:items-center">
+                      <Image
+                        src={HOST_PAYMENT_QR}
+                        alt="Mã QR thanh toán phí duy trì host"
+                        width={180}
+                        height={180}
+                        className="rounded-xl border border-primary/20 bg-white p-2"
+                      />
+                      <div className="space-y-2 text-sm">
+                        <p className="font-semibold text-foreground">
+                          Quét VietQR để thanh toán phí {HOST_MAINTENANCE_FEE.toLocaleString("vi-VN")}đ/tháng
+                        </p>
+                        <p>Ngân hàng: <strong>{HOST_BANK_INFO.bankName}</strong></p>
+                        <p>Chủ tài khoản: <strong>{HOST_BANK_INFO.accountName}</strong></p>
+                        <p>Số tài khoản: <strong>{HOST_BANK_INFO.accountNumber}</strong></p>
+                        <p>Mã tham chiếu: <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">{hostReference}</code></p>
+                        <p className="text-xs text-muted-foreground">
+                          Ghi rõ mã tham chiếu khi chuyển khoản để đội ngũ đối soát nhanh sau khi hồ sơ host được duyệt.
+                        </p>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {error && <p className="text-sm text-red-600">{error}</p>}
                   {successMessage && <p className="text-sm text-green-600">{successMessage}</p>}

@@ -40,6 +40,12 @@ type FinanceResponse = {
   topListings: ListingSummary
 }
 
+type DayChartPoint = BookingSummary['chartByDay'][number]
+type MonthChartPoint = BookingSummary['chartByMonth'][number]
+type ChartPoint = DayChartPoint | MonthChartPoint
+
+const isDayPoint = (point: ChartPoint): point is DayChartPoint => 'day' in point
+
 const currency = (value: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value)
 
@@ -71,7 +77,7 @@ export default function AdminRevenuePage() {
     loadFinance()
   }, [])
 
-  const chartData = useMemo(() => {
+  const chartData = useMemo<ChartPoint[]>(() => {
     if (!finance) return []
     return range === 'month' ? finance.bookings.chartByDay : finance.bookings.chartByMonth
   }, [finance, range])
@@ -193,24 +199,27 @@ export default function AdminRevenuePage() {
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-12 gap-3">
-                      {chartData.map((point) => (
-                        <div key={point.day ?? point.month} className="flex flex-col gap-1">
-                          <div className="h-24 rounded-md bg-muted relative overflow-hidden">
-                            <div
-                              className="absolute bottom-0 left-0 right-0 bg-primary/80 rounded-t-md transition-all"
-                              style={{
-                                height: `${Math.min(100, (point.revenue / (finance.revenue.total || 1)) * 220)}%`,
-                              }}
-                            />
+                      {chartData.map((point) => {
+                        const dayView = isDayPoint(point)
+                        const key = dayView ? `day-${point.day}` : `month-${point.month}`
+                        const label = dayView ? `Ngày ${point.day}` : `T${point.month}`
+                        return (
+                          <div key={key} className="flex flex-col gap-1">
+                            <div className="h-24 rounded-md bg-muted relative overflow-hidden">
+                              <div
+                                className="absolute bottom-0 left-0 right-0 bg-primary/80 rounded-t-md transition-all"
+                                style={{
+                                  height: `${Math.min(100, (point.revenue / (finance.revenue.total || 1)) * 220)}%`,
+                                }}
+                              />
+                            </div>
+                            <span className="text-xs font-medium text-center">{label}</span>
+                            <span className="text-[11px] text-muted-foreground text-center">
+                              {currency(point.revenue)}
+                            </span>
                           </div>
-                          <span className="text-xs font-medium text-center">
-                            {range === 'month' ? `Ngày ${point.day}` : `T${point.month}`}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground text-center">
-                            {currency(point.revenue)}
-                          </span>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </CardContent>
                 </Card>

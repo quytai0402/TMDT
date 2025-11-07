@@ -252,6 +252,7 @@ export function BookingCheckout({
   initialGuests,
   initialServices,
   initialServicesTotal,
+  initialCouponCode,
 }: BookingCheckoutProps) {
   const { data: session } = useSession()
   const { toast } = useToast()

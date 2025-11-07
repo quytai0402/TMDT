@@ -1,4 +1,4 @@
-import { NotificationType, Prisma } from "@prisma/client"
+import { GuideStatus, NotificationType, Prisma, UserRole } from "@prisma/client"
 
 import { prisma } from "@/lib/prisma"
 import { triggerPusherEvent } from "@/lib/pusher"
@@ -47,12 +47,14 @@ export async function notifyUser(userId: string, payload: NotificationPayload) {
 }
 
 export async function notifyUsers(userIds: string[], payload: NotificationPayload) {
-  await Promise.all(userIds.map((id) => createNotificationForUser(id, payload)))
+  const uniqueIds = Array.from(new Set(userIds.filter(Boolean)))
+  if (uniqueIds.length === 0) return
+  await Promise.all(uniqueIds.map((id) => createNotificationForUser(id, payload)))
 }
 
 export async function notifyAdmins(payload: NotificationPayload) {
   const admins = await prisma.user.findMany({
-    where: { role: "ADMIN" },
+    where: { role: { in: [UserRole.ADMIN, UserRole.SUPER_ADMIN] } },
     select: { id: true },
   })
 
@@ -62,6 +64,45 @@ export async function notifyAdmins(payload: NotificationPayload) {
 
   await notifyUsers(
     admins.map((admin) => admin.id),
+    payload,
+  )
+}
+
+export async function notifyHosts(payload: NotificationPayload) {
+  const hosts = await prisma.user.findMany({
+    where: { role: UserRole.HOST },
+    select: { id: true },
+  })
+
+  if (hosts.length === 0) return
+  await notifyUsers(
+    hosts.map((host) => host.id),
+    payload,
+  )
+}
+
+export async function notifyGuests(payload: NotificationPayload) {
+  const guests = await prisma.user.findMany({
+    where: { role: UserRole.GUEST },
+    select: { id: true },
+  })
+
+  if (guests.length === 0) return
+  await notifyUsers(
+    guests.map((guest) => guest.id),
+    payload,
+  )
+}
+
+export async function notifyGuides(payload: NotificationPayload, options?: { onlyApproved?: boolean }) {
+  const guideProfiles = await prisma.guideProfile.findMany({
+    where: options?.onlyApproved ? { status: GuideStatus.ACTIVE } : undefined,
+    select: { userId: true },
+  })
+
+  if (guideProfiles.length === 0) return
+  await notifyUsers(
+    guideProfiles.map((guide) => guide.userId),
     payload,
   )
 }

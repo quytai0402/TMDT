@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Users,
   UserPlus,
+  Wallet,
 } from "lucide-react"
 
 import { AdminLayout } from "@/components/admin-layout"
@@ -82,6 +83,26 @@ type UserMetrics = {
   walkInBookings: number
 }
 
+type PayoutSummary = {
+  total: number
+  pending: { count: number; amount: number }
+  approved: { count: number; amount: number }
+  paid: { count: number; amount: number }
+  rejected: { count: number; amount: number }
+}
+
+type AdminPayoutPreview = {
+  id: string
+  amount: number
+  status: "PENDING" | "APPROVED" | "PAID" | "REJECTED"
+  requestedAt: string
+  host: {
+    id: string
+    name?: string | null
+    email?: string | null
+  }
+}
+
 export default function AdminDashboardPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -95,6 +116,8 @@ export default function AdminDashboardPage() {
     pendingListings: 0,
     openDisputes: 0,
   })
+  const [payoutSummary, setPayoutSummary] = useState<PayoutSummary | null>(null)
+  const [recentPayouts, setRecentPayouts] = useState<AdminPayoutPreview[]>([])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -112,6 +135,7 @@ export default function AdminDashboardPage() {
           pendingListingsRes,
           disputesRes,
           walkInRes,
+          payoutsRes,
         ] = await Promise.all([
           fetch("/api/admin/analytics?period=30", { cache: "no-store", signal: controller.signal }),
           fetch("/api/admin/listings?limit=5&page=1&status=all", { cache: "no-store", signal: controller.signal }),
@@ -120,6 +144,7 @@ export default function AdminDashboardPage() {
           fetch("/api/admin/listings?limit=1&page=1&status=PENDING", { cache: "no-store", signal: controller.signal }),
           fetch("/api/admin/disputes?limit=1&page=1&status=OPEN", { cache: "no-store", signal: controller.signal }),
           fetch("/api/admin/users?limit=4&type=walkin", { cache: "no-store", signal: controller.signal }),
+          fetch("/api/admin/payouts?summary=true", { cache: "no-store", signal: controller.signal }),
         ])
 
         if (!analyticsRes.ok) throw new Error("Không thể tải thống kê")
@@ -184,6 +209,16 @@ export default function AdminDashboardPage() {
         if (walkInRes.ok) {
           const walkInData = await walkInRes.json()
           setWalkInPreview(Array.isArray(walkInData.users) ? walkInData.users : [])
+        }
+
+        if (payoutsRes.ok) {
+          const payoutData = await payoutsRes.json()
+          if (payoutData?.summary) {
+            setPayoutSummary(payoutData.summary as PayoutSummary)
+          }
+          if (Array.isArray(payoutData?.latest)) {
+            setRecentPayouts(payoutData.latest as AdminPayoutPreview[])
+          }
         }
 
         recentActivities.sort((a, b) => {
@@ -464,6 +499,117 @@ export default function AdminDashboardPage() {
               </Card>
             </section>
 
+            <section className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+              <Card>
+                <CardHeader className="flex flex-row items-start justify-between gap-4">
+                  <div>
+                    <CardTitle>Yêu cầu rút tiền</CardTitle>
+                    <CardDescription>Tổng quan trạng thái theo thời gian thực.</CardDescription>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => router.push("/admin/payouts")}>
+                    Quản lý <ArrowUpRight className="ml-1 h-4 w-4" />
+                  </Button>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {[
+                      { label: "Chờ duyệt", data: payoutSummary?.pending, tone: "text-amber-600", border: "border-amber-200 bg-amber-50/60" },
+                      { label: "Đã duyệt", data: payoutSummary?.approved, tone: "text-blue-600", border: "border-blue-200 bg-blue-50/60" },
+                      { label: "Đã thanh toán", data: payoutSummary?.paid, tone: "text-emerald-600", border: "border-emerald-200 bg-emerald-50/60" },
+                      { label: "Từ chối", data: payoutSummary?.rejected, tone: "text-red-600", border: "border-red-200 bg-red-50/70" },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className={`rounded-xl border px-4 py-3 ${item.border} flex flex-col gap-1`}
+                      >
+                        <p className="text-xs font-semibold text-muted-foreground">{item.label}</p>
+                        <p className={`text-2xl font-bold ${item.tone}`}>
+                          {formatNumber(item.data?.count ?? 0)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          ≈ {formatCurrency(item.data?.amount ?? 0)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-primary shadow-inner">
+                        <Wallet className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Đang chờ giải ngân</p>
+                        <p className="text-lg font-semibold text-primary">
+                          {formatCurrency(payoutSummary?.pending.amount ?? 0)}
+                        </p>
+                      </div>
+                      <div className="ml-auto">
+                        <p className="text-xs text-muted-foreground">Đã chi trả</p>
+                        <p className="text-base font-semibold text-emerald-600">
+                          {formatCurrency(payoutSummary?.paid.amount ?? 0)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-start justify-between gap-4">
+                  <div>
+                    <CardTitle>Yêu cầu gần nhất</CardTitle>
+                    <CardDescription>4 giao dịch mới nhất từ host & hướng dẫn viên.</CardDescription>
+                  </div>
+                  <Badge variant="outline" className="border-muted text-muted-foreground">
+                    Tổng {formatNumber(payoutSummary?.total ?? 0)}
+                  </Badge>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {recentPayouts.slice(0, 4).map((payout) => (
+                    <div
+                      key={payout.id}
+                      className="flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-white/80 p-3"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">
+                          {payout.host.name || payout.host.email || "Host không tên"}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(payout.requestedAt).toLocaleString("vi-VN")}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-foreground">{formatCurrency(payout.amount)}</p>
+                        <Badge
+                          variant="outline"
+                          className={
+                            payout.status === "PENDING"
+                              ? "border-amber-200 bg-amber-50 text-amber-700"
+                              : payout.status === "APPROVED"
+                                ? "border-blue-200 bg-blue-50 text-blue-700"
+                                : payout.status === "PAID"
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : "border-red-200 bg-red-50 text-red-700"
+                          }
+                        >
+                          {payout.status === "PENDING"
+                            ? "Chờ duyệt"
+                            : payout.status === "APPROVED"
+                              ? "Đã duyệt"
+                              : payout.status === "PAID"
+                                ? "Đã thanh toán"
+                                : "Từ chối"}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                  {recentPayouts.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">Chưa có yêu cầu nào.</p>
+                  ) : null}
+                </CardContent>
+              </Card>
+            </section>
+
             <section className="grid gap-6 lg:grid-cols-2">
               <Card>
                 <CardHeader className="flex flex-row items-start justify-between gap-4">
@@ -695,4 +841,3 @@ function formatPercent(value?: number | null) {
   const sign = value > 0 ? "+" : ""
   return `${sign}${value.toFixed(1)}%`
 }
-

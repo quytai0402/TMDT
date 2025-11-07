@@ -84,7 +84,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const [profile, recentApplication] = await Promise.all([
+    const [profile, recentApplication, approvedLocationRequests] = await Promise.all([
       prisma.hostProfile.findUnique({
         where: { userId: session.user.id },
         select: {
@@ -103,16 +103,86 @@ export async function GET() {
           reviewedAt: true,
         },
       }),
+      prisma.locationRequest.findMany({
+        where: {
+          requestedBy: session.user.id,
+          status: "APPROVED",
+        },
+        select: {
+          id: true,
+          city: true,
+          state: true,
+          country: true,
+          approvedAt: true,
+        },
+        orderBy: [
+          { approvedAt: "desc" },
+          { createdAt: "desc" },
+        ],
+      }),
     ])
 
     const locationSlug = profile?.primaryLocationSlug ?? recentApplication?.locationSlug ?? null
     const locationName = profile?.primaryLocationName ?? recentApplication?.locationName ?? null
     const resolvedLocation = resolveLocation(locationSlug, locationName)
 
+    const availableLocations = (() => {
+      const labelFor = (city?: string | null, state?: string | null, country?: string | null) =>
+        [city, state, country && country !== "Vietnam" ? country : null].filter(Boolean).join(", ")
+
+      const entries: Array<{
+        id: string
+        slug?: string | null
+        city: string
+        state?: string | null
+        country?: string | null
+        label: string
+        type: "PRIMARY" | "EXPANSION"
+      }> = []
+
+      if (resolvedLocation?.city) {
+        entries.push({
+          id: `primary-${session.user.id}`,
+          slug: resolvedLocation.slug,
+          city: resolvedLocation.city,
+          state: resolvedLocation.state,
+          country: resolvedLocation.country ?? "Vietnam",
+          label: resolvedLocation.name ?? labelFor(resolvedLocation.city, resolvedLocation.state, resolvedLocation.country),
+          type: "PRIMARY",
+        })
+      }
+
+      approvedLocationRequests.forEach((request) => {
+        if (!request.city) {
+          return
+        }
+
+        entries.push({
+          id: request.id,
+          city: request.city,
+          state: request.state,
+          country: request.country ?? "Vietnam",
+          label: labelFor(request.city, request.state, request.country),
+          type: "EXPANSION",
+        })
+      })
+
+      const uniqueByKey = new Map<string, (typeof entries)[number]>()
+      entries.forEach((location) => {
+        const key = `${location.city?.toLowerCase() ?? ""}|${location.state?.toLowerCase() ?? ""}|${location.country?.toLowerCase() ?? ""}`
+        if (!uniqueByKey.has(key)) {
+          uniqueByKey.set(key, location)
+        }
+      })
+
+      return Array.from(uniqueByKey.values())
+    })()
+
     return NextResponse.json({
       profile,
       application: recentApplication,
       location: resolvedLocation,
+      availableLocations,
     })
   } catch (error) {
     console.error("Host profile GET error:", error)

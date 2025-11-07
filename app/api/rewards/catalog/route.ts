@@ -89,6 +89,8 @@ export async function GET(request: Request) {
       const metadata = (typeof item.metadata === "object" && item.metadata !== null) ? item.metadata as Record<string, unknown> : {}
       const requiredTier = typeof metadata.requiredTier === "string" ? metadata.requiredTier : null
       const validityDays = typeof metadata.validityDays === "number" ? metadata.validityDays : null
+      const quantityAvailable = typeof item.quantityAvailable === "number" ? item.quantityAvailable : null
+      const isAvailable = item.isActive && (quantityAvailable === null || quantityAvailable > 0)
 
       return {
         id: item.id,
@@ -99,11 +101,14 @@ export async function GET(request: Request) {
         pointsCost: item.pointsCost,
         cashValue: item.cashValue,
         quantityAvailable: item.quantityAvailable,
+        stock: quantityAvailable,
         maxPerUser: item.maxPerUser,
         startAt: item.startAt,
         endAt: item.endAt,
         isActive: item.isActive,
         image: item.image,
+        imageUrl: item.image,
+        isAvailable,
         terms: item.terms,
         metadata: item.metadata,
         badgeId: item.badgeId,

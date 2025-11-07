@@ -13,7 +13,69 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const statusFilter = request.nextUrl.searchParams.get("status")
+    const { searchParams } = request.nextUrl
+    const statusFilter = searchParams.get("status")
+    const summaryOnly = searchParams.get("summary") === "true"
+    const includeLatest = summaryOnly || searchParams.get("includeLatest") === "true"
+    const limitParam = Number.parseInt(searchParams.get("limit") ?? "100", 10)
+    const limit = Math.min(200, Math.max(1, Number.isNaN(limitParam) ? 100 : limitParam))
+    const skipParam = Number.parseInt(searchParams.get("skip") ?? "0", 10)
+    const skip = Math.max(0, Number.isNaN(skipParam) ? 0 : skipParam)
+
+    if (summaryOnly) {
+      const [grouped, latest] = await Promise.all([
+        prisma.hostPayout.groupBy({
+          by: ["status"],
+          _count: { _all: true },
+          _sum: { amount: true },
+        }),
+        includeLatest
+          ? prisma.hostPayout.findMany({
+              where: statusFilter ? { status: statusFilter as PayoutStatus } : {},
+              include: {
+                host: {
+                  select: { id: true, name: true, email: true },
+                },
+              },
+              orderBy: { requestedAt: "desc" },
+              take: Math.min(limit, 20),
+            })
+          : [],
+      ])
+
+      const summary = {
+        total: 0,
+        pending: { count: 0, amount: 0 },
+        approved: { count: 0, amount: 0 },
+        paid: { count: 0, amount: 0 },
+        rejected: { count: 0, amount: 0 },
+      }
+
+      for (const row of grouped) {
+        const count = row._count?._all ?? 0
+        const amount = Number(row._sum?.amount ?? 0)
+        summary.total += count
+
+        switch (row.status) {
+          case "PENDING":
+            summary.pending = { count, amount }
+            break
+          case "APPROVED":
+            summary.approved = { count, amount }
+            break
+          case "PAID":
+            summary.paid = { count, amount }
+            break
+          case "REJECTED":
+            summary.rejected = { count, amount }
+            break
+          default:
+            break
+        }
+      }
+
+      return NextResponse.json({ summary, latest })
+    }
 
     const payouts = await prisma.hostPayout.findMany({
       where: statusFilter ? { status: statusFilter as PayoutStatus } : {},
@@ -27,10 +89,18 @@ export async function GET(request: NextRequest) {
         },
       },
       orderBy: { requestedAt: "desc" },
-      take: 100,
+      skip,
+      take: limit,
     })
 
-    return NextResponse.json({ payouts })
+    return NextResponse.json({
+      payouts,
+      pagination: {
+        limit,
+        skip,
+        returned: payouts.length,
+      },
+    })
   } catch (error) {
     console.error("Admin payouts GET error:", error)
     return NextResponse.json({ error: "Failed to load payout requests" }, { status: 500 })

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
+import { NotificationType } from "@prisma/client"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { notifyAdmins, notifyUser } from "@/lib/notifications"
 import { z } from "zod"
 
 const createBookingSchema = z.object({
@@ -46,10 +48,17 @@ export async function POST(
       where: { id: experienceId, status: "ACTIVE" },
       select: {
         id: true,
+        title: true,
         price: true,
         currency: true,
         minGuests: true,
         maxGuests: true,
+        hostId: true,
+        guideProfile: {
+          select: {
+            userId: true,
+          },
+        },
       },
     })
 
@@ -91,6 +100,51 @@ export async function POST(
         totalBookings: { increment: 1 },
       },
     })
+
+    const bookingDateLabel = bookingDate.toLocaleDateString("vi-VN", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    })
+
+    const notifyPayload = {
+      type: NotificationType.BOOKING_REQUEST,
+      title: "Có yêu cầu trải nghiệm mới",
+      message: `${session.user.name ?? "Một vị khách"} đặt "${experience.title}" ngày ${bookingDateLabel} cho ${validated.numberOfGuests} khách.`,
+      link: `/host/experiences/${experience.id}?booking=${booking.id}`,
+      data: {
+        bookingId: booking.id,
+        experienceId: experience.id,
+      } as const,
+    }
+
+    const notificationJobs: Promise<unknown>[] = [
+      notifyUser(experience.hostId, notifyPayload),
+      notifyAdmins({
+        type: NotificationType.BOOKING_REQUEST,
+        title: "Có trải nghiệm cần xử lý",
+        message: `${experience.title} vừa có yêu cầu mới từ khách.`,
+        link: `/admin/guides/experiences`,
+        data: {
+          bookingId: booking.id,
+          experienceId: experience.id,
+        },
+      }),
+    ]
+
+    if (experience.guideProfile?.userId) {
+      notificationJobs.push(
+        notifyUser(experience.guideProfile.userId, {
+          ...notifyPayload,
+          link: `/guide/bookings?booking=${booking.id}`,
+        }),
+      )
+    }
+
+    void Promise.all(notificationJobs).catch((error) =>
+      console.error("Experience booking notification error:", error),
+    )
 
     return NextResponse.json(
       {

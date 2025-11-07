@@ -37,27 +37,14 @@ async function calculateBookingRevenue(todayStart: Date) {
 
   const serviceFeeFallbackCondition: Prisma.BookingWhereInput = {
     serviceFee: { gt: 0 },
-    OR: [
-      { platformCommission: { lte: 0 } },
-      { platformCommission: null },
-    ],
+    NOT: { platformCommission: { gt: 0 } },
   }
 
   const missingCommissionCondition: Prisma.BookingWhereInput = {
     totalPrice: { gt: 0 },
     AND: [
-      {
-        OR: [
-          { platformCommission: { lte: 0 } },
-          { platformCommission: null },
-        ],
-      },
-      {
-        OR: [
-          { serviceFee: { lte: 0 } },
-          { serviceFee: null },
-        ],
-      },
+      { NOT: { platformCommission: { gt: 0 } } },
+      { NOT: { serviceFee: { gt: 0 } } },
     ],
   }
 

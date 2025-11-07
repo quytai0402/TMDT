@@ -53,8 +53,11 @@ export function HeroSection() {
               sizes="100vw"
               className="object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-white/90 via-sky-100/70 to-white" />
-            <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-[2px]" />
+            {/* <div className="absolute inset-0 bg-gradient-to-b from-white/90 via-sky-100/70 to-white" />
+            <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-[2px]" /> */}
+
+            <div className="absolute inset-0 bg-gradient-to-b from-white/40 via-sky-100/50 to-white/40" />
+            <div className="absolute inset-0 bg-slate-900/20 backdrop-blur-[1px]" />
           </div>
         ))}
       </div>

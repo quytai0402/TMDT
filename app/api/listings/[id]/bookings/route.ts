@@ -9,6 +9,10 @@ interface RouteParams {
   id: string
 }
 
+type RouteContext = {
+  params: Promise<RouteParams>
+}
+
 const resolveParams = async (params: RouteParams | Promise<RouteParams>) => params
 
 const isValidStatus = (value: string): value is BookingStatus =>
@@ -21,20 +25,18 @@ function parseBoolean(value: string | null) {
   return value === 'true' || value === '1'
 }
 
-export async function GET(req: NextRequest, context: { params: RouteParams | Promise<RouteParams> }) {
+export async function GET(req: NextRequest, context: RouteContext) {
   try {
     const session = await getServerSession(authOptions)
+    const user = session?.user ?? null
+    const { searchParams } = new URL(req.url)
+    const isPublicRequest = parseBoolean(searchParams.get('public'))
 
-    if (!session?.user) {
-      const isPublicRequest = parseBoolean(new URL(req.url).searchParams.get('public'))
-      if (!isPublicRequest) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
+    if (!isPublicRequest && !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const { id: listingId } = await resolveParams(context.params)
-    const { searchParams } = new URL(req.url)
-    const isPublicRequest = parseBoolean(searchParams.get('public'))
     const rawStatuses = searchParams.get('status')?.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean) ?? []
     const statusFilter = rawStatuses.filter(isValidStatus)
 
@@ -47,9 +49,9 @@ export async function GET(req: NextRequest, context: { params: RouteParams | Pro
       return NextResponse.json({ error: 'Listing not found' }, { status: 404 })
     }
 
-    if (!isPublicRequest) {
-      const isAdmin = session.user.role === 'ADMIN'
-      const isOwner = listing.hostId === session.user.id
+    if (!isPublicRequest && user) {
+      const isAdmin = user.role === 'ADMIN'
+      const isOwner = listing.hostId === user.id
 
       if (!isAdmin && !isOwner) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

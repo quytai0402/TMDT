@@ -191,8 +191,8 @@ export default function AdminMessagesPage() {
               </div>
             </div>
 
-            <Tabs defaultValue="all" onValueChange={setSelectedFilter}>
-              <TabsList className="mb-4" value={selectedFilter}>
+            <Tabs value={selectedFilter} onValueChange={setSelectedFilter}>
+              <TabsList className="mb-4">
                 <TabsTrigger value="all">Tất cả</TabsTrigger>
                 <TabsTrigger value="flagged">
                   <Flag className="h-4 w-4 mr-1" />

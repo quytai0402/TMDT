@@ -6,11 +6,22 @@ import nodemailer from "nodemailer"
 // Initialize providers
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
 
-const smtpHost = process.env.SMTP_HOST || ""
-const smtpUser = process.env.SMTP_USER || ""
-const smtpPass = process.env.SMTP_PASS || ""
-const smtpPort = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : 465
+const envSmtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || ""
+const envSmtpPass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || ""
+
+const smtpUser = envSmtpUser
+const smtpPass = envSmtpPass
+
+const inferredGmailHost = smtpUser.endsWith("@gmail.com") ? "smtp.gmail.com" : ""
+const smtpHost = process.env.SMTP_HOST || inferredGmailHost
+const smtpPort = process.env.SMTP_PORT
+  ? Number(process.env.SMTP_PORT)
+  : smtpHost === "smtp.gmail.com"
+    ? 465
+    : 587
+const smtpSecure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === "true" : smtpPort === 465
 const smtpFromEmail = process.env.SMTP_FROM_EMAIL || (smtpUser ? `LuxeStay <${smtpUser}>` : "LuxeStay <no-reply@luxestay.vn>")
+const resendFromEmail = process.env.RESEND_FROM_EMAIL
 
 export interface BookingConfirmationData {
   guestName: string
@@ -85,7 +96,7 @@ const transporter =
     ? nodemailer.createTransport({
         host: smtpHost,
         port: smtpPort,
-        secure: smtpPort === 465,
+        secure: smtpSecure,
         auth: { user: smtpUser, pass: smtpPass },
       })
     : null
@@ -114,7 +125,8 @@ const listify = (value?: string | string[]) => {
 
 async function deliverEmail(payload: EmailPayload) {
   const { to, cc, bcc, subject, html } = payload
-  const fromAddress = payload.from ?? smtpFromEmail
+  const defaultFrom = resend ? resendFromEmail ?? smtpFromEmail : smtpFromEmail
+  const fromAddress = payload.from ?? defaultFrom
   const toList = listify(to)
   const ccList = listify(cc)
   const bccList = listify(bcc)
@@ -150,7 +162,9 @@ async function deliverEmail(payload: EmailPayload) {
     return { success: true as const }
   }
 
-  console.warn("Email service not configured. Set RESEND_API_KEY or SMTP_* environment variables.")
+  console.warn(
+    "Email service not configured. Provide RESEND_API_KEY or set SMTP_USER/SMTP_PASS (Gmail app password supported).",
+  )
   return { success: false as const, error: new Error("Email service not configured") }
 }
 

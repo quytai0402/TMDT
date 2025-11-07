@@ -1,5 +1,6 @@
 import { getServerSession } from 'next-auth'
 import { NextRequest, NextResponse } from 'next/server'
+
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
@@ -17,100 +18,89 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url)
     const unreadOnly = searchParams.get('unreadOnly') === 'true'
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '20')
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '20', 10)))
     const skip = (page - 1) * limit
 
-    // If only requesting unread count, use cache
+    const unreadCountWhere = { userId: session.user.id, isRead: false }
+
+    // Lightweight path used by polling to only retrieve unread count
     if (unreadOnly && limit === 1 && skip === 0) {
       const cached = unreadCache.get(session.user.id)
       const now = Date.now()
-      
+
       if (cached && now - cached.timestamp < CACHE_TTL) {
         return NextResponse.json({
           notifications: [],
-          pagination: { page: 1, limit: 1, total: cached.count },
+          pagination: { page: 1, limit: 1, total: cached.count, totalPages: 1 },
           unreadCount: cached.count,
         })
       }
+
+      const unreadCount = await prisma.notification.count({ where: unreadCountWhere })
+      unreadCache.set(session.user.id, { count: unreadCount, timestamp: Date.now() })
+
+      return NextResponse.json({
+        notifications: [],
+        pagination: { page: 1, limit: 1, total: unreadCount, totalPages: 1 },
+        unreadCount,
+      })
     }
 
-    const where: any = {
-      userId: session.user.id
-    }
-
+    const where: Record<string, unknown> = { userId: session.user.id }
     if (unreadOnly) {
       where.isRead = false
     }
 
-    // Optimize: Only fetch what's needed
-    const timeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Database timeout')), 15000)
-    )
+    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Database timeout')), 15000))
 
-    const queryPromise = Promise.all([
-      prisma.notification.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-        select: {
-          id: true,
-          type: true,
-          title: true,
-          message: true,
-          link: true,
-          isRead: true,
-          createdAt: true,
-        }
-      }),
-      // Only count if not cached
-      unreadOnly && limit === 1 ? 
-        prisma.notification.count({ where }) : 
-        Promise.resolve(0),
-    ])
+    const notificationsQuery = prisma.notification.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+      select: {
+        id: true,
+        type: true,
+        title: true,
+        message: true,
+        link: true,
+        isRead: true,
+        createdAt: true,
+      },
+    })
 
-    const [notifications, count] = await Promise.race([queryPromise, timeout]).catch(async (error) => {
+    const totalQuery = prisma.notification.count({ where })
+    const unreadCountQuery = unreadOnly ? totalQuery : prisma.notification.count({ where: unreadCountWhere })
+
+    const queryPromise = Promise.all([notificationsQuery, totalQuery, unreadCountQuery])
+
+    const [notifications, total, unreadCount] = await Promise.race([queryPromise, timeout]).catch(async (error) => {
       console.warn('Notifications query exceeded timeout, retrying without race condition:', error)
       try {
         return await queryPromise
       } catch (fallbackError) {
         console.error('Database error in notifications after fallback:', fallbackError)
-        return [[], 0] as const
+        return [[], 0, 0] as const
       }
     })
-
-    // Cache unread count
-    if (unreadOnly && limit === 1) {
-      unreadCache.set(session.user.id, {
-        count: count,
-        timestamp: Date.now()
-      })
-    }
 
     return NextResponse.json({
       notifications,
       pagination: {
         page,
         limit,
-        total: count,
-        totalPages: Math.ceil(count / limit)
+        total,
+        totalPages: total > 0 ? Math.ceil(total / limit) : 0,
       },
-      unreadCount: unreadOnly ? count : 0
+      unreadCount,
     })
-
   } catch (error) {
     console.error('Error fetching notifications:', error)
-    // Return empty data instead of error for better UX
     return NextResponse.json({
       notifications: [],
-      pagination: {
-        page: 1,
-        limit: 20,
-        total: 0,
-        totalPages: 0
-      },
-      unreadCount: 0
+      pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+      unreadCount: 0,
     })
   }
 }
@@ -123,50 +113,52 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await req.json()
-    const { notificationIds, markAllAsRead } = body
-
-    if (markAllAsRead) {
-      // Mark all as read
-      await prisma.notification.updateMany({
-        where: {
-          userId: session.user.id,
-          isRead: false
-        },
-        data: { isRead: true }
-      })
-
-      return NextResponse.json({
-        message: 'All notifications marked as read'
-      })
+    let body: any = null
+    try {
+      body = await req.json()
+    } catch {
+      // Body can legitimately be empty for some requests
     }
 
-    if (notificationIds && Array.isArray(notificationIds)) {
-      // Mark specific notifications as read
+    const { searchParams } = new URL(req.url)
+    const markAllFromQuery = searchParams.get('markAllAsRead') === 'true'
+    const idsFromQuery = searchParams.get('ids')
+
+    const markAllAsRead = Boolean(body?.markAllAsRead) || markAllFromQuery
+    const bodyIds: string[] = Array.isArray(body?.notificationIds) ? body.notificationIds : []
+    const queryIds = typeof idsFromQuery === 'string'
+      ? idsFromQuery
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
+      : []
+    const notificationIds = bodyIds.length ? bodyIds : queryIds
+
+    if (markAllAsRead) {
+      await prisma.notification.updateMany({
+        where: { userId: session.user.id, isRead: false },
+        data: { isRead: true },
+      })
+      unreadCache.delete(session.user.id)
+      return NextResponse.json({ message: 'All notifications marked as read' })
+    }
+
+    if (notificationIds.length > 0) {
       await prisma.notification.updateMany({
         where: {
           id: { in: notificationIds },
-          userId: session.user.id
+          userId: session.user.id,
         },
-        data: { isRead: true }
+        data: { isRead: true },
       })
-
-      return NextResponse.json({
-        message: 'Notifications marked as read'
-      })
+      unreadCache.delete(session.user.id)
+      return NextResponse.json({ message: 'Notifications marked as read' })
     }
 
-    return NextResponse.json(
-      { error: 'Invalid request' },
-      { status: 400 }
-    )
-
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   } catch (error) {
     console.error('Error updating notifications:', error)
-    return NextResponse.json(
-      { error: 'Failed to update notifications' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to update notifications' }, { status: 500 })
   }
 }
 
@@ -183,43 +175,30 @@ export async function DELETE(req: NextRequest) {
     const deleteAll = searchParams.get('deleteAll') === 'true'
 
     if (deleteAll) {
-      // Delete all read notifications
       await prisma.notification.deleteMany({
         where: {
           userId: session.user.id,
-          isRead: true
-        }
+          isRead: true,
+        },
       })
-
-      return NextResponse.json({
-        message: 'All read notifications deleted'
-      })
+      unreadCache.delete(session.user.id)
+      return NextResponse.json({ message: 'All read notifications deleted' })
     }
 
     if (notificationId) {
-      // Delete specific notification
       await prisma.notification.deleteMany({
         where: {
           id: notificationId,
-          userId: session.user.id
-        }
+          userId: session.user.id,
+        },
       })
-
-      return NextResponse.json({
-        message: 'Notification deleted'
-      })
+      unreadCache.delete(session.user.id)
+      return NextResponse.json({ message: 'Notification deleted' })
     }
 
-    return NextResponse.json(
-      { error: 'Invalid request' },
-      { status: 400 }
-    )
-
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 })
   } catch (error) {
     console.error('Error deleting notifications:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete notifications' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to delete notifications' }, { status: 500 })
   }
 }

@@ -8,7 +8,7 @@ import { ArrowRight, Lock, MapPin } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { evaluateCollectionAccess } from "@/lib/curated-collections"
+import { evaluateCollectionAccess } from "@/lib/collection-access"
 
 interface CollectionCardProps {
   id: string

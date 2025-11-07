@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { z } from 'zod'
+import { BookingStatus } from '@prisma/client'
 
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -10,10 +11,14 @@ interface RouteParams {
   id: string
 }
 
+type RouteContext = {
+  params: Promise<RouteParams>
+}
+
 const resolveParams = async (params: RouteParams | Promise<RouteParams>) => params
 
 // Only block dates for CONFIRMED and COMPLETED bookings, not PENDING
-const CONFIRMED_STATUSES = ['CONFIRMED', 'COMPLETED'] as const
+const CONFIRMED_STATUSES: BookingStatus[] = ['CONFIRMED', 'COMPLETED']
 
 const blockPayloadSchema = z
   .object({
@@ -26,7 +31,7 @@ const blockPayloadSchema = z
     message: 'Ngày kết thúc phải sau ngày bắt đầu',
   })
 
-export async function GET(req: NextRequest, context: { params: RouteParams | Promise<RouteParams> }) {
+export async function GET(req: NextRequest, context: RouteContext) {
   try {
     const { id: listingId } = await resolveParams(context.params)
 
@@ -49,7 +54,7 @@ export async function GET(req: NextRequest, context: { params: RouteParams | Pro
   }
 }
 
-export async function POST(req: NextRequest, context: { params: RouteParams | Promise<RouteParams> }) {
+export async function POST(req: NextRequest, context: RouteContext) {
   try {
     const session = await getServerSession(authOptions)
 
@@ -151,7 +156,7 @@ export async function POST(req: NextRequest, context: { params: RouteParams | Pr
   }
 }
 
-export async function DELETE(req: NextRequest, context: { params: RouteParams | Promise<RouteParams> }) {
+export async function DELETE(req: NextRequest, context: RouteContext) {
   try {
     const session = await getServerSession(authOptions)
 

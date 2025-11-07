@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,7 +41,9 @@ export function ExperienceBookingWidget({
     totalPrice: number
     currency: string
   } | null>(null)
+  const [confirmingPayment, setConfirmingPayment] = useState(false)
   const { toast } = useToast()
+  const router = useRouter()
 
   const formatter = useMemo(
     () =>
@@ -115,6 +118,41 @@ export function ExperienceBookingWidget({
       })
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handlePaymentConfirmation = async () => {
+    if (!bookingInfo) return
+    setConfirmingPayment(true)
+    try {
+      const response = await fetch(
+        `/api/experience-bookings/${bookingInfo.id}/confirm-payment`,
+        {
+          method: "POST",
+        },
+      )
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error?.error || "Không thể xác nhận thanh toán.")
+      }
+
+      toast({
+        title: "Đã gửi thông tin cho concierge",
+        description: "Chúng tôi sẽ thông báo ngay khi hướng dẫn viên phản hồi.",
+      })
+
+      router.push(`/experiences/bookings/${bookingInfo.id}/success`)
+    } catch (error) {
+      console.error("Experience payment confirmation error:", error)
+      toast({
+        variant: "destructive",
+        title: "Xác nhận thanh toán thất bại",
+        description:
+          error instanceof Error ? error.message : "Vui lòng thử lại sau.",
+      })
+    } finally {
+      setConfirmingPayment(false)
     }
   }
 
@@ -214,48 +252,88 @@ export function ExperienceBookingWidget({
 
         <p className="text-xs text-center text-muted-foreground">Bạn chưa bị trừ tiền</p>
 
-        {bookingInfo && (
+        {bookingInfo &&
           (() => {
-            const reference = formatTransferReference("EXPERIENCE", bookingInfo.id.slice(-8).toUpperCase())
+            const reference = formatTransferReference(
+              "EXPERIENCE",
+              bookingInfo.id.slice(-8).toUpperCase(),
+            )
             const bank = getBankTransferInfo()
             return (
-          <div className="space-y-4 rounded-lg border border-dashed border-primary/30 bg-primary/5 p-4 text-sm">
-            <div className="flex items-center justify-between">
-              <span>Mã tham chiếu</span>
-              <span className="font-semibold text-primary">{reference}</span>
-            </div>
-            <div className="grid gap-2 text-xs text-muted-foreground">
-              <div className="flex justify-between">
-                <span>Ngân hàng</span>
-                <span className="font-medium text-foreground">{bank.bankName}</span>
+              <div className="space-y-4 rounded-lg border border-dashed border-primary/30 bg-primary/5 p-4 text-sm">
+                <div className="flex items-center justify-between">
+                  <span>Mã tham chiếu</span>
+                  <span className="font-semibold text-primary">{reference}</span>
+                </div>
+                <div className="grid gap-2 text-xs text-muted-foreground">
+                  <div className="flex justify-between">
+                    <span>Ngân hàng</span>
+                    <span className="font-medium text-foreground">
+                      {bank.bankName}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Số tài khoản</span>
+                    <span className="font-medium text-foreground">
+                      {bank.accountNumber}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Chủ tài khoản</span>
+                    <span className="font-medium text-foreground uppercase">
+                      {bank.accountName}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Tổng thanh toán</span>
+                    <span className="font-medium text-foreground">
+                      {formatter.format(bookingInfo.totalPrice)}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-col items-center gap-2 rounded-md bg-white/70 p-3">
+                  <img
+                    src={createVietQRUrl(bookingInfo.totalPrice, reference)}
+                    alt="Mã VietQR thanh toán trải nghiệm"
+                    className="h-36 w-36 rounded-md border border-border bg-white p-2"
+                  />
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    Quét VietQR hoặc chuyển khoản thủ công với nội dung trên để
+                    giữ chỗ. Concierge sẽ xác nhận trong vòng 30 phút.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Button
+                    className="w-full"
+                    variant="secondary"
+                    onClick={handlePaymentConfirmation}
+                    disabled={confirmingPayment}
+                  >
+                    {confirmingPayment ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Đang gửi thông tin...
+                      </>
+                    ) : (
+                      "Tôi đã chuyển khoản"
+                    )}
+                  </Button>
+                  <Button
+                    className="w-full"
+                    variant="outline"
+                    onClick={() => router.push("/concierge")}
+                  >
+                    Liên hệ concierge
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground text-center">
+                  Sau khi bấm “Tôi đã chuyển khoản”, hướng dẫn viên và concierge
+                  sẽ nhận được thông báo để xác nhận lịch trình cho bạn.
+                </p>
               </div>
-              <div className="flex justify-between">
-                <span>Số tài khoản</span>
-                <span className="font-medium text-foreground">{bank.accountNumber}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Chủ tài khoản</span>
-                <span className="font-medium text-foreground uppercase">{bank.accountName}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Tổng thanh toán</span>
-                <span className="font-medium text-foreground">{formatter.format(bookingInfo.totalPrice)}</span>
-              </div>
-            </div>
-            <div className="flex flex-col items-center gap-2 rounded-md bg-white/70 p-3">
-              <img
-                src={createVietQRUrl(bookingInfo.totalPrice, reference)}
-                alt="Mã VietQR thanh toán trải nghiệm"
-                className="h-36 w-36 rounded-md border border-border bg-white p-2"
-              />
-              <p className="text-[11px] text-muted-foreground text-center">
-                Quét VietQR hoặc chuyển khoản thủ công với nội dung trên để giữ chỗ. Concierge sẽ xác nhận trong vòng 30 phút.
-              </p>
-            </div>
-          </div>
             )
-          })()
-        )}
+          })()}
       </CardContent>
     </Card>
   )

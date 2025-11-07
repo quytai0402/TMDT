@@ -33,7 +33,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
-import { VIETNAMESE_BANKS } from "@/lib/banks"
+import { VIETNAMESE_BANKS, getBankVietQrCode } from "@/lib/banks"
 import { cn } from "@/lib/utils"
 
 type PendingBooking = {
@@ -98,6 +98,25 @@ const statusVariantMap: Record<string, BadgeVariant> = {
   APPROVED: "secondary",
   PAID: "default",
   REJECTED: "destructive",
+}
+
+const normalizeAccountHolderName = (value: string) =>
+  value
+    .trim()
+    .replace(/\s+/g, " ")
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+
+const buildVietQrImageUrl = (bankCode: string, accountNumber: string, accountName: string) => {
+  const sanitizedNumber = accountNumber.replace(/\D/g, "")
+  if (!sanitizedNumber) return null
+  const sanitizedName = normalizeAccountHolderName(accountName)
+  if (!sanitizedName) return null
+  const params = new URLSearchParams()
+  params.set("accountName", sanitizedName)
+  params.set("addInfo", sanitizedName)
+  return `https://img.vietqr.io/image/${bankCode}-${sanitizedNumber}-compact.png?${params.toString()}`
 }
 
 export default function HostPayoutsPage() {
@@ -199,6 +218,52 @@ export default function HostPayoutsPage() {
     }))
   }
 
+  const selectedBankVietQrCode = useMemo(() => {
+    if (!accountForm.bankName) return null
+    return getBankVietQrCode(accountForm.bankName) ?? null
+  }, [accountForm.bankName])
+
+  const generatedQrUrl = useMemo(() => {
+    if (!selectedBankVietQrCode) return null
+    if (!accountForm.accountNumber.trim() || !accountForm.accountName.trim()) return null
+    return buildVietQrImageUrl(
+      selectedBankVietQrCode,
+      accountForm.accountNumber,
+      accountForm.accountName,
+    )
+  }, [selectedBankVietQrCode, accountForm.accountNumber, accountForm.accountName])
+
+  const qrPreviewUrl = generatedQrUrl || (accountForm.qrCodeImage || null)
+  const bankSupportsAutoQr = Boolean(accountForm.bankName && selectedBankVietQrCode)
+
+  const handleCopyQrLink = useCallback(() => {
+    if (!qrPreviewUrl) return
+    if (typeof navigator === "undefined" || !navigator.clipboard) {
+      toast({
+        title: "Không thể sao chép",
+        description: "Trình duyệt của bạn không hỗ trợ sao chép tự động.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    navigator.clipboard
+      .writeText(qrPreviewUrl)
+      .then(() =>
+        toast({
+          title: "Đã sao chép link QR",
+          description: "Bạn có thể gửi link này cho admin nếu cần.",
+        }),
+      )
+      .catch(() =>
+        toast({
+          title: "Sao chép thất bại",
+          description: "Vui lòng thử lại hoặc mở ảnh QR để tải xuống.",
+          variant: "destructive",
+        }),
+      )
+  }, [qrPreviewUrl, toast])
+
   const handleSaveAccount = async () => {
     if (!accountForm.bankName || !accountForm.accountNumber || !accountForm.accountName) {
       toast({
@@ -211,6 +276,7 @@ export default function HostPayoutsPage() {
 
     try {
       setAccountSaving(true)
+      const qrCodeImage = qrPreviewUrl || undefined
       const response = await fetch("/api/host/payout-account", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -219,7 +285,7 @@ export default function HostPayoutsPage() {
           bankBranch: accountForm.bankBranch || undefined,
           accountNumber: accountForm.accountNumber,
           accountName: accountForm.accountName,
-          qrCodeImage: accountForm.qrCodeImage || undefined,
+          qrCodeImage,
           taxId: accountForm.taxId || undefined,
           notes: accountForm.notes || undefined,
         }),
@@ -669,13 +735,50 @@ export default function HostPayoutsPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Link mã QR (tuỳ chọn)</label>
-              <Input
-                value={accountForm.qrCodeImage}
-                onChange={(event) => handleAccountChange("qrCodeImage", event.target.value)}
-                placeholder="https://..."
-                disabled={accountSaving}
-              />
+              <label className="text-sm font-medium text-foreground">Mã VietQR chuyển khoản</label>
+              {qrPreviewUrl ? (
+                <div className="space-y-3 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4">
+                  <div className="flex items-center justify-between text-xs">
+                    <Badge variant={generatedQrUrl ? "secondary" : "outline"}>
+                      {generatedQrUrl ? "Tự động tạo từ VietQR" : "Đang dùng QR đã lưu"}
+                    </Badge>
+                    {accountForm.bankName ? (
+                      <span className="text-muted-foreground">
+                        {accountForm.bankName} • {accountForm.accountNumber}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-col items-center gap-2">
+                    <img
+                      src={qrPreviewUrl}
+                      alt="Mã VietQR chuyển khoản"
+                      className="h-36 w-36 rounded-md border border-border bg-white p-2"
+                    />
+                    <p className="text-[11px] text-muted-foreground text-center">
+                      LuxeStay sẽ sử dụng mã này để chuyển khoản nhanh khi duyệt rút tiền.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button variant="outline" size="sm" onClick={handleCopyQrLink}>
+                        Sao chép link
+                      </Button>
+                      <Button variant="secondary" size="sm" asChild>
+                        <a href={qrPreviewUrl} target="_blank" rel="noreferrer">
+                          Mở ảnh QR
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-muted px-3 py-3 text-xs text-muted-foreground">
+                  Nhập số tài khoản, tên chủ tài khoản và chọn ngân hàng hỗ trợ VietQR để hệ thống tự tạo mã.
+                  {!bankSupportsAutoQr && accountForm.bankName ? (
+                    <div className="mt-2 text-destructive">
+                      Ngân hàng này hiện chưa hỗ trợ VietQR tự động. Admin sẽ chuyển khoản thủ công theo thông tin phía trên.
+                    </div>
+                  ) : null}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

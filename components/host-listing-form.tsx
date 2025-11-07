@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm, useWatch } from "react-hook-form"
@@ -160,6 +160,15 @@ type HostListingFormProps = {
   }
 }
 
+type HostLocationOption = {
+  id: string
+  city: string
+  state?: string | null
+  country?: string | null
+  label: string
+  type?: "PRIMARY" | "EXPANSION" | string
+}
+
 function toFormValues(initial?: HostListingFormProps["initialData"]): ListingFormValues {
   return {
     title: initial?.title ?? "",
@@ -188,9 +197,10 @@ export function HostListingForm({ mode, listingId, initialData }: HostListingFor
   const { createListing, updateListing, loading } = useListings()
   const [imageInput, setImageInput] = useState("")
   const [uploadingImage, setUploadingImage] = useState(false)
-  const [prefilledLocation, setPrefilledLocation] = useState<{ city?: string; country?: string } | null>(null)
+  const [prefilledLocation, setPrefilledLocation] = useState<{ city?: string; country?: string; state?: string } | null>(null)
   const [locationPrefillAttempted, setLocationPrefillAttempted] = useState(mode !== "create")
-  const [isLocationLocked, setIsLocationLocked] = useState(false)
+  const [availableLocations, setAvailableLocations] = useState<HostLocationOption[]>([])
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null)
   const [customNearbyPlaces, setCustomNearbyPlaces] = useState<string[]>([])
   const [newNearbyPlace, setNewNearbyPlace] = useState("")
   const [showLocationExpansion, setShowLocationExpansion] = useState(false)
@@ -211,6 +221,180 @@ export function HostListingForm({ mode, listingId, initialData }: HostListingFor
   const [hasAttemptedGeocode, setHasAttemptedGeocode] = useState(false)
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([])
   const [visibleNearbyCount, setVisibleNearbyCount] = useState(0)
+
+  const loadHostLocations = useCallback(async () => {
+    if (mode !== "create") {
+      return
+    }
+
+    try {
+      const response = await fetch("/api/host/profile", { cache: "no-store" })
+      if (!response.ok) {
+        return
+      }
+
+      const payload = await response.json()
+      const fallbackCountry = payload?.location?.country ?? "Vietnam"
+      const normalizedLocations: HostLocationOption[] = Array.isArray(payload?.availableLocations)
+        ? (payload.availableLocations as HostLocationOption[])
+            .filter((location) => location && typeof location.city === "string")
+            .map((location, index) => {
+              const label =
+                typeof location.label === "string" && location.label.trim().length > 0
+                  ? location.label
+                  : [location.city, location.state, location.country && location.country !== "Vietnam" ? location.country : null]
+                      .filter(Boolean)
+                      .join(", ")
+
+              return {
+                id:
+                  location.id ??
+                  `${location.city ?? "location"}-${location.state ?? "state"}-${location.country ?? "country"}-${index}`,
+                city: location.city,
+                state: location.state ?? null,
+                country: location.country ?? fallbackCountry ?? null,
+                label: label || location.city || "Khu vực đã duyệt",
+                type: location.type,
+              }
+            })
+        : []
+
+      if (normalizedLocations.length > 0) {
+        setAvailableLocations(normalizedLocations)
+
+        const currentCityValue = form.getValues("city")
+        const normalizedCurrentCity =
+          typeof currentCityValue === "string" ? currentCityValue.trim().toLowerCase() : ""
+
+        const preferredLocation =
+          normalizedLocations.find(
+            (location) => normalizedCurrentCity && location.city?.toLowerCase() === normalizedCurrentCity,
+          ) ?? normalizedLocations[0]
+
+        if (preferredLocation) {
+          if (!normalizedCurrentCity && preferredLocation.city) {
+            form.setValue("city", preferredLocation.city, { shouldDirty: false })
+          }
+
+          const currentCountryValue = form.getValues("country")
+          if ((!currentCountryValue || !currentCountryValue.trim()) && preferredLocation.country) {
+            form.setValue("country", preferredLocation.country, { shouldDirty: false })
+          }
+
+          setPrefilledLocation({
+            city: preferredLocation.city,
+            state: preferredLocation.state ?? undefined,
+            country: preferredLocation.country ?? undefined,
+          })
+          setSelectedLocationId(preferredLocation.id)
+        }
+      } else {
+        setAvailableLocations([])
+        setSelectedLocationId(null)
+
+        const location = payload?.location as
+          | {
+              city?: string | null
+              state?: string | null
+              country?: string | null
+            }
+          | null
+
+        if (location) {
+          const updates: { city?: string; country?: string; state?: string } = {}
+
+          const currentCountry = form.getValues("country")?.trim()
+          if (!currentCountry && location.country) {
+            form.setValue("country", location.country, { shouldDirty: false })
+            updates.country = location.country
+          }
+
+          const currentCity = form.getValues("city")?.trim()
+          if (!currentCity && location.city) {
+            form.setValue("city", location.city, { shouldDirty: false })
+            updates.city = location.city
+            if (location.state) {
+              updates.state = location.state
+            }
+          }
+
+          if (Object.keys(updates).length > 0) {
+            setPrefilledLocation(updates)
+          } else if (location.city || location.country) {
+            setPrefilledLocation({
+              city: location.city ?? undefined,
+              state: location.state ?? undefined,
+              country: location.country ?? undefined,
+            })
+          }
+        }
+      }
+
+      if (payload?.location) {
+        const location = payload.location as
+          | {
+              latitude?: number | null
+              longitude?: number | null
+            }
+          | null
+
+        if (location) {
+          const currentLatitude = form.getValues("latitude")
+          if (typeof location.latitude === "number" && (!currentLatitude || Math.abs(currentLatitude) < 0.000001)) {
+            form.setValue("latitude", location.latitude, { shouldDirty: false })
+          }
+
+          const currentLongitude = form.getValues("longitude")
+          if (typeof location.longitude === "number" && (!currentLongitude || Math.abs(currentLongitude) < 0.000001)) {
+            form.setValue("longitude", location.longitude, { shouldDirty: false })
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Prefill host location error:", error)
+    }
+  }, [form, mode])
+
+  const handleLocationSelect = useCallback(
+    (locationId: string) => {
+      setSelectedLocationId(locationId)
+      const location = availableLocations.find((option) => option.id === locationId)
+      if (!location) {
+        return
+      }
+
+      if (form.getValues("city") !== location.city) {
+        form.setValue("city", location.city, { shouldDirty: true })
+      }
+
+      const currentCountry = form.getValues("country")
+      if ((!currentCountry || !currentCountry.trim()) && location.country) {
+        form.setValue("country", location.country, { shouldDirty: false })
+      }
+
+      setPrefilledLocation({
+        city: location.city,
+        state: location.state ?? undefined,
+        country: location.country ?? undefined,
+      })
+    },
+    [availableLocations, form],
+  )
+
+  const shouldUseLocationOptions = mode === "create" && availableLocations.length > 0
+  const hasMultipleLocationOptions = shouldUseLocationOptions && availableLocations.length > 1
+
+  const prefilledLocationSummary = useMemo(() => {
+    if (!prefilledLocation) {
+      return null
+    }
+
+    const parts = [prefilledLocation.city, prefilledLocation.state].filter(
+      (value): value is string => typeof value === "string" && value.trim().length > 0,
+    )
+
+    return parts.join(", ") || prefilledLocation.city || null
+  }, [prefilledLocation])
 
   useEffect(() => {
     if (initialData) {
@@ -244,76 +428,9 @@ export function HostListingForm({ mode, listingId, initialData }: HostListingFor
     let cancelled = false
 
     const prefillLocation = async () => {
-      try {
-        const response = await fetch("/api/host/profile", { cache: "no-store" })
-        if (!response.ok) {
-          return
-        }
-
-        const payload = await response.json()
-        if (cancelled) {
-          return
-        }
-
-        const location = payload?.location as
-          | {
-              city?: string | null
-              country?: string | null
-              latitude?: number | null
-              longitude?: number | null
-            }
-          | null
-
-        if (!location) {
-          return
-        }
-
-        const updates: { city?: string; country?: string } = {}
-
-        const currentCountry = form.getValues("country")?.trim()
-        if (!currentCountry && location.country) {
-          form.setValue("country", location.country, { shouldDirty: false })
-          updates.country = location.country
-        }
-
-        const currentCity = form.getValues("city")?.trim()
-        if (!currentCity && location.city) {
-          form.setValue("city", location.city, { shouldDirty: false })
-          updates.city = location.city
-          // Lock city field when auto-filled from host profile
-          setIsLocationLocked(true)
-        }
-
-        const currentLatitude = form.getValues("latitude")
-        if (
-          typeof location.latitude === "number" &&
-          (!currentLatitude || Math.abs(currentLatitude) < 0.000001)
-        ) {
-          form.setValue("latitude", location.latitude, { shouldDirty: false })
-        }
-
-        const currentLongitude = form.getValues("longitude")
-        if (
-          typeof location.longitude === "number" &&
-          (!currentLongitude || Math.abs(currentLongitude) < 0.000001)
-        ) {
-          form.setValue("longitude", location.longitude, { shouldDirty: false })
-        }
-
-        if (Object.keys(updates).length > 0) {
-          setPrefilledLocation(updates)
-        } else if (location.city || location.country) {
-          setPrefilledLocation({
-            city: location.city ?? undefined,
-            country: location.country ?? undefined,
-          })
-        }
-      } catch (error) {
-        console.error("Prefill host location error:", error)
-      } finally {
-        if (!cancelled) {
-          setLocationPrefillAttempted(true)
-        }
+      await loadHostLocations()
+      if (!cancelled) {
+        setLocationPrefillAttempted(true)
       }
     }
 
@@ -322,7 +439,7 @@ export function HostListingForm({ mode, listingId, initialData }: HostListingFor
     return () => {
       cancelled = true
     }
-  }, [form, mode, locationPrefillAttempted])
+  }, [loadHostLocations, locationPrefillAttempted, mode])
 
   useEffect(() => {
     const address = typeof watchedAddress === "string" ? watchedAddress.trim() : ""
@@ -834,7 +951,9 @@ export function HostListingForm({ mode, listingId, initialData }: HostListingFor
                       </FormControl>
                       <FormDescription className="text-xs text-muted-foreground">
                         {prefilledLocation?.country
-                          ? `Đã tự động lấy theo hồ sơ host: ${prefilledLocation.country}.`
+                          ? `Đã tự động lấy theo hồ sơ host${
+                              prefilledLocationSummary ? ` (${prefilledLocationSummary})` : ""
+                            }: ${prefilledLocation.country}.`
                           : "Nhập quốc gia hiển thị cho khách."}
                       </FormDescription>
                       <FormMessage />
@@ -845,11 +964,13 @@ export function HostListingForm({ mode, listingId, initialData }: HostListingFor
                 <FormField
                   control={form.control}
                   name="city"
-                  render={({ field }) => (
-                    <FormItem>
-                      <div className="flex items-center justify-between">
-                        <FormLabel className="text-base font-semibold">Thành phố / Tỉnh</FormLabel>
-                        {!isLocationLocked ? (
+                  render={({ field }) => {
+                    const lockedLocationId = availableLocations[0]?.id ?? "locked-location"
+
+                    return (
+                      <FormItem>
+                        <div className="flex items-center justify-between">
+                          <FormLabel className="text-base font-semibold">Thành phố / Tỉnh</FormLabel>
                           <Button
                             type="button"
                             variant="ghost"
@@ -858,55 +979,87 @@ export function HostListingForm({ mode, listingId, initialData }: HostListingFor
                             onClick={() => setShowLocationExpansion(true)}
                           >
                             <Plus className="mr-1 h-3 w-3" />
-                            Đăng ký khu vực mới
+                            {availableLocations.length > 0 ? "Đăng ký khu vực khác" : "Đăng ký khu vực mới"}
                           </Button>
-                        ) : null}
-                      </div>
-                      {isLocationLocked && prefilledLocation?.city ? (
-                        <>
-                          <Select value={field.value} disabled>
-                            <FormControl>
-                              <SelectTrigger className="bg-gradient-to-r from-muted to-muted/50 h-12 text-base border-2">
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value={prefilledLocation.city}>
-                                {prefilledLocation.city}
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormDescription className="flex items-start gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2">
-                            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-amber-600" />
-                            <span className="text-amber-900">
-                              Khu vực đã được khóa theo hồ sơ đăng ký của bạn: <strong className="font-bold">{prefilledLocation.city}</strong>.
-                              Để mở rộng sang khu vực khác, hãy{" "}
-                              <button
-                                type="button"
-                                onClick={() => setShowLocationExpansion(true)}
-                                className="text-primary underline font-semibold transition-colors hover:text-primary/80"
+                        </div>
+                        {shouldUseLocationOptions ? (
+                          hasMultipleLocationOptions ? (
+                            <>
+                              <Select
+                                value={selectedLocationId ?? availableLocations[0]?.id ?? undefined}
+                                onValueChange={handleLocationSelect}
                               >
-                                bấm vào đây
-                              </button>
-                              {" "}để đăng ký khu vực mới.
-                            </span>
-                          </FormDescription>
-                        </>
-                      ) : (
-                        <>
-                          <FormControl>
-                            <Input placeholder="Đà Lạt" className="h-12 text-base" {...field} />
-                          </FormControl>
-                          <FormDescription className="text-xs text-muted-foreground">
-                            {prefilledLocation?.city
-                              ? `Đã tự động điền theo khu vực bạn đăng ký với LuxeStay: ${prefilledLocation.city}.`
-                              : "Tên tỉnh/thành phố giúp listing xuất hiện trong bộ lọc khu vực. Không tìm thấy khu vực? Đăng ký mới phía trên."}
-                          </FormDescription>
-                        </>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                                <FormControl>
+                                  <SelectTrigger className="h-12 text-base">
+                                    <SelectValue placeholder="Chọn khu vực đã được duyệt" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {availableLocations.map((location) => (
+                                    <SelectItem key={location.id} value={location.id}>
+                                      {location.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormDescription className="text-xs text-muted-foreground">
+                                {`Bạn đã được phê duyệt ${availableLocations.length} khu vực. Hãy chọn khu vực muốn đăng listing hoặc đăng ký thêm nếu cần.`}
+                              </FormDescription>
+                            </>
+                          ) : (
+                            <>
+                              <Select value={selectedLocationId ?? lockedLocationId} disabled>
+                                <FormControl>
+                                  <SelectTrigger className="bg-gradient-to-r from-muted to-muted/50 h-12 text-base border-2">
+                                    <SelectValue placeholder="Khu vực đã được khóa" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value={lockedLocationId}>
+                                    {availableLocations[0]?.label ?? prefilledLocationSummary ?? "Khu vực mặc định"}
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormDescription className="flex items-start gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg p-3 mt-2">
+                                <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0 text-amber-600" />
+                                <span className="text-amber-900">
+                                  Khu vực đã được khóa theo hồ sơ đăng ký của bạn
+                                  {prefilledLocationSummary ? (
+                                    <>
+                                      : <strong className="font-bold">{prefilledLocationSummary}</strong>
+                                    </>
+                                  ) : (
+                                    "."
+                                  )}{" "}
+                                  Muốn mở rộng sang khu vực khác?{" "}
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowLocationExpansion(true)}
+                                    className="text-primary underline font-semibold transition-colors hover:text-primary/80"
+                                  >
+                                    Gửi yêu cầu tại đây
+                                  </button>
+                                  .
+                                </span>
+                              </FormDescription>
+                            </>
+                          )
+                        ) : (
+                          <>
+                            <FormControl>
+                              <Input placeholder="Đà Lạt" className="h-12 text-base" {...field} />
+                            </FormControl>
+                            <FormDescription className="text-xs text-muted-foreground">
+                              {prefilledLocationSummary
+                                ? `Đã tự động điền theo khu vực bạn đăng ký với LuxeStay: ${prefilledLocationSummary}.`
+                                : "Tên tỉnh/thành phố giúp listing xuất hiện trong bộ lọc khu vực. Không tìm thấy khu vực? Đăng ký mới phía trên."}
+                            </FormDescription>
+                          </>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )
+                  }}
                 />
               </div>
 
@@ -1480,6 +1633,7 @@ export function HostListingForm({ mode, listingId, initialData }: HostListingFor
           toast.success("Thành công!", {
             description: "Yêu cầu mở rộng khu vực đã được gửi",
           })
+          void loadHostLocations()
         }}
       />
     </div>

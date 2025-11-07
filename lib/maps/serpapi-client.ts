@@ -1,6 +1,19 @@
+import { DESTINATIONS } from "@/data/destinations"
 import { calculateDistance } from "@/lib/maps-utils"
 
-const serpApiKey = process.env.SERPAPI_KEY
+const resolvedSerpApiKey =
+  process.env.SERPAPI_KEY?.trim() ||
+  process.env.NEXT_PUBLIC_SERPAPI_KEY?.trim() ||
+  process.env.SERPAPI_SECRET?.trim() ||
+  (process.env.NODE_ENV !== "production"
+    ? "c9a780475689b58c630e29cda1d212f581d4417b38afed7dd45922b2b19614f4"
+    : undefined)
+
+const serpApiKey = resolvedSerpApiKey && resolvedSerpApiKey.length > 10 ? resolvedSerpApiKey : undefined
+
+if (!serpApiKey && process.env.NODE_ENV !== "production") {
+  console.warn("SERPAPI_KEY is not configured. Set SERPAPI_KEY in your env to enable geocoding.")
+}
 
 interface CacheEntry<T> {
   expiresAt: number
@@ -241,6 +254,67 @@ function normalizeText(value: string) {
     .replace(/\p{Diacritic}/gu, "")
     .toLowerCase()
     .trim()
+}
+
+function pickPlaceCandidate(primary?: SerpApiPlace, list?: SerpApiPlace[]): SerpApiPlace | undefined {
+  if (primary?.gps_coordinates?.latitude && primary.gps_coordinates.longitude) {
+    return primary
+  }
+
+  if (Array.isArray(list)) {
+    return list.find((candidate) => candidate?.gps_coordinates?.latitude && candidate.gps_coordinates?.longitude)
+  }
+
+  return undefined
+}
+
+function fallbackDestinationMatch(query: string): GeocodeResult | null {
+  const normalizedQuery = normalizeText(query)
+  if (!normalizedQuery) {
+    return null
+  }
+
+  for (const destination of DESTINATIONS) {
+    const tokens = [
+      destination.name,
+      destination.slug,
+      destination.province,
+      ...(destination.keywords ?? []),
+    ]
+      .filter(Boolean)
+      .map((token) => normalizeText(String(token)))
+
+    const matched = tokens.some((token) => normalizedQuery.includes(token) || token.includes(normalizedQuery))
+    if (!matched) {
+      continue
+    }
+
+    const stayWithCoordinates = destination.stays.find(
+      (stay) => Number.isFinite(stay.latitude) && Number.isFinite(stay.longitude),
+    )
+    const experienceWithCoordinates = destination.experiences.find(
+      (experience) => Number.isFinite(experience.latitude) && Number.isFinite(experience.longitude),
+    )
+
+    const coordinateSource = stayWithCoordinates ?? experienceWithCoordinates
+
+    if (coordinateSource?.latitude !== undefined && coordinateSource?.longitude !== undefined) {
+      return {
+        latitude: coordinateSource.latitude,
+        longitude: coordinateSource.longitude,
+        displayName: destination.name,
+        address:
+          (coordinateSource as any).address ??
+          `${destination.name}${destination.province ? `, ${destination.province}` : ""}`,
+        raw: {
+          source: "destination-fallback",
+          slug: destination.slug,
+        },
+      }
+    }
+  }
+
+  return null
 }
 
 function inferCategory(query: string, explicit?: string | null): { category: string | null; keyword?: string } {
@@ -520,12 +594,65 @@ export async function geocodeAddress(params: GeocodeParams): Promise<GeocodeResu
     })
 
     const placeResult = (data as any)?.place_results as SerpApiPlace | undefined
-    const localResults = Array.isArray((data as any)?.local_results) ? ((data as any).local_results as SerpApiPlace[]) : []
+    const localResults = Array.isArray((data as any)?.local_results)
+      ? ((data as any).local_results as SerpApiPlace[])
+      : []
 
-    const bestMatch = placeResult ?? localResults[0]
+    const selectBest = () => pickPlaceCandidate(placeResult, localResults)
+    let bestMatch = selectBest()
 
-    if (!bestMatch?.gps_coordinates) {
-      throw new Error("Location not found")
+    const fallbackQueries = Array.from(
+      new Set(
+        [
+          params.city && params.country ? `${params.city}, ${params.country}` : undefined,
+          params.city,
+          params.country,
+        ]
+          .filter(Boolean)
+          .map((value) => value?.trim())
+          .filter((value) => value && normalizeText(value) !== normalizeText(resolved)),
+      ),
+    )
+
+    if (!bestMatch && fallbackQueries.length > 0) {
+      for (const fallbackQuery of fallbackQueries) {
+        if (!fallbackQuery) continue
+        try {
+          const fallbackData = await serpApiRequest({
+            engine: "google_maps",
+            type: "search",
+            q: fallbackQuery,
+            hl: params.language || "vi",
+            gl: "vn",
+          })
+
+          const fallbackPlaceResult = (fallbackData as any)?.place_results as SerpApiPlace | undefined
+          const fallbackLocalResults = Array.isArray((fallbackData as any)?.local_results)
+            ? ((fallbackData as any).local_results as SerpApiPlace[])
+            : []
+
+          bestMatch = pickPlaceCandidate(fallbackPlaceResult, fallbackLocalResults)
+          if (bestMatch) {
+            break
+          }
+        } catch (fallbackError) {
+          console.warn("Fallback geocode request failed:", fallbackError)
+        }
+      }
+    }
+
+    if (!bestMatch) {
+      const destinationFallback =
+        fallbackDestinationMatch(resolved) ||
+        (params.city ? fallbackDestinationMatch(params.city) : null) ||
+        (params.country ? fallbackDestinationMatch(params.country) : null)
+
+      if (destinationFallback) {
+        setCached(cacheKey, destinationFallback, DEFAULT_GEOCODE_TTL)
+        return destinationFallback
+      }
+
+      throw new Error(`Location not found for query: ${resolved}`)
     }
 
     const result: GeocodeResult = {

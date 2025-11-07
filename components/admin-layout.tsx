@@ -36,6 +36,7 @@ import {
   TicketPercent,
   Compass,
   Sparkles,
+  Wallet,
 } from "lucide-react"
 import { NotificationCenter } from "@/components/notification-center"
 
@@ -43,6 +44,7 @@ type NavMetrics = {
   users?: number
   listings?: number
   bookings?: number
+  payoutsPending?: number
 }
 
 type NavItem = {
@@ -100,6 +102,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: DollarSign,
   },
   {
+    title: "Rút tiền",
+    href: "/admin/payouts",
+    icon: Wallet,
+    badgeKey: "payoutsPending",
+  },
+  {
     title: "Đánh giá",
     href: "/admin/reviews",
     icon: FileText,
@@ -153,17 +161,33 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
     const fetchMetrics = async () => {
       try {
-        const res = await fetch("/api/admin/analytics?period=30", {
-          cache: "no-store",
-          signal: controller.signal,
-        })
-        if (!res.ok) return
+        const [analyticsRes, payoutsRes] = await Promise.all([
+          fetch("/api/admin/analytics?period=30", {
+            cache: "no-store",
+            signal: controller.signal,
+          }),
+          fetch("/api/admin/payouts?summary=true", {
+            cache: "no-store",
+            signal: controller.signal,
+          }),
+        ])
 
-        const data = await res.json()
+        let analyticsData: any = null
+        if (analyticsRes.ok) {
+          analyticsData = await analyticsRes.json()
+        }
+
+        let payoutsPending = 0
+        if (payoutsRes.ok) {
+          const payoutData = await payoutsRes.json()
+          payoutsPending = payoutData?.summary?.pending?.count ?? 0
+        }
+
         setMetrics({
-          users: data?.overview?.totalUsers,
-          listings: data?.overview?.totalListings,
-          bookings: data?.overview?.totalBookings,
+          users: analyticsData?.overview?.totalUsers,
+          listings: analyticsData?.overview?.totalListings,
+          bookings: analyticsData?.overview?.totalBookings,
+          payoutsPending,
         })
       } catch (err) {
         if ((err as Error).name === "AbortError") return

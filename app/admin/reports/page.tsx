@@ -15,6 +15,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  type PieLabelRenderProps,
 } from "recharts"
 import { Download, TrendingUp, TrendingDown } from "lucide-react"
 
@@ -76,6 +77,12 @@ const formatNumber = (value: number) =>
 
 const formatPercent = (value: number) =>
   `${value > 0 ? "+" : ""}${value.toFixed(1).replace(/\.0$/, "")}%`
+
+const renderCategoryLabel = ({ name, percent }: PieLabelRenderProps) => {
+  const label = typeof name === "string" ? name : ""
+  const ratio = typeof percent === "number" ? percent * 100 : 0
+  return `${label} ${ratio.toFixed(0)}%`.trim()
+}
 
 export default function AdminReportsPage() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null)
@@ -324,9 +331,7 @@ export default function AdminReportsPage() {
                       cy="50%"
                       outerRadius={120}
                       dataKey="value"
-                      label={({ name, percent }: { name: string; percent?: number }) =>
-                        `${name} ${(percent ?? 0).toFixed(0)}%`
-                      }
+                      label={renderCategoryLabel}
                     >
                       {categoryChartData.map((entry, index) => (
                         <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />

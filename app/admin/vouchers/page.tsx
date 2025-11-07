@@ -194,16 +194,10 @@ export default function AdminVouchersPage() {
         name: formState.name,
         discountType: formState.discountType,
         discountValue: Number(formState.discountValue),
-        maxDiscount: formState.maxDiscount === null || formState.maxDiscount === undefined || formState.maxDiscount === "" ? null : Number(formState.maxDiscount),
-        minBookingValue:
-          formState.minBookingValue === null || formState.minBookingValue === undefined || formState.minBookingValue === ""
-            ? null
-            : Number(formState.minBookingValue),
-        maxUses: formState.maxUses === null || formState.maxUses === undefined || formState.maxUses === "" ? null : Number(formState.maxUses),
-        maxUsesPerUser:
-          formState.maxUsesPerUser === null || formState.maxUsesPerUser === undefined || formState.maxUsesPerUser === ""
-            ? null
-            : Number(formState.maxUsesPerUser),
+        maxDiscount: formState.maxDiscount ?? null,
+        minBookingValue: formState.minBookingValue ?? null,
+        maxUses: formState.maxUses ?? null,
+        maxUsesPerUser: formState.maxUsesPerUser ?? null,
         validFrom: formState.validFrom || undefined,
         validUntil: formState.validUntil,
         pointCost: formState.pointCost ?? 0,

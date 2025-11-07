@@ -47,8 +47,10 @@ export function NotificationCenter() {
       const res = await fetch('/api/notifications?limit=50')
       if (res.ok) {
         const data = await res.json()
-        setNotifications(data.notifications)
-        setUnreadCount(data.unreadCount)
+        setNotifications(Array.isArray(data.notifications) ? data.notifications : [])
+        if (typeof data.unreadCount === 'number' && data.unreadCount >= 0) {
+          setUnreadCount(data.unreadCount)
+        }
       }
     } catch (error) {
       console.error('Error loading notifications:', error)

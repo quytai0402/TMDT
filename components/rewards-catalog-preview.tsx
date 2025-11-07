@@ -28,6 +28,7 @@ interface CatalogItem {
   quantityAvailable?: number | null
   canAfford?: boolean
   isActive?: boolean
+  isAvailable?: boolean
   userPoints?: number
   requiredTier?: string | null
   validityDays?: number | null
@@ -126,7 +127,7 @@ export function RewardsCatalogPreview() {
     return items.map((item) => ({
       ...item,
       previewImage: item.imageUrl ?? item.image ?? null,
-      canRedeem: item.canAfford !== false && item.isActive !== false,
+      canRedeem: item.canAfford !== false && item.isActive !== false && item.isAvailable !== false,
     }))
   }, [items])
 

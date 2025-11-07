@@ -118,11 +118,6 @@ export function LiveChatWidget() {
   const { data: session } = useSession()
   const membershipTier = session?.user?.membership ?? null
   const isDiamondMember = membershipTier === "DIAMOND"
-
-  if (!isDiamondMember) {
-    return null
-  }
-
   const [isOpen, setIsOpen] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
   const [chatSession, setChatSession] = useState<ChatSessionState | null>(null)
@@ -290,7 +285,7 @@ export function LiveChatWidget() {
   }, [conciergeContext, startPolling, updateFromApi])
 
   useEffect(() => {
-    if (typeof window === "undefined") return
+    if (!isDiamondMember || typeof window === "undefined") return
 
     const storedSessionId = window.localStorage.getItem(SESSION_STORAGE_KEY)
     if (storedSessionId) {
@@ -302,16 +297,17 @@ export function LiveChatWidget() {
     return () => {
       stopPolling()
     }
-  }, [fetchSession, startPolling, stopPolling])
+  }, [fetchSession, isDiamondMember, startPolling, stopPolling])
 
   useEffect(() => {
+    if (!isDiamondMember) return
     if (isOpen && !sessionIdRef.current && !loading) {
       createSession()
     }
-  }, [createSession, isOpen, loading])
+  }, [createSession, isDiamondMember, isOpen, loading])
 
   useEffect(() => {
-    if (!isOpen) return
+    if (!isDiamondMember || !isOpen) return
 
     if (!conciergeContext) {
       contextMessageKeyRef.current = null
@@ -373,7 +369,11 @@ export function LiveChatWidget() {
       })
 
     return () => controller.abort()
-  }, [conciergeContext, isOpen])
+  }, [conciergeContext, isDiamondMember, isOpen])
+
+  if (!isDiamondMember) {
+    return null
+  }
 
   const handleSendMessage = useCallback(async () => {
     if (!inputMessage.trim() || loading) return

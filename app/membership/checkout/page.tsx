@@ -53,6 +53,16 @@ const iconComponents: Record<string, React.ComponentType<{ className?: string }>
   zap: Zap,
 }
 
+const resolveSavings = (plan: MembershipPlan | null) => {
+  if (!plan) {
+    return { savingsAmount: 0, savingsPercent: 0 }
+  }
+  const yearlyValue = plan.monthlyPrice * 12
+  const savingsAmount = Math.max(yearlyValue - plan.annualPrice, 0)
+  const savingsPercent = yearlyValue > 0 ? Math.round((savingsAmount / yearlyValue) * 100) : 0
+  return { savingsAmount, savingsPercent }
+}
+
 export default function MembershipCheckoutPage() {
   const searchParams = useSearchParams()
   const router = useRouter()

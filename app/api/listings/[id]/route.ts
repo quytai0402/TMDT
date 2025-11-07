@@ -4,15 +4,16 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 type RouteParams = { id: string }
+type RouteContext = { params: Promise<RouteParams> }
 
-function resolveParams(context: { params: RouteParams | Promise<RouteParams> }) {
-  return Promise.resolve(context.params)
+async function resolveParams(context: RouteContext) {
+  return await context.params
 }
 
 // GET single listing
 export async function GET(
   req: NextRequest,
-  context: { params: RouteParams | Promise<RouteParams> }
+  context: RouteContext
 ) {
   try {
     const { id } = await resolveParams(context)
@@ -93,7 +94,7 @@ export async function GET(
 // UPDATE listing
 export async function PATCH(
   req: NextRequest,
-  context: { params: RouteParams | Promise<RouteParams> }
+  context: RouteContext
 ) {
   try {
     const session = await getServerSession(authOptions)
@@ -134,7 +135,7 @@ export async function PATCH(
 // DELETE listing
 export async function DELETE(
   req: NextRequest,
-  context: { params: RouteParams | Promise<RouteParams> }
+  context: RouteContext
 ) {
   try {
     const session = await getServerSession(authOptions)

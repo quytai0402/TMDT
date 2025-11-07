@@ -5,10 +5,6 @@ import { prisma } from '@/lib/prisma'
 import { getConversationId, triggerPusherEvent } from '@/lib/pusher'
 import { z } from 'zod'
 
-// Cache for messages (10 seconds TTL - short because messages change frequently)
-const messagesCache = new Map<string, { data: any; timestamp: number }>()
-const CACHE_TTL = 10000 // 10 seconds
-
 const sendMessageSchema = z.object({
   receiverId: z.string(),
   content: z.string().min(1, 'Message cannot be empty'),
@@ -30,15 +26,6 @@ export async function GET(req: NextRequest) {
     const conversationId = searchParams.get('conversationId')
 
     if (conversationId) {
-      // Check cache for conversation messages
-      const cacheKey = `conv-${conversationId}`
-      const cached = messagesCache.get(cacheKey)
-      const now = Date.now()
-
-      if (cached && now - cached.timestamp < CACHE_TTL) {
-        return NextResponse.json(cached.data)
-      }
-
       // Get messages for a specific conversation
       const messages = await prisma.message.findMany({
         where: { conversationId },
@@ -86,20 +73,7 @@ export async function GET(req: NextRequest) {
         },
       })
 
-      // Cache the result
-      const result = { messages }
-      messagesCache.set(cacheKey, { data: result, timestamp: now })
-
-      return NextResponse.json(result)
-    }
-
-    // Check cache for user conversations
-    const cacheKey = `user-${session.user.id}`
-    const cached = messagesCache.get(cacheKey)
-    const now = Date.now()
-
-    if (cached && now - cached.timestamp < CACHE_TTL) {
-      return NextResponse.json(cached.data)
+      return NextResponse.json({ messages })
     }
 
     // Get all conversations for user from Conversation model
@@ -154,11 +128,7 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    // Cache the result
-    const result = { conversations: formattedConversations }
-    messagesCache.set(cacheKey, { data: result, timestamp: now })
-
-    return NextResponse.json(result)
+    return NextResponse.json({ conversations: formattedConversations })
   } catch (error) {
     console.error('Get messages error:', error)
     

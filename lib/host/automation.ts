@@ -647,6 +647,7 @@ async function sendAutomatedConversationMessage({ booking, content, templateName
 export async function sendAutomationMessageForBooking(
   booking: BookingWithRelations,
   trigger: AutomationMessageTrigger,
+  options?: { scheduledMessageId?: string },
 ) {
   try {
     if (!booking.guestId || !booking.guest) {
@@ -659,6 +660,7 @@ export async function sendAutomationMessageForBooking(
         trigger,
         status: AutomationMessageStatus.ACTIVE,
         templateId: { not: null },
+        id: options?.scheduledMessageId ? options.scheduledMessageId : undefined,
       },
       include: {
         template: true,

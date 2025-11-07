@@ -1,23 +1,16 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { getHostScheduledMessages } from "@/lib/host/automation"
+import { isAuthorizationError, requireHostSession } from "@/lib/authorization"
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions)
-
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    if (!(session.user.isHost || session.user.role === "HOST")) {
-      return NextResponse.json({ error: "Host access required" }, { status: 403 })
-    }
-
+    const session = await requireHostSession()
     const messages = await getHostScheduledMessages(session.user.id)
     return NextResponse.json({ messages })
   } catch (error) {
+    if (isAuthorizationError(error)) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
     console.error("Failed to load scheduled messages", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }

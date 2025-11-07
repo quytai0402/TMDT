@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils"
 import { useConciergeContext } from "@/components/concierge-context-provider"
 import { useSession } from "next-auth/react"
 import { normalizeMembershipTier } from "@/lib/membership-tier"
+import { canAccessFeature } from "@/lib/feature-flags"
 
 const SESSION_STORAGE_KEY = "luxestay_live_chat_session"
 const POLL_INTERVAL_MS = 4000
@@ -117,9 +118,9 @@ function mapApiMessage(message: ApiMessage, session: ChatSessionState | null): M
 
 export function LiveChatWidget() {
   const { data: session } = useSession()
-    const membershipTier = normalizeMembershipTier(session?.user?.membership)
-    const planTier = normalizeMembershipTier(session?.user?.membershipPlan?.slug)
-    const isDiamondMember = (membershipTier === "DIAMOND") || (planTier === "DIAMOND")
+  const membershipTier = normalizeMembershipTier(session?.user?.membership)
+  const planTier = normalizeMembershipTier(session?.user?.membershipPlan?.slug)
+  const hasLiveChatAccess = canAccessFeature("conciergeLiveChat", membershipTier, planTier)
   const [isOpen, setIsOpen] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
   const [chatSession, setChatSession] = useState<ChatSessionState | null>(null)
@@ -287,7 +288,7 @@ export function LiveChatWidget() {
   }, [conciergeContext, startPolling, updateFromApi])
 
   useEffect(() => {
-    if (!isDiamondMember || typeof window === "undefined") return
+    if (!hasLiveChatAccess || typeof window === "undefined") return
 
     const storedSessionId = window.localStorage.getItem(SESSION_STORAGE_KEY)
     if (storedSessionId) {
@@ -299,17 +300,17 @@ export function LiveChatWidget() {
     return () => {
       stopPolling()
     }
-  }, [fetchSession, isDiamondMember, startPolling, stopPolling])
+  }, [fetchSession, hasLiveChatAccess, startPolling, stopPolling])
 
   useEffect(() => {
-    if (!isDiamondMember) return
+    if (!hasLiveChatAccess) return
     if (isOpen && !sessionIdRef.current && !loading) {
       createSession()
     }
-  }, [createSession, isDiamondMember, isOpen, loading])
+  }, [createSession, hasLiveChatAccess, isOpen, loading])
 
   useEffect(() => {
-    if (!isDiamondMember || !isOpen) return
+    if (!hasLiveChatAccess || !isOpen) return
 
     if (!conciergeContext) {
       contextMessageKeyRef.current = null
@@ -371,9 +372,9 @@ export function LiveChatWidget() {
       })
 
     return () => controller.abort()
-  }, [conciergeContext, isDiamondMember, isOpen])
+  }, [conciergeContext, hasLiveChatAccess, isOpen])
 
-  if (!isDiamondMember) {
+  if (!hasLiveChatAccess) {
     return null
   }
 

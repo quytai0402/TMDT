@@ -1213,6 +1213,22 @@ model HostScheduledMessage {
   @@map("host_scheduled_messages")
 }
 
+model AutomationDeliveryLog {
+  id                  String                   @id @default(auto()) @map("_id") @db.ObjectId
+  hostId              String                   @db.ObjectId
+  bookingId           String                   @db.ObjectId
+  scheduledMessageId  String                   @db.ObjectId
+  templateId          String?                  @db.ObjectId
+  trigger             AutomationMessageTrigger
+  sentAt              DateTime                 @default(now())
+  error               String?
+
+  @@unique([bookingId, scheduledMessageId])
+  @@index([hostId])
+  @@index([scheduledMessageId])
+  @@map("automation_delivery_logs")
+}
+
 // ============================================
 // NOTIFICATION MODELS
 // ============================================

@@ -24,14 +24,15 @@ import { ConciergeChat } from "@/components/concierge-chat"
 import { LocalRestaurantRecommendations } from "@/components/local-restaurant-recommendations"
 import { TransportationBooking } from "@/components/transportation-booking"
 import { SpecialRequestsHandler } from "@/components/special-requests-handler"
-import { normalizeMembershipTier, resolveHighestMembershipTier } from "@/lib/membership-tier"
+import { normalizeMembershipTier } from "@/lib/membership-tier"
+import { canAccessFeature } from "@/lib/feature-flags"
 
 export default function ConciergePage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const membershipTier = normalizeMembershipTier(session?.user?.membership)
   const planTier = normalizeMembershipTier(session?.user?.membershipPlan?.slug)
-  const isDiamondMember = resolveHighestMembershipTier(membershipTier, planTier) === "DIAMOND"
+  const hasConciergeAccess = canAccessFeature("conciergeLiveChat", membershipTier, planTier)
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -72,7 +73,7 @@ export default function ConciergePage() {
     )
   }
 
-  if (session && !isDiamondMember) {
+  if (session && !hasConciergeAccess) {
     return (
       <div className="min-h-screen flex flex-col">
         <Header />

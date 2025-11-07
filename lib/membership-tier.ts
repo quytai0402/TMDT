@@ -35,3 +35,12 @@ export function resolveHighestMembershipTier(
 
   return highest
 }
+
+export function meetsTierRequirement(
+  tier: NormalizedMembershipTier | null,
+  minTier: NormalizedMembershipTier | null | undefined,
+) {
+  if (!minTier) return true
+  if (!tier) return false
+  return MEMBERSHIP_PRIORITY.indexOf(tier) >= MEMBERSHIP_PRIORITY.indexOf(minTier)
+}

@@ -368,6 +368,7 @@ export async function POST(req: NextRequest) {
           name: true,
           bookingDiscountRate: true,
           applyDiscountToServices: true,
+          experienceDiscountRate: true,
         },
       },
     } as const

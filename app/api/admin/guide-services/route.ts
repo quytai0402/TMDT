@@ -19,6 +19,17 @@ const bookingSelect = {
   pricePerPerson: true,
   totalPrice: true,
   currency: true,
+  discountRate: true,
+  discountAmount: true,
+  membershipPlanId: true,
+  membershipPlanSnapshot: true,
+  membershipPlan: {
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+    },
+  },
   status: true,
   paid: true,
   createdAt: true,
@@ -108,11 +119,21 @@ const mapBooking = (booking: BookingRecord) => ({
   pricePerPerson: booking.pricePerPerson,
   totalPrice: booking.totalPrice,
   currency: booking.currency,
+  discountRate: booking.discountRate,
+  discountAmount: booking.discountAmount,
   status: booking.status,
   paid: booking.paid,
   createdAt: booking.createdAt.toISOString(),
   updatedAt: booking.updatedAt.toISOString(),
   referenceCode: formatTransferReference("EXPERIENCE", booking.id.slice(-8).toUpperCase()),
+  membershipPlan: booking.membershipPlan
+    ? {
+        id: booking.membershipPlan.id,
+        slug: booking.membershipPlan.slug,
+        name: booking.membershipPlan.name,
+      }
+    : null,
+  membershipPlanSnapshot: booking.membershipPlanSnapshot,
   experience: booking.experience
     ? {
         id: booking.experience.id,

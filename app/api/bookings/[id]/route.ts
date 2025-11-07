@@ -32,6 +32,7 @@ const BOOKING_INCLUDE = {
           name: true,
           bookingDiscountRate: true,
           applyDiscountToServices: true,
+          experienceDiscountRate: true,
         },
       },
       loyaltyPoints: true,

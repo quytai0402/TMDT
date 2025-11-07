@@ -1,6 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { format } from "date-fns"
+import { vi } from "date-fns/locale"
 
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -393,13 +395,17 @@ export function ConciergeChat() {
         }
 
         if (matches(lowerQuery, ['xe', 'sân bay', 'đưa đón', 'transfer'])) {
+          const bookingWindow = booking
+            ? ` Chuyến lưu trú của bạn bắt đầu ${format(new Date(booking.checkIn), 'd MMMM', { locale: vi })}, tôi sẽ sắp xe khớp giờ đón.`
+            : ''
+
           return {
             id: `transport-${timestamp.getTime()}`,
             type: 'bot',
             content:
-              'Concierge có thể đặt xe đón tiễn sân bay hoặc thuê xe riêng theo giờ. Bạn chỉ cần cho tôi biết thời gian và số lượng hành khách.',
+              `Concierge có thể đặt xe đón tiễn sân bay hoặc thuê xe riêng theo giờ.${bookingWindow} Bạn chỉ cần cho tôi biết số hiệu chuyến bay, giờ hạ cánh và số lượng hành khách, tôi sẽ xác nhận ngay.`,
             timestamp,
-            suggestions: ['Đặt xe 4 chỗ', 'Đặt xe 7 chỗ', 'Xem thêm gói di chuyển'],
+            suggestions: ['Gửi lịch chuyến bay', 'Đặt xe 7 chỗ', 'Đặt xe sang'],
           }
         }
 
@@ -407,8 +413,8 @@ export function ConciergeChat() {
           const serviceSuggestions = ['Đặt thêm bữa sáng', 'Trang trí kỷ niệm', 'Thêm hoạt động vào planner']
 
           if (booking) {
-            const checkIn = new Date(booking.checkIn).toLocaleDateString('vi-VN')
-            const checkOut = new Date(booking.checkOut).toLocaleDateString('vi-VN')
+            const checkIn = format(new Date(booking.checkIn), 'd MMMM', { locale: vi })
+            const checkOut = format(new Date(booking.checkOut), 'd MMMM', { locale: vi })
 
             return {
               id: `services-${timestamp.getTime()}`,

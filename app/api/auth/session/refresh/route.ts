@@ -23,10 +23,12 @@ export async function POST() {
         membershipStatus: true,
         membershipPlan: {
           select: {
+            id: true,
             slug: true,
             name: true,
             bookingDiscountRate: true,
             applyDiscountToServices: true,
+            experienceDiscountRate: true,
             color: true,
             icon: true,
             features: true,
@@ -45,10 +47,12 @@ export async function POST() {
 
     const membershipPlan = user.membershipPlan
       ? {
+          id: user.membershipPlan.id,
           slug: user.membershipPlan.slug,
           name: user.membershipPlan.name,
           discountRate: user.membershipPlan.bookingDiscountRate,
           applyDiscountToServices: user.membershipPlan.applyDiscountToServices,
+          experienceDiscountRate: user.membershipPlan.experienceDiscountRate,
           color: user.membershipPlan.color,
           icon: user.membershipPlan.icon,
           features: user.membershipPlan.features ?? null,

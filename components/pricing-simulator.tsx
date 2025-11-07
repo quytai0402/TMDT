@@ -1,395 +1,248 @@
 "use client"
 
-import { useState } from "react"
-import { Card } from "@/components/ui/card"
+import { useMemo, useState } from "react"
+import { TrendingUp, DollarSign, Calendar, Target, Lightbulb, Sliders } from "lucide-react"
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts"
+
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
-import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { 
-  TrendingUp, 
-  TrendingDown,
-  DollarSign,
-  Calendar,
-  Target,
-  Lightbulb,
-  ArrowRight,
-  CheckCircle2
-} from "lucide-react"
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
+import { Badge } from "@/components/ui/badge"
 
-export function PricingSimulator() {
-  const [basePrice, setBasePrice] = useState(1850000)
-  const [weekendMultiplier, setWeekendMultiplier] = useState(1.2)
-  const [peakSeasonMultiplier, setPeakSeasonMultiplier] = useState(1.5)
-  const [minNightsDiscount, setMinNightsDiscount] = useState(0.1)
-  
-  const currentPrice = 1850000
-  const suggestedPrice = 2100000
-  const priceDiff = ((suggestedPrice - currentPrice) / currentPrice * 100)
+type ListingSummary = {
+  id: string
+  title?: string | null
+  city?: string | null
+  basePrice?: number | null
+  occupancyRate?: number | null
+  weekendMultiplier?: number | null
+  monthlyDiscount?: number | null
+}
 
-  // Simulate 30 days revenue
-  const simulateRevenue = () => {
-    const days = []
-    let totalRevenue = 0
-    let bookedDays = 0
-    
-    for (let i = 1; i <= 30; i++) {
-      const isWeekend = i % 7 === 0 || i % 7 === 6
-      const isPeak = i >= 15 && i <= 25 // Simulate peak period
-      
-      let price = basePrice
-      if (isWeekend) price *= weekendMultiplier
-      if (isPeak) price *= peakSeasonMultiplier
-      
-      // Simulate booking probability
-      const bookingRate = isPeak ? 0.95 : (isWeekend ? 0.85 : 0.75)
-      const isBooked = Math.random() < bookingRate
-      
-      if (isBooked) {
-        totalRevenue += price
-        bookedDays++
-      }
-      
-      days.push({
-        day: i,
+interface PricingSimulatorProps {
+  listing: ListingSummary | null
+}
+
+export function PricingSimulator({ listing }: PricingSimulatorProps) {
+  const basePrice = listing?.basePrice ?? 0
+  const baseOccupancy = (listing?.occupancyRate ?? 60) / 100
+  const [weekendMultiplier, setWeekendMultiplier] = useState(listing?.weekendMultiplier ?? 1.2)
+  const [seasonMultiplier, setSeasonMultiplier] = useState(1.1)
+  const [longStayDiscount, setLongStayDiscount] = useState(listing?.monthlyDiscount ?? 0.1)
+
+  const nightsInMonth = 30
+
+  const adjustedOccupancy = useMemo(() => {
+    const weekendBoost = (weekendMultiplier - 1) * 0.4
+    const seasonBoost = (seasonMultiplier - 1) * 0.6
+    const discountBoost = longStayDiscount * 0.3
+    return Math.min(0.98, Math.max(0.35, baseOccupancy + weekendBoost + seasonBoost - discountBoost))
+  }, [baseOccupancy, weekendMultiplier, seasonMultiplier, longStayDiscount])
+
+  const currentRevenue = useMemo(() => {
+    return Math.round(basePrice * baseOccupancy * nightsInMonth)
+  }, [basePrice, baseOccupancy])
+
+  const projectedRevenue = useMemo(() => {
+    const effectivePrice = basePrice * seasonMultiplier * (1 - longStayDiscount / 2)
+    return Math.round(effectivePrice * adjustedOccupancy * nightsInMonth * (0.6 + weekendMultiplier / 2))
+  }, [basePrice, seasonMultiplier, longStayDiscount, adjustedOccupancy, weekendMultiplier])
+
+  const revenueDiff = projectedRevenue - currentRevenue
+
+  const chartData = useMemo(() => {
+    const data: Array<{ day: number; price: number; occupancy: number }> = []
+    for (let day = 1; day <= 30; day++) {
+      const isWeekend = day % 7 === 0 || day % 7 === 6
+      const isPeak = day >= 20 && day <= 26
+      const price =
+        basePrice *
+        (isWeekend ? weekendMultiplier : 1) *
+        (isPeak ? seasonMultiplier : 1) *
+        (1 - (longStayDiscount / 2) * (day % 10 === 0 ? 1 : 0))
+      const dayOccupancy = Math.min(
+        0.97,
+        Math.max(0.4, adjustedOccupancy + (isWeekend ? 0.05 : -0.02) + (isPeak ? 0.06 : 0)),
+      )
+      data.push({
+        day,
         price: Math.round(price),
-        booked: isBooked,
-        type: isPeak ? "peak" : (isWeekend ? "weekend" : "weekday")
+        occupancy: Math.round(dayOccupancy * 100),
       })
     }
-    
-    return {
-      days,
-      totalRevenue: Math.round(totalRevenue),
-      bookedDays,
-      occupancyRate: Math.round((bookedDays / 30) * 100),
-      avgPrice: Math.round(totalRevenue / bookedDays)
-    }
+    return data
+  }, [adjustedOccupancy, basePrice, weekendMultiplier, seasonMultiplier, longStayDiscount])
+
+  if (!listing) {
+    return (
+      <Card className="p-8 text-center text-sm text-muted-foreground">
+        Chọn một căn hộ để mô phỏng chiến lược giá.
+      </Card>
+    )
   }
-
-  const currentStrategy = simulateRevenue()
-  
-  // Simulate with suggested pricing
-  const [, setSuggestedMultiplier] = useState(weekendMultiplier)
-  const suggestedStrategy = (() => {
-    const tempBase = basePrice
-    const tempWeekend = 1.3
-    const tempPeak = 1.6
-    
-    let totalRevenue = 0
-    let bookedDays = 0
-    
-    for (let i = 1; i <= 30; i++) {
-      const isWeekend = i % 7 === 0 || i % 7 === 6
-      const isPeak = i >= 15 && i <= 25
-      
-      let price = tempBase
-      if (isWeekend) price *= tempWeekend
-      if (isPeak) price *= tempPeak
-      
-      const bookingRate = isPeak ? 0.92 : (isWeekend ? 0.82 : 0.72)
-      const isBooked = Math.random() < bookingRate
-      
-      if (isBooked) {
-        totalRevenue += price
-        bookedDays++
-      }
-    }
-    
-    return {
-      totalRevenue: Math.round(totalRevenue),
-      bookedDays,
-      occupancyRate: Math.round((bookedDays / 30) * 100),
-      avgPrice: Math.round(totalRevenue / bookedDays)
-    }
-  })()
-
-  const revenueDiff = suggestedStrategy.totalRevenue - currentStrategy.totalRevenue
-  const revenueIncrease = ((revenueDiff / currentStrategy.totalRevenue) * 100).toFixed(1)
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold mb-2">Mô phỏng chiến lược giá</h2>
-        <p className="text-muted-foreground">
-          Thử nghiệm các mức giá khác nhau và xem ảnh hưởng đến doanh thu
-        </p>
-      </div>
-
-      {/* Quick Comparison */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="p-6 bg-gradient-to-br from-blue-50 to-white">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-sm text-muted-foreground">Giá hiện tại</h3>
-            <Badge variant="outline">Đang áp dụng</Badge>
-          </div>
-          <p className="text-3xl font-bold text-foreground mb-2">
-            {currentPrice.toLocaleString("vi-VN")}₫
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Mô phỏng chiến lược giá</h2>
+          <p className="text-muted-foreground">
+            {listing.title} {listing.city ? `• ${listing.city}` : ""}
           </p>
-          <p className="text-sm text-muted-foreground">/ đêm</p>
-        </Card>
-
-        <Card className="p-6 bg-gradient-to-br from-green-50 to-white border-2 border-green-200">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-sm text-muted-foreground">Giá đề xuất</h3>
-            <Badge className="bg-green-600">
-              <TrendingUp className="w-3 h-3 mr-1" />
-              +{priceDiff.toFixed(1)}%
-            </Badge>
-          </div>
-          <p className="text-3xl font-bold text-green-600 mb-2">
-            {suggestedPrice.toLocaleString("vi-VN")}₫
-          </p>
-          <p className="text-sm text-muted-foreground">/ đêm</p>
-        </Card>
-
-        <Card className="p-6 bg-gradient-to-br from-purple-50 to-white">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-sm text-muted-foreground">Doanh thu dự kiến</h3>
-            <Badge variant="outline" className="text-purple-600">
-              30 ngày
-            </Badge>
-          </div>
-          <p className="text-3xl font-bold text-purple-600 mb-2">
-            +{revenueIncrease}%
-          </p>
-          <p className="text-sm text-muted-foreground">
-            +{revenueDiff.toLocaleString("vi-VN")}₫
-          </p>
-        </Card>
-      </div>
-
-      {/* Pricing Strategy Builder */}
-      <Card className="p-6">
-        <h3 className="text-lg font-bold mb-6">Tùy chỉnh chiến lược giá</h3>
-
-        <div className="space-y-6">
-          {/* Base Price */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <Label>Giá cơ bản (ngày thường)</Label>
-              <span className="font-bold text-primary">{basePrice.toLocaleString("vi-VN")}₫</span>
-            </div>
-            <Slider
-              value={[basePrice]}
-              onValueChange={(value) => setBasePrice(value[0])}
-              min={1000000}
-              max={5000000}
-              step={50000}
-              className="w-full"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground mt-2">
-              <span>1,000,000₫</span>
-              <span>5,000,000₫</span>
-            </div>
-          </div>
-
-          {/* Weekend Multiplier */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <Label>Hệ số cuối tuần</Label>
-              <span className="font-bold text-blue-600">×{weekendMultiplier.toFixed(1)}</span>
-            </div>
-            <Slider
-              value={[weekendMultiplier * 10]}
-              onValueChange={(value) => setWeekendMultiplier(value[0] / 10)}
-              min={10}
-              max={20}
-              step={1}
-              className="w-full"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground mt-2">
-              <span>×1.0</span>
-              <span>×2.0</span>
-            </div>
-            <p className="text-sm text-muted-foreground mt-2">
-              Giá cuối tuần: {(basePrice * weekendMultiplier).toLocaleString("vi-VN")}₫
-            </p>
-          </div>
-
-          {/* Peak Season Multiplier */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <Label>Hệ số mùa cao điểm</Label>
-              <span className="font-bold text-orange-600">×{peakSeasonMultiplier.toFixed(1)}</span>
-            </div>
-            <Slider
-              value={[peakSeasonMultiplier * 10]}
-              onValueChange={(value) => setPeakSeasonMultiplier(value[0] / 10)}
-              min={10}
-              max={25}
-              step={1}
-              className="w-full"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground mt-2">
-              <span>×1.0</span>
-              <span>×2.5</span>
-            </div>
-            <p className="text-sm text-muted-foreground mt-2">
-              Giá cao điểm: {(basePrice * peakSeasonMultiplier).toLocaleString("vi-VN")}₫
-            </p>
-          </div>
-
-          {/* Long Stay Discount */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <Label>Giảm giá đặt dài hạn (7+ đêm)</Label>
-              <span className="font-bold text-green-600">-{(minNightsDiscount * 100).toFixed(0)}%</span>
-            </div>
-            <Slider
-              value={[minNightsDiscount * 100]}
-              onValueChange={(value) => setMinNightsDiscount(value[0] / 100)}
-              min={0}
-              max={30}
-              step={5}
-              className="w-full"
-            />
-            <div className="flex justify-between text-xs text-muted-foreground mt-2">
-              <span>0%</span>
-              <span>30%</span>
-            </div>
-          </div>
         </div>
-      </Card>
-
-      {/* Revenue Projection */}
-      <Card className="p-6">
-        <h3 className="text-lg font-bold mb-6">Dự báo doanh thu 30 ngày</h3>
-
-        <Tabs defaultValue="comparison">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="comparison">So sánh</TabsTrigger>
-            <TabsTrigger value="calendar">Lịch giá</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="comparison" className="space-y-6">
-            <div className="grid grid-cols-2 gap-6 mt-6">
-              {/* Current Strategy */}
-              <div className="space-y-4">
-                <h4 className="font-semibold flex items-center">
-                  <div className="w-3 h-3 rounded-full bg-blue-500 mr-2"></div>
-                  Chiến lược hiện tại
-                </h4>
-                <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Tổng doanh thu</span>
-                    <span className="font-bold">{currentStrategy.totalRevenue.toLocaleString("vi-VN")}₫</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Số đêm đã đặt</span>
-                    <span className="font-bold">{currentStrategy.bookedDays}/30</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Tỷ lệ lấp đầy</span>
-                    <span className="font-bold">{currentStrategy.occupancyRate}%</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Giá TB/đêm</span>
-                    <span className="font-bold">{currentStrategy.avgPrice.toLocaleString("vi-VN")}₫</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Suggested Strategy */}
-              <div className="space-y-4">
-                <h4 className="font-semibold flex items-center">
-                  <div className="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
-                  Chiến lược đề xuất
-                </h4>
-                <div className="space-y-3">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Tổng doanh thu</span>
-                    <span className="font-bold text-green-600">
-                      {suggestedStrategy.totalRevenue.toLocaleString("vi-VN")}₫
-                      <span className="text-xs ml-1">
-                        (+{revenueIncrease}%)
-                      </span>
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Số đêm đã đặt</span>
-                    <span className="font-bold">{suggestedStrategy.bookedDays}/30</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Tỷ lệ lấp đầy</span>
-                    <span className="font-bold">{suggestedStrategy.occupancyRate}%</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Giá TB/đêm</span>
-                    <span className="font-bold">{suggestedStrategy.avgPrice.toLocaleString("vi-VN")}₫</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-6 border-t">
-              <div className="flex items-start space-x-3 p-4 bg-green-50 rounded-lg">
-                <CheckCircle2 className="w-5 h-5 text-green-600 mt-0.5" />
-                <div>
-                  <p className="font-semibold text-green-900 mb-1">
-                    Tăng {revenueIncrease}% doanh thu với chiến lược mới
-                  </p>
-                  <p className="text-sm text-green-700">
-                    Bạn có thể kiếm thêm {revenueDiff.toLocaleString("vi-VN")}₫ trong 30 ngày tới
-                  </p>
-                </div>
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="calendar">
-            <div className="grid grid-cols-7 gap-2 mt-6">
-              {currentStrategy.days.map((day) => (
-                <div
-                  key={day.day}
-                  className={`
-                    p-3 rounded-lg border text-center transition-all cursor-pointer hover:shadow-md
-                    ${day.booked 
-                      ? "bg-primary/10 border-primary" 
-                      : "bg-muted/50 border-border"
-                    }
-                  `}
-                >
-                  <p className="text-xs text-muted-foreground mb-1">Ngày {day.day}</p>
-                  <p className="text-sm font-bold">
-                    {(day.price / 1000).toFixed(0)}k
-                  </p>
-                  {day.booked && (
-                    <p className="text-xs text-primary mt-1">Đã đặt</p>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <div className="flex items-center space-x-6 mt-6 pt-6 border-t">
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 rounded bg-primary/10 border border-primary"></div>
-                <span className="text-sm">Đã đặt</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 rounded bg-muted/50 border border-border"></div>
-                <span className="text-sm">Còn trống</span>
-              </div>
-            </div>
-          </TabsContent>
-        </Tabs>
-      </Card>
-
-      {/* Action Buttons */}
-      <div className="flex items-center justify-between">
-        <Button variant="outline" size="lg">
-          <Calendar className="w-4 h-4 mr-2" />
-          Lưu nháp
-        </Button>
-        <Button size="lg" className="bg-green-600 hover:bg-green-700">
-          Áp dụng chiến lược này
-          <ArrowRight className="w-4 h-4 ml-2" />
-        </Button>
+        <Badge variant="outline" className="flex items-center gap-2">
+          <Sliders className="h-4 w-4" />
+          Scenario Planner
+        </Badge>
       </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-blue-50 p-3">
+              <DollarSign className="h-5 w-5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Revenue hiện tại</p>
+              <p className="text-2xl font-bold">{currentRevenue.toLocaleString("vi-VN")}₫</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-green-50 p-3">
+              <TrendingUp className="h-5 w-5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Revenue dự kiến</p>
+              <p className="text-2xl font-bold text-green-600">{projectedRevenue.toLocaleString("vi-VN")}₫</p>
+            </div>
+          </div>
+        </Card>
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-purple-50 p-3">
+              <Target className="h-5 w-5 text-purple-600" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Tăng trưởng dự kiến</p>
+              <p className={`text-2xl font-bold ${revenueDiff >= 0 ? "text-green-600" : "text-orange-600"}`}>
+                {revenueDiff >= 0 ? "+" : ""}
+                {((revenueDiff / Math.max(currentRevenue, 1)) * 100).toFixed(1)}%
+              </p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <Tabs defaultValue="sliders">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="sliders">Điều chỉnh thông số</TabsTrigger>
+          <TabsTrigger value="comparison">Biểu đồ dự báo</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="sliders" className="space-y-6 pt-4">
+          <Card>
+            <CardContent className="grid gap-6 py-6 md:grid-cols-3">
+              <div className="space-y-2">
+                <Label>Weekend multiplier</Label>
+                <Slider
+                  min={1}
+                  max={1.8}
+                  step={0.05}
+                  value={[weekendMultiplier]}
+                  onValueChange={([val]) => setWeekendMultiplier(val)}
+                />
+                <Input value={weekendMultiplier.toFixed(2)} readOnly />
+                <p className="text-xs text-muted-foreground">Tăng giá cuối tuần theo nhu cầu</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Season boost</Label>
+                <Slider min={1} max={1.6} step={0.05} value={[seasonMultiplier]} onValueChange={([val]) => setSeasonMultiplier(val)} />
+                <Input value={seasonMultiplier.toFixed(2)} readOnly />
+                <p className="text-xs text-muted-foreground">Mùa cao điểm, sự kiện, kỳ nghỉ</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Ưu đãi dài ngày</Label>
+                <Slider
+                  min={0}
+                  max={0.4}
+                  step={0.05}
+                  value={[longStayDiscount]}
+                  onValueChange={([val]) => setLongStayDiscount(val)}
+                />
+                <Input value={`${Math.round(longStayDiscount * 100)}%`} readOnly />
+                <p className="text-xs text-muted-foreground">Giảm giá booking 7+ đêm</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="space-y-4 py-4">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Lightbulb className="h-4 w-4 text-yellow-500" />
+                Gợi ý: Giữ multiplier cuối tuần dưới 1.4 để tránh giá quá cao so với trung bình khu vực.
+              </div>
+              <div className="flex flex-col gap-2 md:flex-row">
+                <Button className="flex-1">Áp dụng chiến lược</Button>
+                <Button variant="outline" className="flex-1">
+                  Xuất báo cáo
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="comparison" className="pt-4">
+          <Card>
+            <CardContent className="space-y-4 py-6">
+              <div className="flex items-center gap-3">
+                <Calendar className="h-5 w-5 text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">Dự báo 30 ngày tiếp theo</p>
+              </div>
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="day" />
+                    <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
+                    <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
+                    <Tooltip />
+                    <Line yAxisId="left" type="monotone" dataKey="price" stroke="#6366f1" strokeWidth={2} name="Giá (₫)" />
+                    <Line yAxisId="right" type="monotone" dataKey="occupancy" stroke="#22c55e" strokeWidth={2} name="Occupancy (%)" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <Card>
+        <CardContent className="grid gap-4 py-4 md:grid-cols-3">
+          <div className="rounded-lg border p-4">
+            <p className="text-xs text-muted-foreground">Occupancy dự kiến</p>
+            <p className="text-2xl font-bold">{Math.round(adjustedOccupancy * 100)}%</p>
+            <p className="text-xs text-muted-foreground">Sau khi áp dụng chiến lược</p>
+          </div>
+          <div className="rounded-lg border p-4">
+            <p className="text-xs text-muted-foreground">Giá trung bình / đêm</p>
+            <p className="text-2xl font-bold">{Math.round(basePrice * seasonMultiplier).toLocaleString("vi-VN")}₫</p>
+            <p className="text-xs text-muted-foreground">Đã bao gồm multiplier</p>
+          </div>
+          <div className="rounded-lg border p-4">
+            <p className="text-xs text-muted-foreground">Chênh lệch doanh thu</p>
+            <p className={`text-2xl font-bold ${revenueDiff >= 0 ? "text-green-600" : "text-orange-600"}`}>
+              {revenueDiff >= 0 ? "+" : ""}
+              {revenueDiff.toLocaleString("vi-VN")}₫
+            </p>
+            <p className="text-xs text-muted-foreground">/tháng so với hiện tại</p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

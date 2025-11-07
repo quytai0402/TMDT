@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
 import { useConciergeContext } from "@/components/concierge-context-provider"
 import { useSession } from "next-auth/react"
+import { normalizeMembershipTier } from "@/lib/membership-tier"
 
 const SESSION_STORAGE_KEY = "luxestay_live_chat_session"
 const POLL_INTERVAL_MS = 4000
@@ -116,8 +117,9 @@ function mapApiMessage(message: ApiMessage, session: ChatSessionState | null): M
 
 export function LiveChatWidget() {
   const { data: session } = useSession()
-  const membershipTier = session?.user?.membership ?? null
-  const isDiamondMember = membershipTier === "DIAMOND"
+    const membershipTier = normalizeMembershipTier(session?.user?.membership)
+    const planTier = normalizeMembershipTier(session?.user?.membershipPlan?.slug)
+    const isDiamondMember = (membershipTier === "DIAMOND") || (planTier === "DIAMOND")
   const [isOpen, setIsOpen] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
   const [chatSession, setChatSession] = useState<ChatSessionState | null>(null)

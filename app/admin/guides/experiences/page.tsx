@@ -1,5 +1,3 @@
-'use client'
-
 import { AdminLayout } from '@/components/admin-layout'
 import { AdminGuideExperienceModeration } from '@/components/admin-guide-experience-moderation'
 

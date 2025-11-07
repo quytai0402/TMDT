@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation"
+import { getServerSession } from "next-auth"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { ExperienceHero } from "@/components/experience-hero"
@@ -11,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Calendar, CheckCircle2, Info, MapPin, XCircle, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { prisma } from "@/lib/prisma"
+import { authOptions } from "@/lib/auth"
 
 async function getExperience(id: string) {
   const experience = await prisma.experience.findUnique({
@@ -66,6 +68,8 @@ export default async function ExperienceDetailPage({ params }: { params: Promise
   if (!experience) {
     notFound()
   }
+
+  const session = await getServerSession(authOptions)
 
   const {
     title,
@@ -269,6 +273,8 @@ export default async function ExperienceDetailPage({ params }: { params: Promise
                 currency={currency}
                 minGuests={minGuests}
                 maxGuests={maxGuests}
+                membershipPlan={session?.user?.membershipPlan ?? null}
+                membershipStatus={session?.user?.membershipStatus ?? null}
               />
 
               <Card className="border border-border/60">

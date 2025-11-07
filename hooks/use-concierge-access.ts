@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useSession } from "next-auth/react"
 
+import { normalizeMembershipTier, resolveHighestMembershipTier, type NormalizedMembershipTier } from "@/lib/membership-tier"
+
 interface ConciergeAccessState {
   hasAccess: boolean
   resolvedTier: string | null
@@ -21,22 +23,27 @@ interface MembershipStatusResponse {
   } | null
 }
 
-function normalizeTier(value: string | null | undefined) {
-  return value ? value.toUpperCase() : null
-}
-
 export function useConciergeAccess(): ConciergeAccessState {
   const { data: session, status, update } = useSession()
-  const sessionTier = normalizeTier(session?.user?.membership)
-  const [resolvedTier, setResolvedTier] = useState<string | null>(sessionTier)
+  const initialTier = resolveHighestMembershipTier(session?.user?.membership, session?.user?.membershipPlan?.slug)
+  const [resolvedTier, setResolvedTier] = useState<NormalizedMembershipTier | null>(initialTier)
   const [loading, setLoading] = useState<boolean>(status === "loading")
   const syncingRef = useRef(false)
 
   useEffect(() => {
-    if (sessionTier && sessionTier !== resolvedTier) {
-      setResolvedTier(sessionTier)
+    const nextTier = resolveHighestMembershipTier(session?.user?.membership, session?.user?.membershipPlan?.slug)
+
+    if (!nextTier) {
+      if (resolvedTier !== null) {
+        setResolvedTier(null)
+      }
+      return
     }
-  }, [sessionTier, resolvedTier])
+
+    if (nextTier !== resolvedTier) {
+      setResolvedTier(nextTier)
+    }
+  }, [session?.user?.membership, session?.user?.membershipPlan?.slug, resolvedTier])
 
   const fetchMembershipStatus = async () => {
     if (status !== "authenticated") {
@@ -55,11 +62,12 @@ export function useConciergeAccess(): ConciergeAccessState {
         return null
       }
 
-      const data = (await response.json()) as MembershipStatusResponse
-      const tierFromStatus = normalizeTier(data.currentTier?.tier)
+    const data = (await response.json()) as MembershipStatusResponse
+    const tierFromStatus = normalizeMembershipTier(data.currentTier?.tier)
 
       if (tierFromStatus) {
         setResolvedTier(tierFromStatus)
+        const sessionTier = normalizeMembershipTier(session?.user?.membership)
         if (!sessionTier || sessionTier !== tierFromStatus) {
           if (!syncingRef.current) {
             syncingRef.current = true
@@ -73,9 +81,10 @@ export function useConciergeAccess(): ConciergeAccessState {
 
       const planSlug = data.membership?.plan?.slug
       if (planSlug) {
-        const inferredTier = normalizeTier(planSlug.split("-").pop())
+        const inferredTier = normalizeMembershipTier(planSlug)
         if (inferredTier) {
           setResolvedTier(inferredTier)
+          const sessionTier = normalizeMembershipTier(session?.user?.membership)
           if (!sessionTier || sessionTier !== inferredTier) {
             if (!syncingRef.current) {
               syncingRef.current = true
@@ -104,14 +113,15 @@ export function useConciergeAccess(): ConciergeAccessState {
       return
     }
 
-    if (sessionTier === "DIAMOND") {
+    const cachedTier = resolveHighestMembershipTier(session?.user?.membership, session?.user?.membershipPlan?.slug)
+    if (cachedTier === "DIAMOND") {
       setResolvedTier("DIAMOND")
       setLoading(false)
       return
     }
 
     void fetchMembershipStatus()
-  }, [status, sessionTier])
+  }, [status, session?.user?.membership, session?.user?.membershipPlan?.slug])
 
   const hasAccess = useMemo(() => resolvedTier === "DIAMOND", [resolvedTier])
 

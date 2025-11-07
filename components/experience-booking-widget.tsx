@@ -18,6 +18,14 @@ interface ExperienceBookingWidgetProps {
   minGuests: number
   maxGuests: number
   defaultTimeSlot?: string
+  membershipPlan?: {
+    id?: string
+    slug: string
+    name: string
+    discountRate: number
+    experienceDiscountRate?: number
+  } | null
+  membershipStatus?: string | null
 }
 
 export function ExperienceBookingWidget({
@@ -27,6 +35,8 @@ export function ExperienceBookingWidget({
   minGuests,
   maxGuests,
   defaultTimeSlot = "",
+  membershipPlan = null,
+  membershipStatus = null,
 }: ExperienceBookingWidgetProps) {
   const today = new Date().toISOString().split("T")[0]
   const [date, setDate] = useState<string>(today)
@@ -40,6 +50,9 @@ export function ExperienceBookingWidget({
     numberOfGuests: number
     totalPrice: number
     currency: string
+    discountRate?: number
+    discountAmount?: number
+    membershipPlan?: { id?: string | null; slug?: string | null; name?: string | null } | null
   } | null>(null)
   const [confirmingPayment, setConfirmingPayment] = useState(false)
   const { toast } = useToast()
@@ -55,7 +68,24 @@ export function ExperienceBookingWidget({
     [currency]
   )
 
-  const totalPrice = Math.max(guests, minGuests) * pricePerPerson
+  const normalizedStatus = membershipStatus?.toUpperCase() ?? null
+  const membershipActive =
+    membershipPlan && normalizedStatus
+      ? !["INACTIVE", "CANCELLED", "EXPIRED"].includes(normalizedStatus)
+      : Boolean(membershipPlan)
+  const planExperienceDiscount = membershipPlan?.experienceDiscountRate ?? 0
+  const planBookingDiscount = membershipPlan?.discountRate ?? 0
+  const appliedDiscountRate = membershipActive ? Math.max(planExperienceDiscount || 0, planBookingDiscount || 0) : 0
+
+  const basePrice = Math.max(guests, minGuests) * pricePerPerson
+  const rawDiscountPreview = appliedDiscountRate > 0 ? (basePrice * appliedDiscountRate) / 100 : 0
+  const previewDiscountAmount =
+    appliedDiscountRate > 0
+      ? currency === "VND"
+        ? Math.round(rawDiscountPreview)
+        : Number(rawDiscountPreview.toFixed(2))
+      : 0
+  const estimatedTotal = Math.max(0, basePrice - previewDiscountAmount)
   
   const handleSubmit = async () => {
     if (!date) {
@@ -224,19 +254,27 @@ export function ExperienceBookingWidget({
             <span>
               {formatter.format(Number.isFinite(pricePerPerson) ? pricePerPerson : 0)} x {guests} khách
             </span>
-            <span>{formatter.format(totalPrice)}</span>
+            <span>{formatter.format(basePrice)}</span>
           </div>
           <div className="flex justify-between text-muted-foreground">
             <span>Phí dịch vụ</span>
             <span>0₫</span>
           </div>
+          {membershipActive && appliedDiscountRate > 0 ? (
+            <div className="flex justify-between text-emerald-600">
+              <span>
+                Ưu đãi {membershipPlan?.name ?? "hội viên"} ({appliedDiscountRate}%)
+              </span>
+              <span>-{formatter.format(previewDiscountAmount)}</span>
+            </div>
+          ) : null}
         </div>
 
         <Separator />
 
         <div className="flex justify-between font-semibold">
           <span>Tổng cộng</span>
-          <span>{formatter.format(totalPrice)}</span>
+          <span>{formatter.format(membershipActive && appliedDiscountRate > 0 ? estimatedTotal : basePrice)}</span>
         </div>
 
         <Button className="w-full" size="lg" onClick={handleSubmit} disabled={submitting}>
@@ -294,6 +332,15 @@ export function ExperienceBookingWidget({
                       {formatter.format(bookingInfo.totalPrice)}
                     </span>
                   </div>
+                  {bookingInfo.discountAmount && bookingInfo.discountAmount > 0 ? (
+                    <div className="flex justify-between text-emerald-600">
+                      <span>
+                        Ưu đãi {bookingInfo.membershipPlan?.name ?? membershipPlan?.name ?? "hội viên"}
+                        {bookingInfo.discountRate && bookingInfo.discountRate > 0 ? ` (${bookingInfo.discountRate}%)` : ""}
+                      </span>
+                      <span>-{formatter.format(bookingInfo.discountAmount)}</span>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="flex flex-col items-center gap-2 rounded-md bg-white/70 p-3">
                   <img

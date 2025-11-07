@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 
+import { normalizeMembershipTier, resolveHighestMembershipTier } from "@/lib/membership-tier"
+
 const SERVICE_STATUS_BADGES: Record<string, { label: string; variant: "outline" | "secondary" | "default" }> = {
   PENDING: { label: "Concierge đang nhận", variant: "outline" },
   CONFIRMED: { label: "Đang chuẩn bị", variant: "secondary" },
@@ -89,8 +91,10 @@ const guideIconMap = {
 
 export function TripHub({ trip, membershipTier }: TripHubProps) {
   const { data: session } = useSession()
-  const normalizedTier = membershipTier?.toUpperCase() ?? null
-  const sessionTier = session?.user?.membership?.toUpperCase() ?? null
+
+  const normalizedTier = normalizeMembershipTier(membershipTier)
+  const sessionTier = normalizeMembershipTier(session?.user?.membership)
+  const planTier = normalizeMembershipTier(session?.user?.membershipPlan?.slug)
   const MEMBERSHIP_ORDER: Record<string, number> = {
     BRONZE: 0,
     SILVER: 1,
@@ -99,13 +103,7 @@ export function TripHub({ trip, membershipTier }: TripHubProps) {
     DIAMOND: 4,
   }
 
-  const resolvedTier = [normalizedTier, sessionTier].reduce<string | null>((highest, current) => {
-    if (!current) return highest
-    if (!highest) return current
-    const currentScore = MEMBERSHIP_ORDER[current] ?? -1
-    const highestScore = MEMBERSHIP_ORDER[highest] ?? -1
-    return currentScore > highestScore ? current : highest
-  }, null)
+  const resolvedTier = resolveHighestMembershipTier(normalizedTier, sessionTier, planTier)
 
   const hasConciergeAccess = resolvedTier === "DIAMOND"
 

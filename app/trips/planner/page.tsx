@@ -27,6 +27,7 @@ import { TripBudgetTracker, type BudgetItem } from "@/components/trip-budget-tra
 import { SharedTripPlanning, type TripMember } from "@/components/shared-trip-planning"
 import { DESTINATIONS } from "@/data/destinations"
 import { useToast } from "@/components/ui/use-toast"
+import { normalizeMembershipTier, resolveHighestMembershipTier } from "@/lib/membership-tier"
 
 interface PlannerTrip {
   id: string
@@ -79,10 +80,10 @@ const MEMBERSHIP_MIN_TIER = "SILVER"
 const MEMBERSHIP_ORDER = ["BRONZE", "SILVER", "GOLD", "PLATINUM", "DIAMOND"] as const
 
 const membershipQualifies = (tier: string | null | undefined) => {
-  if (!tier) return false
-  const normalized = tier.toUpperCase()
+  const normalized = normalizeMembershipTier(tier)
+  if (!normalized) return false
   const requiredIndex = MEMBERSHIP_ORDER.indexOf(MEMBERSHIP_MIN_TIER)
-  const currentIndex = MEMBERSHIP_ORDER.indexOf(normalized as typeof MEMBERSHIP_ORDER[number])
+  const currentIndex = MEMBERSHIP_ORDER.indexOf(normalized)
   if (currentIndex === -1) return false
   return currentIndex >= requiredIndex
 }
@@ -358,8 +359,8 @@ export default function TripPlanningHubPage() {
   const [suggestions, setSuggestions] = useState<PlannerSuggestionResponse["suggestions"]>([])
   const [suggestionsLoading, setSuggestionsLoading] = useState(false)
   const { toast } = useToast()
-  const sessionTier = session?.user?.membership?.toUpperCase() ?? null
-  const meetsRequirement = membershipQualifies(sessionTier)
+  const resolvedTier = resolveHighestMembershipTier(session?.user?.membership, session?.user?.membershipPlan?.slug)
+  const meetsRequirement = membershipQualifies(resolvedTier)
 
   useEffect(() => {
     if (status === "authenticated" && !meetsRequirement) {

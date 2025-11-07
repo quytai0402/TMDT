@@ -9,6 +9,7 @@ export type MembershipDetails = {
   billingCycle: MembershipBillingCycle | null
   features: string[]
   plan: {
+    id: string
     slug: string
     name: string
     color: string | null
@@ -17,6 +18,7 @@ export type MembershipDetails = {
     exclusiveFeatures: string[]
     bookingDiscountRate: number
     applyDiscountToServices: boolean
+    experienceDiscountRate: number
   } | null
 }
 
@@ -31,6 +33,7 @@ export async function getMembershipForUser(userId: string): Promise<MembershipDe
       membershipFeatures: true,
       membershipPlan: {
         select: {
+          id: true,
           slug: true,
           name: true,
           color: true,
@@ -39,6 +42,7 @@ export async function getMembershipForUser(userId: string): Promise<MembershipDe
           exclusiveFeatures: true,
           bookingDiscountRate: true,
           applyDiscountToServices: true,
+          experienceDiscountRate: true,
         },
       },
     },
@@ -78,6 +82,7 @@ export async function getMembershipForUser(userId: string): Promise<MembershipDe
     features: user.membershipFeatures ?? [],
     plan: user.membershipPlan
       ? {
+          id: user.membershipPlan.id,
           slug: user.membershipPlan.slug,
           name: user.membershipPlan.name,
           color: user.membershipPlan.color,
@@ -86,6 +91,7 @@ export async function getMembershipForUser(userId: string): Promise<MembershipDe
           exclusiveFeatures: user.membershipPlan.exclusiveFeatures,
           bookingDiscountRate: user.membershipPlan.bookingDiscountRate,
           applyDiscountToServices: user.membershipPlan.applyDiscountToServices,
+          experienceDiscountRate: user.membershipPlan.experienceDiscountRate,
         }
       : null,
   }

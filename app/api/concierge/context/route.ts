@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import { authOptions } from '@/lib/auth'
 import { buildConciergeContext } from '@/lib/concierge/context'
+import { resolveHighestMembershipTier } from '@/lib/membership-tier'
 
 const querySchema = z.object({
   listingId: z.string().trim().optional(),
@@ -38,7 +39,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Chưa đăng nhập' }, { status: 401 })
     }
 
-    const membershipTier = session.user.membership ?? null
+    const membershipTier = resolveHighestMembershipTier(
+      session.user.membership ?? null,
+      session.user.membershipPlan?.slug ?? null,
+    )
     const userRole = session.user.role
     const hasConciergePrivileges = userRole && userRole !== 'GUEST' ? true : membershipTier === 'DIAMOND'
 

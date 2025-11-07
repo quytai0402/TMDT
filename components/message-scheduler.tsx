@@ -1,121 +1,164 @@
 "use client"
 
-import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
+import { Calendar, Clock, Send, User, Home, CheckCircle2, AlertCircle, Pause, Play, Loader2 } from "lucide-react"
+
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Calendar, Clock, Send, User, Home, CheckCircle2, AlertCircle, Pause, Play } from "lucide-react"
-import { cn } from "@/lib/utils"
+
+type TemplateCategory = "WELCOME" | "CHECKIN" | "CHECKOUT" | "FAQ" | "REMINDER" | "CUSTOM"
+type AutomationTrigger =
+  | "BOOKING_CONFIRMED"
+  | "BEFORE_CHECK_IN"
+  | "CHECK_IN"
+  | "DURING_STAY"
+  | "CHECK_OUT"
+  | "AFTER_CHECK_OUT"
+  | "CUSTOM_TIME"
+type AutomationStatus = "ACTIVE" | "PAUSED" | "DRAFT"
+type RecipientScope = "ALL_GUESTS" | "NEW_GUESTS" | "RETURNING_GUESTS" | "VIP_GUESTS"
 
 interface ScheduledMessage {
   id: string
   name: string
-  template: string
-  trigger: "booking_confirmed" | "24h_before_checkin" | "check_in" | "during_stay" | "check_out" | "custom_time"
-  timing: string // e.g., "24 hours before check-in", "At check-in time"
-  recipients: "all_guests" | "new_guests" | "returning_guests"
-  status: "active" | "paused" | "draft"
+  trigger: AutomationTrigger
+  timingLabel?: string | null
+  offsetMinutes?: number | null
+  recipients: RecipientScope
+  status: AutomationStatus
   sentCount: number
-  lastSent?: Date
+  lastSent?: string | null
+  template?: {
+    id: string
+    name: string
+    category: TemplateCategory
+  } | null
 }
 
-const defaultScheduledMessages: ScheduledMessage[] = [
-  {
-    id: "1",
-    name: "Xác nhận đặt phòng",
-    template: "Chào mừng khách đặt phòng",
-    trigger: "booking_confirmed",
-    timing: "Ngay sau khi xác nhận",
-    recipients: "all_guests",
-    status: "active",
-    sentCount: 42,
-    lastSent: new Date("2024-11-28")
-  },
-  {
-    id: "2",
-    name: "Nhắc nhở trước 24h",
-    template: "Nhắc nhở trước 24h",
-    trigger: "24h_before_checkin",
-    timing: "24 giờ trước check-in",
-    recipients: "all_guests",
-    status: "active",
-    sentCount: 38,
-    lastSent: new Date("2024-11-27")
-  },
-  {
-    id: "3",
-    name: "Hướng dẫn check-in",
-    template: "Hướng dẫn nhận phòng",
-    trigger: "check_in",
-    timing: "2 giờ trước check-in",
-    recipients: "all_guests",
-    status: "active",
-    sentCount: 40,
-    lastSent: new Date("2024-11-28")
-  },
-  {
-    id: "4",
-    name: "Hỏi thăm giữa kỳ",
-    template: "Kiểm tra trải nghiệm",
-    trigger: "during_stay",
-    timing: "Ngày thứ 2 của kỳ lưu trú",
-    recipients: "all_guests",
-    status: "active",
-    sentCount: 35,
-    lastSent: new Date("2024-11-26")
-  },
-  {
-    id: "5",
-    name: "Cảm ơn sau check-out",
-    template: "Cảm ơn sau khi trả phòng",
-    trigger: "check_out",
-    timing: "2 giờ sau check-out",
-    recipients: "all_guests",
-    status: "active",
-    sentCount: 33,
-    lastSent: new Date("2024-11-27")
-  },
-  {
-    id: "6",
-    name: "Yêu cầu đánh giá",
-    template: "Nhắc nhở đánh giá",
-    trigger: "check_out",
-    timing: "1 ngày sau check-out",
-    recipients: "all_guests",
-    status: "active",
-    sentCount: 30,
-    lastSent: new Date("2024-11-25")
-  }
-]
+const triggerLabels: Record<AutomationTrigger, { label: string; description: string }> = {
+  BOOKING_CONFIRMED: { label: "Ngay khi xác nhận", description: "Gửi khi booking được xác nhận" },
+  BEFORE_CHECK_IN: { label: "Trước check-in", description: "Nhắc khách trước khi đến" },
+  CHECK_IN: { label: "Tại check-in", description: "Gửi đúng thời điểm nhận phòng" },
+  DURING_STAY: { label: "Trong kỳ lưu trú", description: "Chăm sóc trong khi khách nghỉ" },
+  CHECK_OUT: { label: "Khi check-out", description: "Thông báo lúc khách trả phòng" },
+  AFTER_CHECK_OUT: { label: "Sau check-out", description: "Nhắc đánh giá hoặc ưu đãi" },
+  CUSTOM_TIME: { label: "Tùy chỉnh", description: "Theo lịch riêng" },
+}
+
+const statusStyles: Record<AutomationStatus, { label: string; className: string }> = {
+  ACTIVE: { label: "Đang chạy", className: "bg-green-100 text-green-700" },
+  PAUSED: { label: "Tạm dừng", className: "bg-yellow-100 text-yellow-700" },
+  DRAFT: { label: "Nháp", className: "bg-gray-100 text-gray-600" },
+}
+
+const recipientLabels: Record<RecipientScope, string> = {
+  ALL_GUESTS: "Tất cả khách",
+  NEW_GUESTS: "Khách mới",
+  RETURNING_GUESTS: "Khách quay lại",
+  VIP_GUESTS: "Khách VIP",
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "—"
+  return new Date(value).toLocaleString("vi-VN")
+}
 
 export function MessageScheduler() {
-  const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessage[]>(defaultScheduledMessages)
-  const [selectedMessage, setSelectedMessage] = useState<ScheduledMessage | null>(null)
+  const [messages, setMessages] = useState<ScheduledMessage[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [sendWeekends, setSendWeekends] = useState(true)
+  const [nightQuietHours, setNightQuietHours] = useState(true)
+  const [retryFailed, setRetryFailed] = useState(true)
+  const [sendNotifications, setSendNotifications] = useState(false)
 
-  const handleToggleStatus = (id: string) => {
-    setScheduledMessages(scheduledMessages.map(msg => 
-      msg.id === id 
-        ? { ...msg, status: msg.status === "active" ? "paused" : "active" }
-        : msg
-    ))
-  }
+  const loadMessages = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      const response = await fetch("/api/host/automation/scheduled-messages", { cache: "no-store" })
+      if (!response.ok) {
+        throw new Error("Không thể tải danh sách tin nhắn tự động")
+      }
+      const data = (await response.json()) as { messages?: ScheduledMessage[] }
+      setMessages(Array.isArray(data.messages) ? data.messages : [])
+    } catch (err) {
+      console.error(err)
+      setError((err as Error).message)
+      setMessages([])
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
 
-  const activeMessages = scheduledMessages.filter(m => m.status === "active")
-  const totalSent = scheduledMessages.reduce((sum, m) => sum + m.sentCount, 0)
+  useEffect(() => {
+    loadMessages()
+  }, [loadMessages])
+
+  const activeMessages = useMemo(() => messages.filter((message) => message.status === "ACTIVE"), [messages])
+  const totalSent = useMemo(() => messages.reduce((sum, message) => sum + (message.sentCount ?? 0), 0), [messages])
+  const lastTriggered = useMemo(() => {
+    const sorted = [...messages].sort((a, b) => {
+      const dateA = a.lastSent ? new Date(a.lastSent).getTime() : 0
+      const dateB = b.lastSent ? new Date(b.lastSent).getTime() : 0
+      return dateB - dateA
+    })
+    return sorted[0]?.lastSent
+  }, [messages])
+  const templateUsage = useMemo(() => {
+    const ids = new Set<string>()
+    messages.forEach((message) => {
+      if (message.template?.id) {
+        ids.add(message.template.id)
+      }
+    })
+    return ids.size
+  }, [messages])
+
+  const handleToggleStatus = useCallback(
+    async (messageId: string) => {
+      try {
+        setTogglingId(messageId)
+        const response = await fetch(`/api/host/automation/scheduled-messages/${messageId}`, {
+          method: "PATCH",
+        })
+
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || "Không thể cập nhật trạng thái tin nhắn")
+        }
+
+        const data = await response.json()
+        if (data?.message) {
+          setMessages((prev) => prev.map((message) => (message.id === data.message.id ? data.message : message)))
+        } else {
+          await loadMessages()
+        }
+
+        toast.success("Đã cập nhật trạng thái tin nhắn")
+      } catch (err) {
+        console.error(err)
+        toast.error((err as Error).message)
+      } finally {
+        setTogglingId(null)
+      }
+    },
+    [loadMessages],
+  )
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h2 className="text-2xl font-bold">Tin nhắn tự động</h2>
         <p className="text-muted-foreground">Lên lịch gửi tin nhắn tự động cho khách</p>
       </div>
 
-      {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -124,104 +167,163 @@ export function MessageScheduler() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{activeMessages.length}</div>
-            <p className="text-xs text-muted-foreground">Tin nhắn tự động</p>
+            <p className="text-xs text-muted-foreground">Automation bật</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Đã gửi</CardTitle>
-            <Send className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Tổng tin đã gửi</CardTitle>
+            <Send className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalSent}</div>
-            <p className="text-xs text-muted-foreground">Tổng số tin</p>
+            <p className="text-xs text-muted-foreground">Cộng dồn toàn hệ thống</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Tỷ lệ gửi</CardTitle>
+            <CardTitle className="text-sm font-medium">Mẫu đang dùng</CardTitle>
+            <Home className="h-4 w-4 text-purple-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{templateUsage}</div>
+            <p className="text-xs text-muted-foreground">Mẫu đang gắn vào workflow</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Lần gửi gần nhất</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">98%</div>
-            <p className="text-xs text-muted-foreground">Thành công</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Thời gian tiết kiệm</CardTitle>
-            <User className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">8h</div>
-            <p className="text-xs text-muted-foreground">Mỗi tuần</p>
+            <div className="text-sm font-semibold">{formatDateTime(lastTriggered)}</div>
+            <p className="text-xs text-muted-foreground">Cập nhật realtime</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Automation Flow */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Quy trình tự động hóa</CardTitle>
-          <CardDescription>Tin nhắn sẽ tự động gửi theo các mốc thời gian</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            {/* Timeline */}
-            <div className="relative">
-              {scheduledMessages.filter(m => m.trigger !== "custom_time").map((message, index) => (
-                <div key={message.id} className="flex items-start gap-4 mb-6 last:mb-0">
-                  <div className="flex flex-col items-center">
-                    <div className={cn(
-                      "w-10 h-10 rounded-full flex items-center justify-center",
-                      message.status === "active" ? "bg-green-100 text-green-600" : "bg-gray-100 text-gray-400"
-                    )}>
-                      {message.trigger === "booking_confirmed" && <CheckCircle2 className="h-5 w-5" />}
-                      {message.trigger === "24h_before_checkin" && <Clock className="h-5 w-5" />}
-                      {message.trigger === "check_in" && <Home className="h-5 w-5" />}
-                      {message.trigger === "during_stay" && <User className="h-5 w-5" />}
-                      {message.trigger === "check_out" && <Send className="h-5 w-5" />}
+      {error && (
+        <Card className="border-destructive/40 bg-destructive/10">
+          <CardHeader>
+            <CardTitle className="text-destructive">Không thể tải dữ liệu</CardTitle>
+            <CardDescription className="text-destructive">{error}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" onClick={loadMessages}>
+              Thử lại
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          {messages.map((message) => {
+            const triggerInfo = triggerLabels[message.trigger]
+            const statusInfo = statusStyles[message.status]
+            return (
+              <Card key={message.id} className="transition-shadow hover:shadow-md">
+                <CardHeader className="space-y-1">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-lg">{message.name}</CardTitle>
+                      <CardDescription>{message.timingLabel || triggerInfo?.description}</CardDescription>
                     </div>
-                    {index < scheduledMessages.filter(m => m.trigger !== "custom_time").length - 1 && (
-                      <div className="w-0.5 h-12 bg-gray-200 my-2" />
+                    <Badge className={statusInfo.className}>{statusInfo.label}</Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-1 text-sm">
+                      <p className="text-muted-foreground">Trigger</p>
+                      <div className="flex items-center gap-2 font-medium">
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                        {triggerInfo?.label}
+                      </div>
+                    </div>
+                    <div className="space-y-1 text-sm">
+                      <p className="text-muted-foreground">Đối tượng</p>
+                      <div className="flex items-center gap-2 font-medium">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                        {recipientLabels[message.recipients] || "—"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-sm">
+                    <p className="text-muted-foreground">Mẫu tin nhắn</p>
+                    {message.template ? (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">{message.template.name}</Badge>
+                        <Badge>{message.template.category}</Badge>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">Chưa gắn mẫu</span>
                     )}
                   </div>
 
-                  <Card className="flex-1">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h4 className="font-semibold">{message.name}</h4>
-                            <Badge variant={message.status === "active" ? "default" : "secondary"}>
-                              {message.status === "active" ? "Hoạt động" : "Tạm dừng"}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground mb-2">{message.timing}</p>
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                            <span>Mẫu: {message.template}</span>
-                            <span>•</span>
-                            <span>Đã gửi: {message.sentCount} lần</span>
-                          </div>
-                        </div>
-                        <Switch
-                          checked={message.status === "active"}
-                          onCheckedChange={() => handleToggleStatus(message.id)}
-                        />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              ))}
+                  <div className="flex items-center justify-between border-t pt-2 text-xs text-muted-foreground">
+                    <span>Đã gửi: {message.sentCount} lần</span>
+                    <span>Lần cuối: {formatDateTime(message.lastSent)}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => handleToggleStatus(message.id)}
+                      disabled={togglingId === message.id}
+                    >
+                      {message.status === "ACTIVE" ? (
+                        <>
+                          {togglingId === message.id ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Pause className="mr-2 h-4 w-4" />
+                          )}
+                          Tạm dừng
+                        </>
+                      ) : (
+                        <>
+                          {togglingId === message.id ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Play className="mr-2 h-4 w-4" />
+                          )}
+                          Kích hoạt
+                        </>
+                      )}
+                    </Button>
+                    <Button variant="ghost" size="icon">
+                      <AlertCircle className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
+
+      {!isLoading && !messages.length && !error && (
+        <Card className="p-12 text-center">
+          <div className="space-y-4">
+            <Send className="mx-auto h-12 w-12 text-muted-foreground" />
+            <div>
+              <h3 className="text-lg font-semibold">Chưa có workflow nào</h3>
+              <p className="text-muted-foreground">Tạo mẫu tin nhắn và gắn vào automation để bắt đầu</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </Card>
+      )}
 
-      {/* Settings */}
       <Card>
         <CardHeader>
           <CardTitle>Cài đặt nâng cao</CardTitle>
@@ -230,105 +332,85 @@ export function MessageScheduler() {
         <CardContent className="space-y-6">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label>Gửi tin nhắn vào cuối tuần</Label>
-              <p className="text-sm text-muted-foreground">
-                Cho phép gửi tin tự động vào thứ 7 và chủ nhật
-              </p>
+              <Label>Gửi vào cuối tuần</Label>
+              <p className="text-sm text-muted-foreground">Cho phép gửi tin tự động vào thứ 7 và chủ nhật</p>
             </div>
-            <Switch defaultChecked />
+            <Switch checked={sendWeekends} onCheckedChange={setSendWeekends} />
           </div>
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label>Tránh gửi vào ban đêm</Label>
-              <p className="text-sm text-muted-foreground">
-                Không gửi tin từ 22:00 - 08:00
-              </p>
+              <Label>Tránh gửi ban đêm (22h - 8h)</Label>
+              <p className="text-sm text-muted-foreground">Hạn chế làm phiền khách vào khung giờ nhạy cảm</p>
             </div>
-            <Switch defaultChecked />
+            <Switch checked={nightQuietHours} onCheckedChange={setNightQuietHours} />
           </div>
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label>Gửi lại nếu thất bại</Label>
-              <p className="text-sm text-muted-foreground">
-                Tự động thử lại sau 30 phút nếu gửi không thành công
-              </p>
+              <Label>Tự động gửi lại</Label>
+              <p className="text-sm text-muted-foreground">Thử gửi lại sau 30 phút nếu thất bại</p>
             </div>
-            <Switch defaultChecked />
+            <Switch checked={retryFailed} onCheckedChange={setRetryFailed} />
           </div>
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label>Thông báo khi gửi</Label>
-              <p className="text-sm text-muted-foreground">
-                Nhận thông báo mỗi khi tin nhắn được gửi tự động
-              </p>
+              <Label>Thông báo cho host</Label>
+              <p className="text-sm text-muted-foreground">Nhận thông báo mỗi khi automation chạy</p>
             </div>
-            <Switch />
+            <Switch checked={sendNotifications} onCheckedChange={setSendNotifications} />
           </div>
 
-          <div className="space-y-2">
-            <Label>Múi giờ</Label>
-            <Select defaultValue="asia_saigon">
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="asia_saigon">Việt Nam (GMT+7)</SelectItem>
-                <SelectItem value="asia_bangkok">Thailand (GMT+7)</SelectItem>
-                <SelectItem value="asia_singapore">Singapore (GMT+8)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Ngôn ngữ mặc định</Label>
-            <Select defaultValue="vi">
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="vi">Tiếng Việt</SelectItem>
-                <SelectItem value="en">English</SelectItem>
-                <SelectItem value="auto">Tự động (theo khách)</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Múi giờ</Label>
+              <Select defaultValue="asia_saigon">
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn múi giờ" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="asia_saigon">Việt Nam (GMT+7)</SelectItem>
+                  <SelectItem value="asia_bangkok">Thailand (GMT+7)</SelectItem>
+                  <SelectItem value="asia_singapore">Singapore (GMT+8)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Ngôn ngữ mặc định</Label>
+              <Select defaultValue="vi">
+                <SelectTrigger>
+                  <SelectValue placeholder="Chọn ngôn ngữ" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="vi">Tiếng Việt</SelectItem>
+                  <SelectItem value="en">English</SelectItem>
+                  <SelectItem value="auto">Tự động theo khách</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Performance */}
       <Card>
         <CardHeader>
           <CardTitle>Hiệu suất gửi tin</CardTitle>
-          <CardDescription>30 ngày gần nhất</CardDescription>
+          <CardDescription>Số liệu tổng quan</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <div>
-                <div className="text-2xl font-bold">218</div>
-                <p className="text-xs text-muted-foreground">Tin đã gửi</p>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-green-600">214</div>
-                <p className="text-xs text-muted-foreground">Thành công</p>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-red-600">4</div>
-                <p className="text-xs text-muted-foreground">Thất bại</p>
-              </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div>
+              <div className="text-2xl font-bold">{totalSent}</div>
+              <p className="text-xs text-muted-foreground">Tin đã gửi</p>
             </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span>Tỷ lệ thành công</span>
-                <span className="font-semibold">98.2%</span>
-              </div>
-              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                <div className="h-full bg-green-600" style={{ width: "98.2%" }} />
-              </div>
+            <div>
+              <div className="text-2xl font-bold text-green-600">{activeMessages.length}</div>
+              <p className="text-xs text-muted-foreground">Workflow đang chạy</p>
+            </div>
+            <div>
+              <div className="text-2xl font-bold">{formatDateTime(lastTriggered)}</div>
+              <p className="text-xs text-muted-foreground">Lần gửi gần nhất</p>
             </div>
           </div>
         </CardContent>

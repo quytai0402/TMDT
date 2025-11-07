@@ -16,10 +16,12 @@ import type { JWT } from 'next-auth/jwt'
 import type { Prisma, UserRole } from '@prisma/client'
 
 type MembershipPlanSnapshot = {
+  id?: string
   slug: string
   name: string
   discountRate: number
   applyDiscountToServices: boolean
+  experienceDiscountRate?: number
   color?: string | null
   icon?: string | null
   features?: string[] | null
@@ -327,10 +329,12 @@ export const authOptions: NextAuthOptions = {
               membershipStatus: true,
               membershipPlan: {
                 select: {
+                  id: true,
                   slug: true,
                   name: true,
                   bookingDiscountRate: true,
                   applyDiscountToServices: true,
+                  experienceDiscountRate: true,
                   color: true,
                   icon: true,
                   features: true,
@@ -350,10 +354,12 @@ export const authOptions: NextAuthOptions = {
           enrichedToken.guideProfileId = dbUser?.guideProfile?.id ?? null
           enrichedToken.membershipPlan = dbUser?.membershipPlan
             ? {
+                id: dbUser.membershipPlan.id,
                 slug: dbUser.membershipPlan.slug,
                 name: dbUser.membershipPlan.name,
                 discountRate: dbUser.membershipPlan.bookingDiscountRate,
                 applyDiscountToServices: dbUser.membershipPlan.applyDiscountToServices,
+                experienceDiscountRate: dbUser.membershipPlan.experienceDiscountRate,
                 color: dbUser.membershipPlan.color,
                 icon: dbUser.membershipPlan.icon,
                 features: dbUser.membershipPlan.features ?? null,

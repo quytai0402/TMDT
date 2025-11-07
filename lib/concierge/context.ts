@@ -388,12 +388,15 @@ async function buildListingContext(listingId: string) {
 }
 
 async function getLatestBookingContext(userId: string) {
-  const booking = await prisma.booking.findFirst({
+  const now = new Date()
+
+  const upcomingBooking = await prisma.booking.findFirst({
     where: {
       guestId: userId,
-      status: { in: ['CONFIRMED', 'PENDING', 'COMPLETED'] },
+      status: { in: ['CONFIRMED', 'PENDING'] },
+      checkIn: { gte: now },
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { checkIn: 'asc' },
     include: {
       listing: {
         select: {
@@ -407,6 +410,27 @@ async function getLatestBookingContext(userId: string) {
       },
     },
   })
+
+  const booking = upcomingBooking
+    ?? (await prisma.booking.findFirst({
+      where: {
+        guestId: userId,
+        status: { in: ['CONFIRMED', 'PENDING', 'COMPLETED'] },
+      },
+      orderBy: { checkIn: 'desc' },
+      include: {
+        listing: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            city: true,
+            country: true,
+            images: true,
+          },
+        },
+      },
+    }))
 
   if (!booking) return null
 

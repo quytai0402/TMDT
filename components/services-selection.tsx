@@ -125,6 +125,13 @@ const SERVICES: Service[] = [
   },
 ]
 
+const UNIT_RATE_SUFFIX: Record<ServiceUnit, string> = {
+  once: " mỗi lần",
+  daily: " mỗi đêm",
+  person: " mỗi khách mỗi đêm",
+  pet: " mỗi thú cưng mỗi đêm",
+}
+
 export interface SelectedServiceSummary {
   id: string
   name: string
@@ -402,10 +409,10 @@ export function ServicesSelection({ nights = 1, guests = 1, value, onServicesCha
                               <span>{getUnitLabel(service)}</span>
                             </div>
                             <div className="text-right">
-                              <p className="text-sm text-muted-foreground line-through">
-                                {service.price.toLocaleString("vi-VN")}₫
-                              </p>
                               <p className="font-bold text-primary">{servicePrice.toLocaleString("vi-VN")}₫</p>
+                              <p className="text-xs text-muted-foreground">
+                                {service.price.toLocaleString("vi-VN")}₫{UNIT_RATE_SUFFIX[service.unit]}
+                              </p>
                             </div>
                           </div>
                         </div>

@@ -2,10 +2,12 @@ import "next-auth"
 import { UserRole } from "@prisma/client"
 
 type MembershipPlanSnapshot = {
+  id?: string
   slug: string
   name: string
   discountRate: number
   applyDiscountToServices: boolean
+  experienceDiscountRate?: number
   color?: string | null
   icon?: string | null
   features?: string[] | null

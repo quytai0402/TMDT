@@ -4,6 +4,7 @@ import { NotificationType } from "@prisma/client"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { notifyAdmins, notifyUser } from "@/lib/notifications"
+import { getMembershipForUser } from "@/lib/membership"
 import { z } from "zod"
 
 const createBookingSchema = z.object({
@@ -78,7 +79,32 @@ export async function POST(
       )
     }
 
-    const totalPrice = experience.price * validated.numberOfGuests
+  const basePrice = experience.price * validated.numberOfGuests
+  const currencyCode = experience.currency ?? "VND"
+
+    const membership = await getMembershipForUser(session.user.id)
+    const hasActivePlan = Boolean(membership?.isActive && membership.plan)
+    const rawExperienceDiscount = hasActivePlan ? Number(membership?.plan?.experienceDiscountRate ?? 0) : 0
+    const fallbackDiscount = hasActivePlan ? Number(membership?.plan?.bookingDiscountRate ?? 0) : 0
+    const discountRate = Math.max(0, rawExperienceDiscount || fallbackDiscount || 0)
+    const rawDiscount = discountRate > 0 ? (basePrice * discountRate) / 100 : 0
+    const discountAmount =
+      discountRate > 0
+        ? currencyCode === "VND"
+          ? Math.round(rawDiscount)
+          : Number(rawDiscount.toFixed(2))
+        : 0
+    const totalPrice = Math.max(0, basePrice - discountAmount)
+    const membershipPlanId = hasActivePlan && membership?.plan?.id ? membership.plan.id : null
+    const membershipPlanSnapshot = hasActivePlan && membership?.plan
+      ? {
+          id: membership.plan.id,
+          slug: membership.plan.slug,
+          name: membership.plan.name,
+          bookingDiscountRate: membership.plan.bookingDiscountRate,
+          experienceDiscountRate: membership.plan.experienceDiscountRate,
+        }
+      : null
 
     const booking = await prisma.experienceBooking.create({
       data: {
@@ -89,8 +115,21 @@ export async function POST(
         numberOfGuests: validated.numberOfGuests,
         pricePerPerson: experience.price,
         totalPrice,
-        currency: experience.currency,
+  currency: currencyCode,
         status: "PENDING",
+        discountRate,
+        discountAmount,
+        membershipPlanId,
+        membershipPlanSnapshot,
+      },
+      include: {
+        membershipPlan: {
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+          },
+        },
       },
     })
 
@@ -155,6 +194,15 @@ export async function POST(
           numberOfGuests: booking.numberOfGuests,
           totalPrice: booking.totalPrice,
           currency: booking.currency,
+          discountRate: booking.discountRate,
+          discountAmount: booking.discountAmount,
+          membershipPlan: booking.membershipPlan
+            ? {
+                id: booking.membershipPlan.id,
+                slug: booking.membershipPlan.slug,
+                name: booking.membershipPlan.name,
+              }
+            : null,
         },
       },
       { status: 201 }

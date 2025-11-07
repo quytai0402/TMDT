@@ -125,12 +125,12 @@ interface BookingWidgetProps {
 
 const MEMBERSHIP_PERKS: Record<string, string[]> = {
   diamond: [
-    "Giảm 15% cho mọi booking",
+    "Giảm 15% cho phòng & dịch vụ",
     "Concierge cá nhân hoá",
     "Ưu tiên check-in/out linh hoạt",
     "Tặng 3 đêm miễn phí mỗi năm",
     "Giảm 15% cho dịch vụ bổ sung",
-    "Trải nghiệm partner cao cấp",
+    "Giảm 20% cho trải nghiệm & tour",
     "Miễn phí đổi lịch không giới hạn",
   ],
   "luxe-platinum": [

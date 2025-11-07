@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { Menu, User, Heart, Trophy, Sparkles, Crown, Users, Compass, Calendar, MessageSquare, Building2, LayoutDashboard } from "lucide-react"
+import { Menu, User, Heart, Trophy, Sparkles, Crown, Users, Compass, Calendar, MessageSquare, Building2, LayoutDashboard, Gem } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useSession, signOut } from "next-auth/react"
@@ -23,23 +24,28 @@ import { MobileMenu } from "@/components/mobile-menu"
 import { UserRewardsBadge } from "@/components/user-rewards-badge"
 import { canAccessAdmin, canManageListings, isGuest, resolveRoleLabel } from "@/lib/rbac"
 import { useConciergeAccess } from "@/hooks/use-concierge-access"
+import { cn } from "@/lib/utils"
 
-const MEMBERSHIP_BADGE_STYLES: Record<string, { label: string; className: string }> = {
+const MEMBERSHIP_BADGE_STYLES: Record<string, { label: string; className: string; icon: LucideIcon }> = {
   SILVER: {
     label: "Silver",
-    className: "h-5 px-1.5 text-[10px] bg-gradient-to-r from-slate-400 to-slate-600 border-0",
+    className: "bg-gradient-to-r from-slate-400 to-slate-600",
+    icon: Sparkles,
   },
   GOLD: {
     label: "Gold",
-    className: "h-5 px-1.5 text-[10px] bg-gradient-to-r from-amber-500 to-amber-600 border-0",
+    className: "bg-gradient-to-r from-amber-500 to-amber-600",
+    icon: Crown,
   },
   PLATINUM: {
     label: "Platinum",
-    className: "h-5 px-1.5 text-[10px] bg-gradient-to-r from-gray-500 to-gray-700 border-0",
+    className: "bg-gradient-to-r from-gray-500 to-gray-700",
+    icon: Sparkles,
   },
   DIAMOND: {
     label: "Diamond",
-    className: "h-5 px-1.5 text-[10px] bg-gradient-to-r from-cyan-500 to-blue-600 border-0",
+    className: "bg-gradient-to-r from-cyan-500 via-sky-500 to-blue-700",
+    icon: Gem,
   },
 }
 
@@ -66,6 +72,7 @@ export function Header() {
   const normalizedTier = resolvedTier ?? (sessionTier ? sessionTier.toString().toUpperCase() : null)
   const badgeKey = resolveMembershipKey(normalizedTier)
   const membershipBadge = badgeKey ? MEMBERSHIP_BADGE_STYLES[badgeKey] : undefined
+  const MembershipBadgeIcon = membershipBadge?.icon ?? Crown
 
 
   return (
@@ -189,9 +196,9 @@ export function Header() {
                         <p className="text-sm font-medium flex items-center gap-1.5">
                           {session.user.name}
                           {membershipBadge ? (
-                            <Badge className={membershipBadge.className}>
-                              <Crown className="h-3 w-3" />
-                              <span className="ml-1 hidden sm:inline">{membershipBadge.label}</span>
+                            <Badge className={cn("h-5 gap-1 px-1.5 text-[10px] font-semibold text-white border-0 shadow-sm", membershipBadge.className)}>
+                              <MembershipBadgeIcon className="h-3 w-3" />
+                              <span className="hidden sm:inline">{membershipBadge.label}</span>
                             </Badge>
                           ) : null}
                         </p>

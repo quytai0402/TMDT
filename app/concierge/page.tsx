@@ -24,12 +24,14 @@ import { ConciergeChat } from "@/components/concierge-chat"
 import { LocalRestaurantRecommendations } from "@/components/local-restaurant-recommendations"
 import { TransportationBooking } from "@/components/transportation-booking"
 import { SpecialRequestsHandler } from "@/components/special-requests-handler"
+import { normalizeMembershipTier, resolveHighestMembershipTier } from "@/lib/membership-tier"
 
 export default function ConciergePage() {
   const { data: session, status } = useSession()
   const router = useRouter()
-  const membershipTier = session?.user?.membership ?? null
-  const isDiamondMember = membershipTier === "DIAMOND"
+  const membershipTier = normalizeMembershipTier(session?.user?.membership)
+  const planTier = normalizeMembershipTier(session?.user?.membershipPlan?.slug)
+  const isDiamondMember = resolveHighestMembershipTier(membershipTier, planTier) === "DIAMOND"
 
   useEffect(() => {
     if (status === "unauthenticated") {

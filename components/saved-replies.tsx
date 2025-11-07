@@ -1,208 +1,336 @@
 "use client"
 
-import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
+import { MessageCircle, Zap, Edit2, Trash2, Plus, Copy, Clock, TrendingUp, Loader2 } from "lucide-react"
+
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { MessageCircle, Zap, Edit2, Trash2, Plus, Copy, Clock, TrendingUp } from "lucide-react"
-import { cn } from "@/lib/utils"
 
-interface SavedReply {
+type SavedReply = {
   id: string
   title: string
   shortcut: string
   content: string
   tags: string[]
   useCount: number
-  lastUsed?: Date
-  createdAt: Date
+  lastUsed?: string | null
+  createdAt: string
 }
 
-const defaultReplies: SavedReply[] = [
-  {
-    id: "1",
-    title: "Xác nhận đặt phòng",
-    shortcut: "/confirm",
-    content: "Xin chào! Cảm ơn bạn đã đặt phòng. Tôi đã xác nhận đơn đặt phòng của bạn. Nếu có bất kỳ câu hỏi nào, vui lòng liên hệ nhé! 😊",
-    tags: ["xác nhận", "đặt phòng"],
-    useCount: 156,
-    lastUsed: new Date("2024-11-28"),
-    createdAt: new Date("2024-01-15")
-  },
-  {
-    id: "2",
-    title: "Hỏi về WiFi",
-    shortcut: "/wifi",
-    content: "WiFi tại nhà:\n• Tên mạng: {{wifiName}}\n• Mật khẩu: {{wifiPassword}}\n• Tốc độ: 100Mbps\nMáy phát WiFi ở phòng khách. Nếu có vấn đề, vui lòng báo tôi!",
-    tags: ["wifi", "internet", "tiện ích"],
-    useCount: 89,
-    lastUsed: new Date("2024-11-27"),
-    createdAt: new Date("2024-01-20")
-  },
-  {
-    id: "3",
-    title: "Hướng dẫn đỗ xe",
-    shortcut: "/parking",
-    content: "Đỗ xe miễn phí tại:\n• Trong sân: 2 chỗ phía bên trái\n• Ngoài đường: Trước cổng (dành cho xe máy)\n• Gara: Liên hệ tôi nếu cần thêm chỗ\nVui lòng không chặn lối đi chung.",
-    tags: ["đỗ xe", "giao thông"],
-    useCount: 67,
-    lastUsed: new Date("2024-11-26"),
-    createdAt: new Date("2024-02-01")
-  },
-  {
-    id: "4",
-    title: "Hỏi về địa điểm ăn uống",
-    shortcut: "/food",
-    content: "Một số gợi ý ăn uống gần nhà:\n🍜 Phở Hà Nội - 200m (7:00-22:00)\n🍕 Pizza 4P's - 500m (11:00-23:00)\n☕ The Coffee House - 300m (7:00-22:30)\n🍲 Cơm niêu Sài Gòn - 400m (10:00-21:00)\nTất cả đều ngon và giá hợp lý!",
-    tags: ["ăn uống", "nhà hàng", "địa điểm"],
-    useCount: 92,
-    lastUsed: new Date("2024-11-28"),
-    createdAt: new Date("2024-02-10")
-  },
-  {
-    id: "5",
-    title: "Check-in sớm",
-    shortcut: "/early",
-    content: "Check-in sớm có thể tùy thuộc vào lịch đặt phòng. Vui lòng cho tôi biết giờ bạn dự kiến đến, tôi sẽ cố gắng sắp xếp. Nếu phòng chưa sẵn sàng, bạn có thể gửi hành lý miễn phí!",
-    tags: ["check-in", "sớm", "linh hoạt"],
-    useCount: 45,
-    lastUsed: new Date("2024-11-25"),
-    createdAt: new Date("2024-03-01")
-  },
-  {
-    id: "6",
-    title: "Yêu cầu thêm khăn tắm",
-    shortcut: "/towels",
-    content: "Tất nhiên! Tôi sẽ mang thêm khăn tắm cho bạn ngay. Dự kiến 15-20 phút nữa sẽ đến. Bạn cần bao nhiêu bộ khăn ạ?",
-    tags: ["tiện ích", "khăn tắm", "yêu cầu"],
-    useCount: 34,
-    lastUsed: new Date("2024-11-24"),
-    createdAt: new Date("2024-03-15")
-  },
-  {
-    id: "7",
-    title: "Hỏi về di chuyển",
-    shortcut: "/transport",
-    content: "Các phương tiện di chuyển:\n🚕 Grab/Be: Tiện lợi nhất\n🚌 Bus: Tuyến 32, 42 (trạm cách 200m)\n🚲 Xe đạp: Miễn phí (2 chiếc ở sân)\n🛵 Thuê xe máy: 100k/ngày (tôi có liên hệ)\nBạn muốn đi đâu để tôi gợi ý cụ thể hơn?",
-    tags: ["di chuyển", "giao thông", "xe"],
-    useCount: 78,
-    lastUsed: new Date("2024-11-27"),
-    createdAt: new Date("2024-04-01")
-  },
-  {
-    id: "8",
-    title: "Báo sự cố",
-    shortcut: "/issue",
-    content: "Xin lỗi vì sự bất tiện này! Tôi sẽ giải quyết ngay. Vui lòng gửi cho tôi:\n1. Mô tả sự cố\n2. Ảnh chụp (nếu có)\n3. Mức độ khẩn cấp\nTôi sẽ phản hồi trong 15 phút!",
-    tags: ["sự cố", "khẩn cấp", "hỗ trợ"],
-    useCount: 23,
-    lastUsed: new Date("2024-11-23"),
-    createdAt: new Date("2024-04-15")
-  }
-]
+const emptyForm = {
+  title: "",
+  shortcut: "",
+  content: "",
+  tags: "",
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return ""
+  return new Date(value).toLocaleDateString("vi-VN")
+}
+
+function parseTags(input: string) {
+  return input
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+}
 
 export function SavedReplies() {
-  const [replies, setReplies] = useState<SavedReply[]>(defaultReplies)
-  const [selectedReply, setSelectedReply] = useState<SavedReply | null>(null)
-  const [isCreating, setIsCreating] = useState(false)
+  const [replies, setReplies] = useState<SavedReply[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
+  const [createForm, setCreateForm] = useState(emptyForm)
+  const [isEditOpen, setIsEditOpen] = useState(false)
+  const [editForm, setEditForm] = useState(emptyForm)
+  const [editingReply, setEditingReply] = useState<SavedReply | null>(null)
+  const [actionLoading, setActionLoading] = useState(false)
 
-  const filteredReplies = replies.filter(reply => {
-    const searchLower = searchQuery.toLowerCase()
-    return (
-      reply.title.toLowerCase().includes(searchLower) ||
-      reply.content.toLowerCase().includes(searchLower) ||
-      reply.tags.some(tag => tag.toLowerCase().includes(searchLower)) ||
-      reply.shortcut.toLowerCase().includes(searchLower)
-    )
-  })
-
-  const handleDelete = (id: string) => {
-    setReplies(replies.filter(r => r.id !== id))
-  }
-
-  const handleDuplicate = (reply: SavedReply) => {
-    const newReply: SavedReply = {
-      ...reply,
-      id: Date.now().toString(),
-      title: `${reply.title} (Copy)`,
-      shortcut: `${reply.shortcut}_copy`,
-      useCount: 0,
-      lastUsed: undefined,
-      createdAt: new Date()
+  const loadReplies = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      const response = await fetch("/api/host/automation/saved-replies", { cache: "no-store" })
+      if (!response.ok) {
+        throw new Error("Không thể tải danh sách trả lời")
+      }
+      const data = (await response.json()) as { replies?: SavedReply[] }
+      setReplies(Array.isArray(data.replies) ? data.replies : [])
+    } catch (err) {
+      console.error(err)
+      setError((err as Error).message)
+      setReplies([])
+    } finally {
+      setIsLoading(false)
     }
-    setReplies([...replies, newReply])
+  }, [])
+
+  useEffect(() => {
+    loadReplies()
+  }, [loadReplies])
+
+  const filteredReplies = useMemo(() => {
+    const keyword = searchQuery.toLowerCase().trim()
+    if (!keyword) return replies
+    return replies.filter(
+      (reply) =>
+        reply.title.toLowerCase().includes(keyword) ||
+        reply.content.toLowerCase().includes(keyword) ||
+        reply.shortcut.toLowerCase().includes(keyword) ||
+        reply.tags.some((tag) => tag.toLowerCase().includes(keyword)),
+    )
+  }, [replies, searchQuery])
+
+  const totalUseCount = useMemo(() => replies.reduce((sum, reply) => sum + (reply.useCount ?? 0), 0), [replies])
+  const avgUseCount = replies.length ? Math.round(totalUseCount / replies.length) : 0
+  const mostUsed = useMemo(() => {
+    if (!replies.length) return null
+    return replies.reduce((acc, reply) => ((reply.useCount ?? 0) > (acc.useCount ?? 0) ? reply : acc), replies[0])
+  }, [replies])
+
+  const handleCreate = useCallback(async () => {
+    if (!createForm.title.trim() || !createForm.shortcut.trim() || !createForm.content.trim()) {
+      toast.error("Vui lòng điền đầy đủ thông tin")
+      return
+    }
+
+    try {
+      setActionLoading(true)
+      const response = await fetch("/api/host/automation/saved-replies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: createForm.title.trim(),
+          shortcut: createForm.shortcut.trim(),
+          content: createForm.content.trim(),
+          tags: parseTags(createForm.tags),
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Không thể tạo trả lời mới")
+      }
+
+      const data = await response.json()
+      if (data?.reply) {
+        setReplies((prev) => [data.reply, ...prev])
+        toast.success("Đã tạo trả lời mới")
+        setCreateForm(emptyForm)
+        setIsCreateOpen(false)
+      } else {
+        await loadReplies()
+      }
+    } catch (err) {
+      console.error(err)
+      toast.error((err as Error).message)
+    } finally {
+      setActionLoading(false)
+    }
+  }, [createForm, loadReplies])
+
+  const openEditDialog = (reply: SavedReply) => {
+    setEditingReply(reply)
+    setEditForm({
+      title: reply.title,
+      shortcut: reply.shortcut,
+      content: reply.content,
+      tags: reply.tags.join(", "),
+    })
+    setIsEditOpen(true)
   }
 
-  const totalUseCount = replies.reduce((sum, r) => sum + r.useCount, 0)
-  const avgUseCount = Math.round(totalUseCount / replies.length)
-  const mostUsed = replies.reduce((max, r) => r.useCount > max.useCount ? r : max, replies[0])
+  const handleUpdate = useCallback(async () => {
+    if (!editingReply) return
+    if (!editForm.title.trim() || !editForm.shortcut.trim() || !editForm.content.trim()) {
+      toast.error("Vui lòng điền đầy đủ thông tin")
+      return
+    }
+
+    try {
+      setActionLoading(true)
+      const response = await fetch(`/api/host/automation/saved-replies/${editingReply.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editForm.title.trim(),
+          shortcut: editForm.shortcut.trim(),
+          content: editForm.content.trim(),
+          tags: parseTags(editForm.tags),
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Không thể cập nhật trả lời")
+      }
+
+      const data = await response.json()
+      if (data?.reply) {
+        setReplies((prev) => prev.map((reply) => (reply.id === data.reply.id ? data.reply : reply)))
+      } else {
+        await loadReplies()
+      }
+
+      toast.success("Đã cập nhật trả lời")
+      setIsEditOpen(false)
+      setEditingReply(null)
+    } catch (err) {
+      console.error(err)
+      toast.error((err as Error).message)
+    } finally {
+      setActionLoading(false)
+    }
+  }, [editForm, editingReply, loadReplies])
+
+  const handleDuplicate = useCallback(
+    async (replyId: string) => {
+      try {
+        setActionLoading(true)
+        const response = await fetch("/api/host/automation/saved-replies", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sourceReplyId: replyId }),
+        })
+
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || "Không thể nhân bản trả lời")
+        }
+
+        const data = await response.json()
+        if (data?.reply) {
+          setReplies((prev) => [data.reply, ...prev])
+        } else {
+          await loadReplies()
+        }
+
+        toast.success("Đã nhân bản trả lời")
+      } catch (err) {
+        console.error(err)
+        toast.error((err as Error).message)
+      } finally {
+        setActionLoading(false)
+      }
+    },
+    [loadReplies],
+  )
+
+  const handleDelete = useCallback(async (replyId: string) => {
+    const confirmed = window.confirm("Bạn có chắc muốn xóa câu trả lời này?")
+    if (!confirmed) return
+
+    try {
+      setActionLoading(true)
+      const response = await fetch(`/api/host/automation/saved-replies/${replyId}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || "Không thể xóa trả lời")
+      }
+
+      setReplies((prev) => prev.filter((reply) => reply.id !== replyId))
+      toast.success("Đã xóa trả lời")
+    } catch (err) {
+      console.error(err)
+      toast.error((err as Error).message)
+    } finally {
+      setActionLoading(false)
+    }
+  }, [])
+
+  const copyContent = (content: string) => {
+    navigator.clipboard.writeText(content)
+    toast.success("Đã sao chép nội dung")
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Trả lời nhanh</h2>
           <p className="text-muted-foreground">Thiết lập câu trả lời có sẵn với phím tắt</p>
         </div>
-        <Dialog open={isCreating} onOpenChange={setIsCreating}>
+        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <DialogTrigger asChild>
             <Button>
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="mr-2 h-4 w-4" />
               Thêm trả lời mới
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Tạo trả lời nhanh mới</DialogTitle>
-              <DialogDescription>
-                Thiết lập câu trả lời được lưu với phím tắt
-              </DialogDescription>
+              <DialogDescription>Thiết lập câu trả lời được lưu với phím tắt</DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
+            <div className="grid gap-4 py-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Tiêu đề</Label>
-                  <Input placeholder="VD: Xác nhận đặt phòng" />
+                  <Input
+                    placeholder="VD: Xác nhận đặt phòng"
+                    value={createForm.title}
+                    onChange={(event) => setCreateForm((prev) => ({ ...prev, title: event.target.value }))}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Phím tắt</Label>
-                  <Input placeholder="VD: /confirm" />
-                  <p className="text-xs text-muted-foreground">
-                    Gõ phím tắt để sử dụng nhanh
-                  </p>
+                  <Input
+                    placeholder="VD: /confirm"
+                    value={createForm.shortcut}
+                    onChange={(event) => setCreateForm((prev) => ({ ...prev, shortcut: event.target.value }))}
+                  />
+                  <p className="text-xs text-muted-foreground">Gõ phím tắt để sử dụng nhanh</p>
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Nội dung</Label>
-                <Textarea 
-                  placeholder="Nội dung trả lời (sử dụng {{variable}} cho biến)"
+                <Textarea
                   rows={6}
+                  placeholder="Nội dung trả lời (sử dụng {{variable}} cho biến)"
+                  value={createForm.content}
+                  onChange={(event) => setCreateForm((prev) => ({ ...prev, content: event.target.value }))}
                 />
               </div>
               <div className="space-y-2">
                 <Label>Tags (phân cách bằng dấu phẩy)</Label>
-                <Input placeholder="VD: xác nhận, đặt phòng, thanh toán" />
+                <Input
+                  placeholder="VD: xác nhận, đặt phòng, thanh toán"
+                  value={createForm.tags}
+                  onChange={(event) => setCreateForm((prev) => ({ ...prev, tags: event.target.value }))}
+                />
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreating(false)}>
+              <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
                 Hủy
               </Button>
-              <Button onClick={() => setIsCreating(false)}>
-                Tạo trả lời
+              <Button onClick={handleCreate} disabled={actionLoading}>
+                {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Tạo trả lời"}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
 
-      {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -243,148 +371,159 @@ export function SavedReplies() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-sm font-semibold truncate">{mostUsed?.title}</div>
-            <p className="text-xs text-muted-foreground">{mostUsed?.useCount} lần</p>
+            <div className="text-sm font-semibold truncate">{mostUsed?.title ?? "—"}</div>
+            <p className="text-xs text-muted-foreground">{mostUsed ? `${mostUsed.useCount} lần` : "Chưa có dữ liệu"}</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Search */}
-      <div>
-        <Input
-          placeholder="Tìm kiếm theo tiêu đề, nội dung, tags hoặc phím tắt..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-      </div>
+      <Input
+        placeholder="Tìm kiếm theo tiêu đề, nội dung, tags hoặc phím tắt..."
+        value={searchQuery}
+        onChange={(event) => setSearchQuery(event.target.value)}
+      />
 
-      {/* Tips Card */}
-      <Card className="border-blue-200 bg-blue-50">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Zap className="h-5 w-5 text-blue-600" />
-            Mẹo sử dụng
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <div className="flex items-start gap-2">
-            <span className="font-medium">1.</span>
-            <span>Gõ <code className="px-1.5 py-0.5 bg-white rounded text-xs">/</code> để xem danh sách phím tắt</span>
-          </div>
-          <div className="flex items-start gap-2">
-            <span className="font-medium">2.</span>
-            <span>Sử dụng biến <code className="px-1.5 py-0.5 bg-white rounded text-xs">{`{{variable}}`}</code> cho nội dung động</span>
-          </div>
-          <div className="flex items-start gap-2">
-            <span className="font-medium">3.</span>
-            <span>Thêm tags để dễ tìm kiếm và phân loại</span>
-          </div>
-          <div className="flex items-start gap-2">
-            <span className="font-medium">4.</span>
-            <span>Nhấn <kbd className="px-2 py-0.5 bg-white rounded text-xs border">⌘K</kbd> để mở tìm kiếm nhanh</span>
-          </div>
-        </CardContent>
-      </Card>
+      {error && (
+        <Card className="border-destructive/40 bg-destructive/10">
+          <CardHeader>
+            <CardTitle className="text-destructive">Không thể tải dữ liệu</CardTitle>
+            <CardDescription className="text-destructive">{error}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" onClick={loadReplies}>
+              Thử lại
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Replies Grid */}
-      <div className="grid gap-4">
-        {filteredReplies.map((reply) => (
-          <Card key={reply.id} className="hover:shadow-md transition-shadow">
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <div className="space-y-1 flex-1">
-                  <div className="flex items-center gap-2">
-                    <CardTitle className="text-lg">{reply.title}</CardTitle>
-                    <Badge variant="secondary" className="font-mono text-xs">
-                      {reply.shortcut}
-                    </Badge>
-                  </div>
-                  <CardDescription className="text-sm">
-                    {reply.content}
-                  </CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {/* Tags */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  {reply.tags.map((tag) => (
-                    <Badge key={tag} variant="outline" className="text-xs">
-                      {tag}
-                    </Badge>
-                  ))}
-                </div>
-
-                {/* Stats and Actions */}
-                <div className="flex items-center justify-between pt-2 border-t">
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Zap className="h-3 w-3" />
-                      <span>{reply.useCount} lần</span>
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <div className="grid gap-4">
+          {filteredReplies.map((reply) => (
+            <Card key={reply.id} className="transition-shadow hover:shadow-md">
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-lg">{reply.title}</CardTitle>
+                      <Badge variant="secondary" className="font-mono text-xs">
+                        {reply.shortcut}
+                      </Badge>
                     </div>
-                    {reply.lastUsed && (
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        <span>
-                          {new Date(reply.lastUsed).toLocaleDateString("vi-VN")}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        navigator.clipboard.writeText(reply.content)
-                      }}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setSelectedReply(reply)}
-                    >
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDuplicate(reply)}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(reply.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <CardDescription className="line-clamp-3 text-sm">{reply.content}</CardDescription>
                   </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {reply.tags.map((tag) => (
+                      <Badge key={`${reply.id}-${tag}`} variant="outline" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                    {!reply.tags.length && <span className="text-xs text-muted-foreground">Chưa có tag</span>}
+                  </div>
+                  <div className="flex items-center justify-between border-t pt-2 text-xs text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-4">
+                      <span className="flex items-center gap-1">
+                        <Zap className="h-3 w-3" />
+                        {reply.useCount} lần
+                      </span>
+                      {reply.lastUsed && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {formatDate(reply.lastUsed)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => copyContent(reply.content)}>
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => openEditDialog(reply)}>
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDuplicate(reply.id)} disabled={actionLoading}>
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(reply.id)} disabled={actionLoading}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
-      {/* Empty State */}
-      {filteredReplies.length === 0 && (
+      {!isLoading && !filteredReplies.length && !error && (
         <Card className="p-12">
-          <div className="text-center space-y-4">
-            <MessageCircle className="h-12 w-12 mx-auto text-muted-foreground" />
+          <div className="space-y-4 text-center">
+            <MessageCircle className="mx-auto h-12 w-12 text-muted-foreground" />
             <div>
               <h3 className="text-lg font-semibold">Không tìm thấy trả lời</h3>
-              <p className="text-muted-foreground">
-                Thử thay đổi từ khóa tìm kiếm hoặc tạo trả lời mới
-              </p>
+              <p className="text-muted-foreground">Thử thay đổi bộ lọc hoặc tạo trả lời mới</p>
             </div>
           </div>
         </Card>
       )}
+
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Chỉnh sửa trả lời</DialogTitle>
+            <DialogDescription>Cập nhật nội dung và phím tắt cho trả lời này</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Tiêu đề</Label>
+                <Input
+                  value={editForm.title}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, title: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Phím tắt</Label>
+                <Input
+                  value={editForm.shortcut}
+                  onChange={(event) => setEditForm((prev) => ({ ...prev, shortcut: event.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Nội dung</Label>
+              <Textarea
+                rows={6}
+                value={editForm.content}
+                onChange={(event) => setEditForm((prev) => ({ ...prev, content: event.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Tags</Label>
+              <Input
+                value={editForm.tags}
+                onChange={(event) => setEditForm((prev) => ({ ...prev, tags: event.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)}>
+              Hủy
+            </Button>
+            <Button onClick={handleUpdate} disabled={actionLoading}>
+              {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Lưu thay đổi"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

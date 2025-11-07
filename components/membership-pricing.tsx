@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Check, Crown, Sparkles, Zap, Star, Heart, Calendar, Gift, Users, Lock } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -42,6 +42,7 @@ export function MembershipPricing() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const comparisonRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -91,6 +92,14 @@ export function MembershipPricing() {
   const handleSubscribe = (tierId: string) => {
     // Redirect to payment page with membership tier and billing cycle
     router.push(`/membership/checkout?tier=${tierId}&billing=${billingCycle}`)
+  }
+
+  const handleScrollToComparison = () => {
+    comparisonRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+
+  const handleConsultation = () => {
+    router.push("/contact?topic=membership")
   }
 
   return (
@@ -263,7 +272,7 @@ export function MembershipPricing() {
       </div>
 
       {/* Benefits Comparison */}
-      <div className="mt-16 space-y-6">
+  <div ref={comparisonRef} className="mt-16 space-y-6">
         <h2 className="text-2xl font-bold text-center">So sánh quyền lợi chi tiết</h2>
         
         <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
@@ -380,10 +389,10 @@ export function MembershipPricing() {
               Hãy bắt đầu với gói Silver và nâng cấp bất kỳ lúc nào. Hoặc liên hệ với đội ngũ tư vấn để tìm gói phù hợp nhất với bạn.
             </p>
             <div className="flex justify-center gap-4 pt-2">
-              <Button variant="outline" size="lg">
+              <Button variant="outline" size="lg" type="button" onClick={handleScrollToComparison}>
                 So sánh chi tiết
               </Button>
-              <Button size="lg">
+              <Button size="lg" type="button" onClick={handleConsultation}>
                 Liên hệ tư vấn
               </Button>
             </div>

@@ -52,6 +52,13 @@ export default async function ExperienceBookingSuccessPage({
   const qrUrl = createVietQRUrl(booking.totalPrice, referenceCode)
   const formattedDate = format(booking.date, "EEEE, dd MMMM yyyy", { locale: vi })
   const totalGuests = booking.numberOfGuests
+  const baseTotal = booking.pricePerPerson * totalGuests
+  const discountAmount = booking.discountAmount ?? 0
+  const discountRate = booking.discountRate ?? 0
+  const membershipPlanSnapshot = booking.membershipPlanSnapshot && typeof booking.membershipPlanSnapshot === "object"
+    ? (booking.membershipPlanSnapshot as { name?: string; slug?: string })
+    : null
+  const membershipPlanName = membershipPlanSnapshot?.name ?? null
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50">
@@ -141,6 +148,22 @@ export default async function ExperienceBookingSuccessPage({
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
+                  {discountAmount > 0 ? (
+                    <div className="col-span-2 flex items-center justify-between text-xs text-emerald-600">
+                      <span>
+                        Ưu đãi {membershipPlanName ?? "hội viên"}
+                        {discountRate > 0 ? ` (${discountRate}%)` : ""}
+                      </span>
+                      <span>
+                        -
+                        {new Intl.NumberFormat("vi-VN", {
+                          style: "currency",
+                          currency: booking.currency,
+                          maximumFractionDigits: 0,
+                        }).format(discountAmount)}
+                      </span>
+                    </div>
+                  ) : null}
             <Card className="border border-blue-100 bg-white">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
@@ -185,6 +208,32 @@ export default async function ExperienceBookingSuccessPage({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
+              <div className="flex items-center justify-between text-muted-foreground">
+                <span>Tổng trước ưu đãi</span>
+                <span className="font-medium text-foreground">
+                  {new Intl.NumberFormat("vi-VN", {
+                    style: "currency",
+                    currency: booking.currency,
+                    maximumFractionDigits: 0,
+                  }).format(baseTotal)}
+                </span>
+              </div>
+              {discountAmount > 0 ? (
+                <div className="flex items-center justify-between text-emerald-600">
+                  <span>
+                    Ưu đãi {membershipPlanName ?? "hội viên"}
+                    {discountRate > 0 ? ` (${discountRate}%)` : ""}
+                  </span>
+                  <span className="font-semibold">
+                    -
+                    {new Intl.NumberFormat("vi-VN", {
+                      style: "currency",
+                      currency: booking.currency,
+                      maximumFractionDigits: 0,
+                    }).format(discountAmount)}
+                  </span>
+                </div>
+              ) : null}
               <div className="flex items-center justify-between text-muted-foreground">
                 <span>Khách đã xác nhận</span>
                 <span className="font-semibold text-foreground">{new Date().toLocaleString("vi-VN")}</span>

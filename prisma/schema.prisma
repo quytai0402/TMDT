@@ -96,6 +96,9 @@ model User {
   locationRequestsApproved LocationRequest[]   @relation("LocationApprovedBy")
   settings               UserSettings?
   bookingPaymentApprovals Booking[]            @relation("BookingPaymentVerifier")
+  hostMessageTemplates   HostMessageTemplate[]
+  hostSavedReplies       HostSavedReply[]
+  hostScheduledMessages  HostScheduledMessage[]
 
   @@index([referralCode], map: "users_referralCode_idx")
   @@map("users")
@@ -281,12 +284,14 @@ model MembershipPlan {
   exclusiveFeatures String[]
   bookingDiscountRate      Float   @default(0)
   applyDiscountToServices  Boolean @default(false)
+  experienceDiscountRate   Float   @default(0)
   displayOrder      Int      @default(0)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   members User[]
   purchases MembershipPurchase[]
+  experienceBookings ExperienceBooking[]
 
   @@index([displayOrder])
   @@map("membership_plans")
@@ -1144,6 +1149,70 @@ model Message {
   @@map("messages")
 }
 
+model HostMessageTemplate {
+  id        String                     @id @default(auto()) @map("_id") @db.ObjectId
+  hostId    String                     @db.ObjectId
+  name      String
+  category  AutomationTemplateCategory
+  subject   String?
+  content   String
+  variables String[]                   @default([])
+  language  String                     @default("vi")
+  useCount  Int                        @default(0)
+  lastUsed  DateTime?
+  createdAt DateTime                   @default(now())
+  updatedAt DateTime                   @updatedAt
+
+  host              User                  @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  scheduledMessages HostScheduledMessage[]
+
+  @@index([hostId, category])
+  @@map("host_message_templates")
+}
+
+model HostSavedReply {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  hostId    String   @db.ObjectId
+  title     String
+  shortcut  String
+  content   String
+  tags      String[] @default([])
+  useCount  Int      @default(0)
+  lastUsed  DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  host User @relation(fields: [hostId], references: [id], onDelete: Cascade)
+
+  @@unique([hostId, shortcut])
+  @@index([hostId])
+  @@map("host_saved_replies")
+}
+
+model HostScheduledMessage {
+  id            String                  @id @default(auto()) @map("_id") @db.ObjectId
+  hostId        String                  @db.ObjectId
+  templateId    String?                 @db.ObjectId
+  name          String
+  trigger       AutomationMessageTrigger
+  timingLabel   String?
+  offsetMinutes Int?
+  recipients    AutomationRecipientScope @default(ALL_GUESTS)
+  status        AutomationMessageStatus   @default(ACTIVE)
+  sentCount     Int                      @default(0)
+  lastSent      DateTime?
+  config        Json?
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+
+  host     User               @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  template HostMessageTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([hostId, trigger])
+  @@index([templateId])
+  @@map("host_scheduled_messages")
+}
+
 // ============================================
 // NOTIFICATION MODELS
 // ============================================
@@ -1697,6 +1766,38 @@ enum MessageType {
   SYSTEM
 }
 
+enum AutomationTemplateCategory {
+  WELCOME
+  CHECKIN
+  CHECKOUT
+  FAQ
+  REMINDER
+  CUSTOM
+}
+
+enum AutomationMessageTrigger {
+  BOOKING_CONFIRMED
+  BEFORE_CHECK_IN
+  CHECK_IN
+  DURING_STAY
+  CHECK_OUT
+  AFTER_CHECK_OUT
+  CUSTOM_TIME
+}
+
+enum AutomationRecipientScope {
+  ALL_GUESTS
+  NEW_GUESTS
+  RETURNING_GUESTS
+  VIP_GUESTS
+}
+
+enum AutomationMessageStatus {
+  ACTIVE
+  PAUSED
+  DRAFT
+}
+
 enum NotificationType {
   BOOKING_REQUEST
   BOOKING_CONFIRMED
@@ -2048,6 +2149,11 @@ model ExperienceBooking {
   pricePerPerson Float
   totalPrice     Float
   currency       String @default("VND")
+  discountRate   Float  @default(0)
+  discountAmount Float  @default(0)
+  membershipPlanId String? @db.ObjectId
+  membershipPlan   MembershipPlan? @relation(fields: [membershipPlanId], references: [id], onDelete: SetNull)
+  membershipPlanSnapshot Json?
 
   // Status
   status BookingStatus @default(PENDING)
@@ -2062,6 +2168,7 @@ model ExperienceBooking {
 
   @@index([experienceId])
   @@index([guestId])
+  @@index([membershipPlanId])
   @@map("experience_bookings")
 }
 

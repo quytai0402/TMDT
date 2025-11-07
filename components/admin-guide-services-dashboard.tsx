@@ -48,6 +48,12 @@ type GuideProfileInfo = {
   user: ProviderInfo | null
 }
 
+type MembershipPlanInfo = {
+  id: string
+  slug: string
+  name: string
+}
+
 type ExperienceInfo = {
   id: string
   title: string
@@ -76,11 +82,15 @@ type AdminGuideServiceBooking = {
   pricePerPerson: number
   totalPrice: number
   currency: string
+  discountRate: number
+  discountAmount: number
   status: BookingStatus
   paid: boolean
   createdAt: string
   updatedAt: string
   referenceCode: string
+  membershipPlan: MembershipPlanInfo | null
+  membershipPlanSnapshot: unknown
   experience: ExperienceInfo | null
   guest: GuestInfo | null
 }
@@ -151,6 +161,21 @@ const STATUS_ACTIONS: Record<BookingStatus, StatusAction[]> = {
   EXPIRED: [
     { label: "Khôi phục", target: "PENDING", variant: "outline" },
   ],
+}
+
+const getMembershipPlanName = (booking: AdminGuideServiceBooking) => {
+  if (booking.membershipPlan?.name) {
+    return booking.membershipPlan.name
+  }
+
+  if (booking.membershipPlanSnapshot && typeof booking.membershipPlanSnapshot === "object") {
+    const snapshot = booking.membershipPlanSnapshot as { name?: unknown }
+    if (typeof snapshot.name === "string" && snapshot.name.trim().length > 0) {
+      return snapshot.name
+    }
+  }
+
+  return null
 }
 
 const formatCurrency = (value: number, currency = "VND") =>
@@ -432,8 +457,12 @@ export function AdminGuideServicesDashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {bookings.map((booking) => (
-                  <TableRow key={booking.id} className={isRowLoading(booking.id) ? "opacity-60" : undefined}>
+                {bookings.map((booking) => {
+                  const membershipPlanName = getMembershipPlanName(booking)
+                  const hasDiscount = booking.discountAmount > 0 && booking.discountRate > 0
+
+                  return (
+                    <TableRow key={booking.id} className={isRowLoading(booking.id) ? "opacity-60" : undefined}>
                     <TableCell className="align-top">
                       <div className="space-y-1">
                         <p className="font-semibold text-foreground">{booking.experience?.title ?? "—"}</p>
@@ -482,6 +511,12 @@ export function AdminGuideServicesDashboard() {
                         <p className="text-xs text-muted-foreground">
                           {formatCurrency(booking.pricePerPerson, booking.currency)} / khách
                         </p>
+                        {hasDiscount ? (
+                          <p className="text-xs text-emerald-600">
+                            Ưu đãi {membershipPlanName ?? "hội viên"}: -
+                            {formatCurrency(booking.discountAmount, booking.currency)} ({booking.discountRate}%)
+                          </p>
+                        ) : null}
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <Switch
                             checked={booking.paid}
@@ -514,7 +549,8 @@ export function AdminGuideServicesDashboard() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody>
             </Table>
           )}

@@ -3,11 +3,12 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { calculateNights, calculateServiceFee, calculateTotalPrice, calculateDistance } from '@/lib/helpers'
-import { getLoyaltyDiscountConfig } from '@/lib/loyalty-discounts'
+import { formatTransferReference } from '@/lib/payments'
 import { sendBookingConfirmationEmail } from '@/lib/email'
 import { notifyAdmins, notifyUser } from '@/lib/notifications'
 import { z } from 'zod'
 import { Prisma, MembershipStatus, NotificationType } from '@prisma/client'
+import { resolveMembershipDiscount } from './utils'
 
 // Cache for bookings (10 seconds TTL)
 const bookingsCache = new Map<string, { data: any; timestamp: number }>()
@@ -825,45 +826,19 @@ export async function POST(req: NextRequest) {
     const additionalServiceFee = hasCustomServiceFee ? 0 : additionalServicesTotal * 0.1
     const serviceFeeAmount = baseServiceFee + additionalServiceFee
 
-    const membershipPlanInfo = guestUser?.membershipPlan
-    const loyaltyTier = guestUser?.loyaltyTier ?? null
-    const membershipIsActive =
-      !!guestUser &&
-      guestUser.membershipStatus === MembershipStatus.ACTIVE &&
-      (!guestUser.membershipExpiresAt || guestUser.membershipExpiresAt >= now)
-
-    let membershipDiscountRate = 0
-    let applyMembershipToServices = false
-    let promotionPlanMeta: Record<string, unknown> | null = null
-
-    if (membershipIsActive && membershipPlanInfo) {
-      membershipDiscountRate = Math.max(0, Number(membershipPlanInfo?.bookingDiscountRate ?? 0))
-      applyMembershipToServices = Boolean(membershipPlanInfo?.applyDiscountToServices)
-      promotionPlanMeta = {
-        id: membershipPlanInfo.id,
-        name: membershipPlanInfo.name,
-        slug: membershipPlanInfo.slug,
-      }
-    } else if (loyaltyTier) {
-      const loyaltyConfig = getLoyaltyDiscountConfig(loyaltyTier)
-      if (loyaltyConfig.rate > 0) {
-        membershipDiscountRate = loyaltyConfig.rate
-        applyMembershipToServices = loyaltyConfig.applyToServices
-        promotionPlanMeta = {
-          name: loyaltyConfig.label ?? `Hạng ${loyaltyTier}`,
-          slug: loyaltyTier.toLowerCase(),
-        }
-      }
-    }
-
-    const discountableSubtotal =
-      accommodationSubtotal + (applyMembershipToServices ? additionalServicesTotal : 0)
-
-    const membershipDiscountPercent = membershipDiscountRate > 0 ? membershipDiscountRate / 100 : 0
-    const membershipDiscountAmount =
-      membershipDiscountPercent > 0
-        ? Math.min(Math.round(discountableSubtotal * membershipDiscountPercent), discountableSubtotal)
-        : 0
+    const {
+      amount: membershipDiscountAmount,
+      rate: membershipDiscountRate,
+      appliesToServices: applyMembershipToServices,
+      planMeta: promotionPlanMeta,
+    } = resolveMembershipDiscount({
+      membershipStatus: guestUser?.membershipStatus ?? null,
+      membershipExpiresAt: guestUser?.membershipExpiresAt ?? null,
+      membershipPlan: guestUser?.membershipPlan ?? null,
+      loyaltyTier: guestUser?.loyaltyTier ?? null,
+      accommodationSubtotal,
+      additionalServicesTotal,
+    })
 
     const promotionDiscountAmount = 0
     const appliedPromotions: Array<Record<string, unknown>> = []
@@ -884,7 +859,7 @@ export async function POST(req: NextRequest) {
     const totalPrice = Math.max(0, totalBeforeDiscounts - totalDiscount)
 
     // Create booking
-    const booking = await prisma.booking.create({
+    let booking = await prisma.booking.create({
       data: {
         listingId: validatedData.listingId,
         guestId: guestUser?.id ?? undefined,
@@ -922,7 +897,29 @@ export async function POST(req: NextRequest) {
       },
     })
 
+    if (!booking.transferReference) {
+      const paymentReference = formatTransferReference("BOOKING", booking.id.slice(-8).toUpperCase())
+      try {
+        booking = await prisma.booking.update({
+          where: { id: booking.id },
+          data: { transferReference: paymentReference },
+          include: {
+            listing: true,
+            guest: true,
+            host: true,
+          },
+        })
+      } catch (error) {
+        console.warn("Failed to persist transfer reference, falling back to runtime value:", error)
+        booking = {
+          ...booking,
+          transferReference: paymentReference,
+        }
+      }
+    }
+
     const bookingRef = booking.id.slice(-6).toUpperCase()
+    const transferReference = booking.transferReference ?? formatTransferReference("BOOKING", bookingRef)
 
     const serviceSummary = normalizedAdditionalServices.map((service) => {
       if (service.quantityLabel) return `${service.name} (${service.quantityLabel})`
@@ -938,7 +935,7 @@ export async function POST(req: NextRequest) {
     await notifyUser(listing.hostId, {
       type: NotificationType.BOOKING_REQUEST,
       title: 'Yêu cầu đặt phòng mới',
-      message: `${contactName} muốn đặt "${listing.title}" (${bookingRef}).${servicesSuffix}`,
+      message: `${contactName} muốn đặt "${listing.title}" (${bookingRef}). Mã thanh toán: ${transferReference}.${servicesSuffix}`,
       link: `/host/bookings/${booking.id}`,
       data: {
         bookingId: booking.id,
@@ -947,19 +944,21 @@ export async function POST(req: NextRequest) {
         checkIn: booking.checkIn,
         checkOut: booking.checkOut,
         additionalServices: normalizedAdditionalServices,
+        transferReference,
       },
     })
 
     await notifyAdmins({
       type: NotificationType.BOOKING_REQUEST,
       title: 'Đơn đặt phòng mới',
-      message: `Đơn ${bookingRef} cho "${listing.title}" cần theo dõi.${servicesSuffix}`,
+      message: `Đơn ${bookingRef} cho "${listing.title}" cần theo dõi. Mã chuyển khoản: ${transferReference}.${servicesSuffix}`,
       link: `/admin/bookings?highlight=${booking.id}`,
       data: {
         bookingId: booking.id,
         listingId: listing.id,
         hostId: listing.hostId,
         additionalServices: normalizedAdditionalServices,
+        transferReference,
       },
     })
 

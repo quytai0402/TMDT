@@ -29,6 +29,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { createVietQRUrl, formatTransferReference, getBankTransferInfo } from "@/lib/payments"
+import { useSessionRefresh } from "@/hooks/use-session-refresh"
 
 interface MembershipPlan {
   id: string
@@ -71,6 +72,7 @@ export default function MembershipCheckoutPage() {
   const { status, data: session } = useSession()
   const callbackUrl = `/membership/checkout?tier=${tier}&billing=${billing}`
   const loginUrl = `/login?callbackUrl=${encodeURIComponent(callbackUrl)}`
+  const refreshSession = useSessionRefresh()
   
   const [paymentMethod, setPaymentMethod] = useState("credit_card")
   const [agreeToTerms, setAgreeToTerms] = useState(false)
@@ -194,10 +196,12 @@ export default function MembershipCheckoutPage() {
       const result = await response.json()
       if (result.status === 'PENDING') {
         toast.success('Đã ghi nhận chuyển khoản. Membership sẽ được kích hoạt sau khi xác nhận.')
+        await refreshSession()
         router.push(`/membership/success?tier=${plan.slug}&billing=${billing}&status=pending`)
         return
       }
       toast.success('Membership đã được kích hoạt thành công!')
+      await refreshSession()
       router.push(`/membership/success?tier=${plan.slug}&billing=${billing}`)
     } catch (error) {
       console.error('Membership payment error:', error)

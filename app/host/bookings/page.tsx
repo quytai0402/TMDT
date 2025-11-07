@@ -24,6 +24,8 @@ type ServiceStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED'
 interface Booking {
   id: string
   bookingRef: string
+  transferReference?: string | null
+  paymentStatus?: string | null
   guestName: string
   guestPhone: string
   guestEmail: string
@@ -53,6 +55,8 @@ const mapBooking = (raw: any): Booking => {
   return {
     id: raw.id,
     bookingRef: raw.bookingRef || raw.id.slice(-8).toUpperCase(),
+    transferReference: raw.transferReference ?? null,
+    paymentStatus: raw.paymentStatus ?? null,
     guestName: raw.guestName || raw.guest?.name || 'Khách vãng lai',
     guestPhone: raw.guestPhone || raw.guest?.phone || '',
     guestEmail: raw.guestEmail || raw.guest?.email || '',
@@ -113,22 +117,6 @@ export default function HostBookingsPage() {
     }),
     [stats],
   )
-
-  const handleConfirmBooking = async (bookingId: string) => {
-    try {
-      const result = await updateBookingStatus(bookingId, 'CONFIRMED')
-      const updated = result?.booking ? mapBooking(result.booking) : null
-
-      setBookings((prev) =>
-        prev.map((booking) => {
-          if (booking.id !== bookingId) return booking
-          return updated ?? { ...booking, status: 'CONFIRMED' }
-        }),
-      )
-    } catch (error) {
-      console.error('Failed to confirm booking:', error)
-    }
-  }
 
   const handleServiceStatusChange = async (bookingId: string, serviceId: string, status: ServiceStatus) => {
     try {
@@ -271,8 +259,16 @@ export default function HostBookingsPage() {
                     </div>
                   </div>
 
+                  {booking.transferReference && (
+                    <p className="text-xs font-mono text-muted-foreground">
+                      Mã tham chiếu: {booking.transferReference}
+                    </p>
+                  )}
+
                   {booking.status === 'PENDING' && (
-                    <Button onClick={() => handleConfirmBooking(booking.id)}>Xác nhận đơn này</Button>
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                      LuxeStay sẽ xác nhận đơn sau khi kiểm tra thanh toán. Bạn sẽ nhận thông báo ngay khi hoàn tất.
+                    </div>
                   )}
 
                   <div className="space-y-3">

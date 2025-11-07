@@ -3,7 +3,53 @@ import { getServerSession } from 'next-auth'
 
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { cloneMetadata, formatBookingResponse, normalizePhone } from '../utils'
+import { cloneMetadata, formatBookingResponse, normalizePhone, resolveMembershipDiscount } from '../utils'
+
+const BOOKING_INCLUDE = {
+  listing: {
+    include: {
+      host: {
+        include: {
+          hostProfile: true,
+        },
+      },
+    },
+  },
+  guest: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      image: true,
+      phone: true,
+      loyaltyTier: true,
+      membershipStatus: true,
+      membershipExpiresAt: true,
+      membershipPlan: {
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          bookingDiscountRate: true,
+          applyDiscountToServices: true,
+        },
+      },
+      loyaltyPoints: true,
+    },
+  },
+  paymentVerifier: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+    },
+  },
+  review: true,
+  payment: true,
+  conciergePlans: {
+    orderBy: { createdAt: 'desc' },
+  },
+}
 
 export async function GET(
   _req: Request,
@@ -17,33 +63,9 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const booking = await prisma.booking.findUnique({
+    let booking = await prisma.booking.findUnique({
       where: { id },
-      include: {
-        listing: {
-          include: {
-            host: {
-              include: {
-                hostProfile: true,
-              },
-            },
-          },
-        },
-        guest: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            image: true,
-            phone: true,
-          },
-        },
-        review: true,
-        payment: true,
-        conciergePlans: {
-          orderBy: { createdAt: 'desc' },
-        },
-      },
+      include: BOOKING_INCLUDE,
     })
 
     if (!booking) {
@@ -56,6 +78,10 @@ export async function GET(
 
     if (!isGuest && !isHost && !isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    if (booking.status === 'PENDING' && (isAdmin || isGuest)) {
+      booking = await maybeApplyMembershipAdjustments(booking, session.user)
     }
 
     return NextResponse.json(formatBookingResponse(booking, session.user.id))
@@ -79,33 +105,7 @@ export async function PATCH(
 
     const booking = await prisma.booking.findUnique({
       where: { id },
-      include: {
-        listing: {
-          include: {
-            host: {
-              include: {
-                hostProfile: true,
-              },
-            },
-          },
-        },
-        guest: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            image: true,
-            phone: true,
-            loyaltyTier: true,
-            loyaltyPoints: true,
-          },
-        },
-        review: true,
-        payment: true,
-        conciergePlans: {
-          orderBy: { createdAt: 'desc' },
-        },
-      },
+      include: BOOKING_INCLUDE,
     })
 
     if (!booking) {
@@ -210,4 +210,68 @@ export async function PATCH(
     console.error('Error updating booking checkout details:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
+
+async function maybeApplyMembershipAdjustments(booking: any, sessionUser: any) {
+  const isAdmin = sessionUser.role === 'ADMIN'
+  const isGuestOwner = booking.guestId && sessionUser.id && booking.guestId === sessionUser.id
+  if (!isAdmin && !isGuestOwner) {
+    return booking
+  }
+
+  const accommodationSubtotal = booking.basePrice * booking.nights
+  const additionalServicesTotal = booking.additionalServicesTotal ?? 0
+
+  const membershipPricing = resolveMembershipDiscount({
+    membershipStatus: booking.guest?.membershipStatus ?? null,
+    membershipExpiresAt: booking.guest?.membershipExpiresAt ?? null,
+    membershipPlan: booking.guest?.membershipPlan ?? null,
+    loyaltyTier: booking.guest?.loyaltyTier ?? null,
+    accommodationSubtotal,
+    additionalServicesTotal,
+  })
+
+  const promotionDiscountAmount = booking.promotionDiscount ?? 0
+  const totalBeforeDiscounts =
+    accommodationSubtotal + booking.cleaningFee + booking.serviceFee + additionalServicesTotal
+  const desiredTotalDiscount = promotionDiscountAmount + membershipPricing.amount
+  const desiredTotalPrice = Math.max(0, totalBeforeDiscounts - desiredTotalDiscount)
+
+  const existingPromotions = Array.isArray(booking.appliedPromotions)
+    ? booking.appliedPromotions.filter((entry: any) => entry && entry.type !== 'MEMBERSHIP')
+    : []
+
+  if (membershipPricing.amount > 0) {
+    existingPromotions.push({
+      type: 'MEMBERSHIP',
+      rate: membershipPricing.rate,
+      amount: membershipPricing.amount,
+      appliesToServices: membershipPricing.appliesToServices,
+      plan: membershipPricing.planMeta,
+    })
+  }
+
+  const hadMembershipPromotion =
+    Array.isArray(booking.appliedPromotions) &&
+    booking.appliedPromotions.some((entry: any) => entry?.type === 'MEMBERSHIP')
+
+  const needsUpdate =
+    membershipPricing.amount !== (booking.membershipDiscount ?? 0) ||
+    desiredTotalPrice !== booking.totalPrice ||
+    hadMembershipPromotion !== (membershipPricing.amount > 0)
+
+  if (!needsUpdate) {
+    return booking
+  }
+
+  return prisma.booking.update({
+    where: { id: booking.id },
+    data: {
+      membershipDiscount: membershipPricing.amount,
+      discount: desiredTotalDiscount,
+      totalPrice: desiredTotalPrice,
+      appliedPromotions: existingPromotions,
+    },
+    include: BOOKING_INCLUDE,
+  })
 }

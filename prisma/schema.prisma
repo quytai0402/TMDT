@@ -95,6 +95,7 @@ model User {
   locationRequestsMade   LocationRequest[]     @relation("LocationRequestedBy")
   locationRequestsApproved LocationRequest[]   @relation("LocationApprovedBy")
   settings               UserSettings?
+  bookingPaymentApprovals Booking[]            @relation("BookingPaymentVerifier")
 
   @@index([referralCode], map: "users_referralCode_idx")
   @@map("users")
@@ -826,6 +827,11 @@ model Booking {
   appliedPromotions       Json?
   totalPrice              Float
   currency                String @default("VND")
+  transferReference       String? @unique
+  paymentStatus           PaymentStatus @default(PENDING)
+  paymentNotes            String?
+  paymentConfirmedAt      DateTime?
+  paymentConfirmedBy      String? @db.ObjectId
 
   // Status
   status              BookingStatus    @default(PENDING)
@@ -862,6 +868,7 @@ model Booking {
   listing              Listing               @relation(fields: [listingId], references: [id], onDelete: Restrict)
   guest                User?                 @relation("GuestBookings", fields: [guestId], references: [id], onDelete: SetNull)
   host                 User                  @relation("HostBookings", fields: [hostId], references: [id], onDelete: Restrict)
+  paymentVerifier      User?                 @relation("BookingPaymentVerifier", fields: [paymentConfirmedBy], references: [id], onDelete: SetNull)
   payment              Payment?
   review               Review?
   messages             Message[]
@@ -876,6 +883,7 @@ model Booking {
   @@index([listingId, status, checkIn(sort: Desc)])
   @@index([status, checkIn, checkOut])
   @@index([contactPhoneNormalized])
+  @@index([transferReference])
   @@map("bookings")
 }
 

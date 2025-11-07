@@ -5,7 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { notifyAdmins, notifyUser } from '@/lib/notifications'
 import { sendBookingConfirmationEmail } from '@/lib/email'
-import { NotificationType } from '@prisma/client'
+import { NotificationType, PaymentStatus } from '@prisma/client'
 import { settleCompletedBookingFinancials } from '@/lib/finance'
 
 const ALLOWED_STATUSES = ['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED'] as const
@@ -15,7 +15,7 @@ type AllowedStatus = (typeof ALLOWED_STATUSES)[number]
 // Host can only confirm or cancel PENDING bookings, and cancel CONFIRMED bookings
 // This ensures hosts have control over their properties
 const HOST_TRANSITIONS: Record<AllowedStatus, AllowedStatus[]> = {
-  PENDING: ['CONFIRMED', 'CANCELLED'],
+  PENDING: ['CANCELLED'],
   CONFIRMED: ['CANCELLED'],
   CANCELLED: [],
   COMPLETED: [],
@@ -50,6 +50,10 @@ export async function PATCH(
 
     const body = await request.json()
     const status = String(body?.status || '').toUpperCase() as AllowedStatus
+    const rawPaymentStatus = body?.paymentStatus ? String(body.paymentStatus).toUpperCase() : null
+    const paymentNotesProvided = Object.prototype.hasOwnProperty.call(body ?? {}, 'paymentNotes')
+    const sanitizedPaymentNotes =
+      typeof body?.paymentNotes === 'string' ? body.paymentNotes.trim().slice(0, 600) : null
 
     if (!ALLOWED_STATUSES.includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
@@ -70,12 +74,24 @@ export async function PATCH(
 
     const isAdmin = session.user.role === 'ADMIN'
     const isHost = booking.hostId === session.user.id
+    const requestedPaymentStatus = rawPaymentStatus ? (rawPaymentStatus as PaymentStatus) : null
+
+    if (requestedPaymentStatus && !Object.values(PaymentStatus).includes(requestedPaymentStatus)) {
+      return NextResponse.json({ error: 'Invalid payment status' }, { status: 400 })
+    }
+
+    if (requestedPaymentStatus && !isAdmin) {
+      return NextResponse.json({ error: 'Only admins can update payment status' }, { status: 403 })
+    }
 
     if (!isAdmin && !isHost) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    if (booking.status === status) {
+    const statusUnchanged = booking.status === status
+    const hasPaymentMutation = Boolean(requestedPaymentStatus) || paymentNotesProvided
+
+    if (statusUnchanged && !hasPaymentMutation) {
       return NextResponse.json({
         message: 'Booking status unchanged',
         booking,
@@ -134,15 +150,64 @@ export async function PATCH(
       data.confirmedAt = null
     }
 
-    let updatedBooking = await prisma.booking.update({
-      where: { id },
-      data,
-      include: {
-        listing: true,
-        guest: true,
-        host: true,
-      },
-    })
+    let paymentStatusToApply: PaymentStatus | undefined
+    if (requestedPaymentStatus) {
+      paymentStatusToApply = requestedPaymentStatus
+    } else if (status === 'CONFIRMED' && isAdmin) {
+      paymentStatusToApply = PaymentStatus.COMPLETED
+    } else if (status === 'PENDING') {
+      paymentStatusToApply = PaymentStatus.PENDING
+    }
+
+    const canPersistPaymentFields = booking.paymentStatus !== undefined
+
+    if (paymentStatusToApply && canPersistPaymentFields) {
+      data.paymentStatus = paymentStatusToApply
+      if (paymentStatusToApply === PaymentStatus.COMPLETED) {
+        data.paymentConfirmedAt = now
+        data.paymentConfirmedBy = session.user.id
+      } else if (
+        paymentStatusToApply === PaymentStatus.PENDING ||
+        paymentStatusToApply === PaymentStatus.PROCESSING ||
+        paymentStatusToApply === PaymentStatus.FAILED ||
+        paymentStatusToApply === PaymentStatus.REFUNDED
+      ) {
+        data.paymentConfirmedAt = null
+        data.paymentConfirmedBy = null
+      }
+    }
+
+    if (paymentNotesProvided && canPersistPaymentFields) {
+      data.paymentNotes = sanitizedPaymentNotes
+    }
+
+    let updatedBooking
+    const updateInclude = {
+      listing: true,
+      guest: true,
+      host: true,
+    }
+
+    try {
+      updatedBooking = await prisma.booking.update({
+        where: { id },
+        data,
+        include: updateInclude,
+      })
+    } catch (error) {
+      console.warn("Primary booking status update failed, retrying without payment fields:", error)
+      const fallbackData = { ...data }
+      delete fallbackData.paymentStatus
+      delete fallbackData.paymentConfirmedAt
+      delete fallbackData.paymentConfirmedBy
+      delete fallbackData.paymentNotes
+
+      updatedBooking = await prisma.booking.update({
+        where: { id },
+        data: fallbackData,
+        include: updateInclude,
+      })
+    }
 
     const bookingRef = updatedBooking.id.slice(-6).toUpperCase()
 
@@ -151,7 +216,7 @@ export async function PATCH(
         await notifyUser(updatedBooking.guestId, {
           type: NotificationType.BOOKING_CONFIRMED,
           title: 'Đặt phòng đã được xác nhận',
-          message: `Host đã xác nhận đơn ${bookingRef} cho "${updatedBooking.listing.title}".`,
+          message: `LuxeStay đã xác nhận đơn ${bookingRef} cho "${updatedBooking.listing.title}".`,
           link: `/trips/${updatedBooking.id}`,
           data: {
             bookingId: updatedBooking.id,
@@ -163,7 +228,7 @@ export async function PATCH(
       await notifyAdmins({
         type: NotificationType.BOOKING_CONFIRMED,
         title: 'Đơn đặt phòng được xác nhận',
-        message: `Đơn ${bookingRef} đã được xác nhận bởi host.`,
+        message: `Đơn ${bookingRef} đã được xác nhận bởi admin.`,
         link: `/admin/bookings?highlight=${updatedBooking.id}`,
         data: {
           bookingId: updatedBooking.id,

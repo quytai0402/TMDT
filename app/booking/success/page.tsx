@@ -27,7 +27,6 @@ type PageProps = {
 export default async function BookingSuccessPage({ searchParams }: PageProps) {
   const params = await searchParams
   const bookingId = params.bookingId
-  const isPending = params.pending === 'true'
   const paymentMethod = params.method
 
   if (!bookingId) {
@@ -80,6 +79,9 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
   const checkInTime = listing.checkInTime ?? "14:00"
   const checkOutTime = listing.checkOutTime ?? "11:00"
   const bookingCode = booking.id.slice(-8).toUpperCase()
+  const paymentStatus = booking.paymentStatus ?? "PENDING"
+  const awaitingPayment = paymentStatus !== "COMPLETED"
+  const isPending = awaitingPayment || params.pending === 'true'
   const totalLabel = currencyFormatter.format(totalPrice)
   const locationLabel = [listing.city, listing.state ?? undefined].filter(Boolean).join(", ")
   const host = listing.host
@@ -88,7 +90,7 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
       ? `/messages?participant=${encodeURIComponent(host.id)}&listing=${encodeURIComponent(listing.id)}`
       : "/messages"
 
-  const receiptReference = formatTransferReference("BOOKING", bookingCode)
+  const receiptReference = booking.transferReference ?? formatTransferReference("BOOKING", bookingCode)
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -104,9 +106,9 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
                 {isPending ? 'Đặt phòng đang chờ xác nhận!' : 'Đặt phòng thành công!'}
               </h1>
               <p className="text-lg text-muted-foreground">
-                {isPending 
-                  ? 'Vui lòng hoàn tất thanh toán. Phòng sẽ được xác nhận sau khi chúng tôi nhận được thanh toán.'
-                  : 'Cảm ơn bạn đã tin tưởng LuxeStay. Chúng tôi đã gửi xác nhận tới email của bạn.'
+                {isPending
+                  ? 'Vui lòng chuyển khoản theo đúng nội dung bên dưới. LuxeStay sẽ xác nhận đặt phòng ngay khi đối chiếu được mã tham chiếu của bạn.'
+                  : 'Cảm ơn bạn đã tin tưởng LuxeStay. Đơn đặt phòng đã được xác nhận thành công!'
                 }
               </p>
             </div>
@@ -119,7 +121,7 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
                     <span className="text-sm font-medium text-primary">Mã đặt phòng: {bookingCode}</span>
                     {isPending && (
                       <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700 font-medium">
-                        Chờ thanh toán
+                        Chờ xác nhận thanh toán
                       </span>
                     )}
                   </div>

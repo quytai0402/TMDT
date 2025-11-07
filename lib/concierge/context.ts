@@ -460,8 +460,17 @@ function buildIntroMessage(
 
 function buildQuickReplies(
   listingContext?: ConciergeListingContext | null,
+  latestBooking?: ConciergeBookingContext | null,
 ): string[] {
   if (!listingContext) {
+    if (latestBooking) {
+      return [
+        `Thêm dịch vụ vào chuyến đi ${latestBooking.listing.title}`,
+        'Đặt xe sân bay',
+        'Nhắn host xác nhận lại lịch',
+      ]
+    }
+
     return [
       'Gợi ý nhà hàng gần nhất',
       'Đặt xe sân bay',
@@ -487,7 +496,7 @@ function buildQuickReplies(
 export async function buildConciergeContext(
   options: ConciergeContextOptions,
 ): Promise<ConciergeAssistantPayload> {
-  const [listingContext, latestBooking] = await Promise.all([
+  const [initialListingContext, latestBooking] = await Promise.all([
     options.listingIdentifier
       ? buildListingContext(options.listingIdentifier)
       : options.bookingId
@@ -505,8 +514,14 @@ export async function buildConciergeContext(
       : Promise.resolve(null),
   ])
 
+  let listingContext = initialListingContext
+
+  if (!listingContext && latestBooking?.listing?.id) {
+    listingContext = await buildListingContext(latestBooking.listing.id)
+  }
+
   const introMessage = buildIntroMessage(listingContext, latestBooking)
-  const quickReplies = buildQuickReplies(listingContext)
+  const quickReplies = buildQuickReplies(listingContext, latestBooking)
 
   return {
     listingContext,

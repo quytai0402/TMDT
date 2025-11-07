@@ -20,10 +20,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 
 type ServiceStatus = "PENDING" | "CONFIRMED" | "COMPLETED"
 type BookingStatus = "PENDING" | "CONFIRMED" | "CANCELLED" | "COMPLETED"
+type PaymentStatusValue = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "REFUNDED" | "PARTIALLY_REFUNDED"
 
 interface AdditionalService {
   id: string
@@ -38,6 +41,15 @@ interface BookingDetail {
   id: string
   status: BookingStatus
   bookingRef?: string
+  transferReference?: string | null
+  paymentStatus?: PaymentStatusValue
+  paymentNotes?: string | null
+  paymentConfirmedAt?: string | null
+  paymentVerifier?: {
+    id: string
+    name: string | null
+    email: string | null
+  } | null
   guestContact: {
     name: string
     email: string | null
@@ -110,6 +122,18 @@ const SERVICE_STATUS_LABEL: Record<ServiceStatus, string> = {
   COMPLETED: "Đã hoàn tất",
 }
 
+const PAYMENT_STATUS_META: Record<
+  PaymentStatusValue,
+  { label: string; badgeClass: string }
+> = {
+  PENDING: { label: "Chờ chuyển khoản", badgeClass: "bg-amber-100 text-amber-700 border-amber-200" },
+  PROCESSING: { label: "Đang xác minh", badgeClass: "bg-blue-100 text-blue-700 border-blue-200" },
+  COMPLETED: { label: "Đã xác nhận", badgeClass: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+  FAILED: { label: "Thanh toán lỗi", badgeClass: "bg-red-100 text-red-700 border-red-200" },
+  REFUNDED: { label: "Đã hoàn tiền", badgeClass: "bg-slate-100 text-slate-700 border-slate-200" },
+  PARTIALLY_REFUNDED: { label: "Hoàn 1 phần", badgeClass: "bg-purple-100 text-purple-700 border-purple-200" },
+}
+
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("vi-VN", {
     style: "currency",
@@ -136,6 +160,15 @@ const normalizeBookingResponse = (
     guestType: raw?.guestType ?? fallback?.guestContact?.guestType ?? "REGISTERED",
   }
 
+  const transferReference = raw?.transferReference ?? fallback?.transferReference ?? null
+  const paymentStatus = raw?.paymentStatus ?? fallback?.paymentStatus ?? "PENDING"
+  const paymentNotes = raw?.paymentNotes ?? fallback?.paymentNotes ?? null
+  const paymentConfirmedAt = raw?.paymentConfirmedAt ?? fallback?.paymentConfirmedAt ?? null
+  const paymentVerifier =
+    raw?.paymentVerifier ??
+    fallback?.paymentVerifier ??
+    (raw?.paymentConfirmedBy && fallback?.paymentVerifier?.id === raw.paymentConfirmedBy ? fallback.paymentVerifier : null)
+
   return {
     ...(fallback ?? {}),
     ...raw,
@@ -145,6 +178,11 @@ const normalizeBookingResponse = (
     hostPayoutStatus: raw?.hostPayoutStatus ?? fallback?.hostPayoutStatus ?? "PENDING",
     platformCommission: raw?.platformCommission ?? fallback?.platformCommission ?? 0,
     hostEarnings: raw?.hostEarnings ?? fallback?.hostEarnings ?? 0,
+    transferReference,
+    paymentStatus,
+    paymentNotes,
+    paymentConfirmedAt,
+    paymentVerifier,
   }
 }
 
@@ -155,6 +193,7 @@ export default function AdminBookingDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<boolean>(false)
+  const [paymentNotesDraft, setPaymentNotesDraft] = useState("")
 
   const bookingId = params?.id
 
@@ -186,6 +225,10 @@ export default function AdminBookingDetailPage() {
     void loadBooking()
   }, [bookingId])
 
+  useEffect(() => {
+    setPaymentNotesDraft(booking?.paymentNotes ?? "")
+  }, [booking?.paymentNotes])
+
   const totals = useMemo(() => {
     if (!booking) return null
     const totals = {
@@ -205,20 +248,30 @@ export default function AdminBookingDetailPage() {
     return totals
   }, [booking])
 
-  const updateStatus = async (status: BookingStatus) => {
+  const updateStatus = async (
+    status: BookingStatus,
+    options?: { paymentStatus?: PaymentStatusValue; paymentNotes?: string | null },
+    meta?: { successMessage?: string },
+  ) => {
     if (!booking) return
     try {
       setActionLoading(true)
       const res = await fetch(`/api/bookings/${booking.id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({
+          status,
+          ...(options?.paymentStatus ? { paymentStatus: options.paymentStatus } : {}),
+          ...(options && Object.prototype.hasOwnProperty.call(options, "paymentNotes")
+            ? { paymentNotes: options.paymentNotes }
+            : {}),
+        }),
       })
       const data = await res.json()
       if (!res.ok) {
         throw new Error(data.error || "Cập nhật trạng thái thất bại")
       }
-      toast.success(`Đã cập nhật trạng thái: ${STATUS_LABEL[status]}`)
+      toast.success(meta?.successMessage ?? `Đã cập nhật trạng thái: ${STATUS_LABEL[status]}`)
       setBooking((prev) => normalizeBookingResponse(data.booking, prev))
     } catch (err) {
       toast.error((err as Error).message)
@@ -258,6 +311,47 @@ export default function AdminBookingDetailPage() {
     }
   }
 
+  const paymentNotesDirty = (booking?.paymentNotes ?? "") !== paymentNotesDraft
+
+  const handleSavePaymentNotes = () => {
+    if (!booking) return
+    void updateStatus(
+      booking.status,
+      { paymentNotes: paymentNotesDraft },
+      { successMessage: "Đã lưu ghi chú thanh toán" },
+    )
+  }
+
+  const handleConfirmPayment = () => {
+    if (!booking) return
+    void updateStatus("CONFIRMED", {
+      paymentStatus: "COMPLETED",
+      paymentNotes: paymentNotesDraft,
+    })
+  }
+
+  const handleMarkPaymentStatus = (nextStatus: PaymentStatusValue) => {
+    if (!booking) return
+    void updateStatus(
+      booking.status,
+      { paymentStatus: nextStatus, paymentNotes: paymentNotesDraft },
+      { successMessage: PAYMENT_STATUS_META[nextStatus].label },
+    )
+  }
+
+  const handleCopyReference = async () => {
+    if (!booking?.transferReference || typeof navigator === "undefined" || !navigator.clipboard) {
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(booking.transferReference)
+      toast.success("Đã sao chép mã tham chiếu")
+    } catch (err) {
+      console.error("Copy reference failed:", err)
+      toast.error("Không thể sao chép mã tham chiếu.")
+    }
+  }
+
   if (loading) {
     return (
       <AdminLayout>
@@ -280,6 +374,8 @@ export default function AdminBookingDetailPage() {
   }
 
   const statusBadge = STATUS_BADGE[booking.status]
+  const paymentStatus = (booking.paymentStatus ?? "PENDING") as PaymentStatusValue
+  const paymentStatusMeta = PAYMENT_STATUS_META[paymentStatus]
 
   return (
     <AdminLayout>
@@ -323,6 +419,79 @@ export default function AdminBookingDetailPage() {
             )}
           </div>
         </div>
+        <Card>
+          <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <CardTitle>Thanh toán & mã tham chiếu</CardTitle>
+              <CardDescription>Admin xác minh dựa trên nội dung chuyển khoản của khách.</CardDescription>
+            </div>
+            <Badge variant="outline" className={`border ${paymentStatusMeta.badgeClass}`}>
+              {paymentStatusMeta.label}
+            </Badge>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
+              <div>
+                <p className="text-sm text-muted-foreground">Mã tham chiếu chuyển khoản</p>
+                <p className="font-mono text-lg font-semibold">
+                  {booking.transferReference ?? "Đang tạo..."}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCopyReference}
+                disabled={!booking.transferReference || actionLoading}
+              >
+                Sao chép
+              </Button>
+            </div>
+            {booking.paymentConfirmedAt && (
+              <p className="text-sm text-muted-foreground">
+                Đã xác nhận lúc {new Date(booking.paymentConfirmedAt).toLocaleString("vi-VN")}
+                {booking.paymentVerifier?.name ? ` bởi ${booking.paymentVerifier.name}` : ""}
+              </p>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="payment-notes">Ghi chú xác nhận</Label>
+              <Textarea
+                id="payment-notes"
+                rows={3}
+                value={paymentNotesDraft}
+                onChange={(event) => setPaymentNotesDraft(event.target.value)}
+                placeholder="Thêm ghi chú nội bộ về xác minh thanh toán..."
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={!paymentNotesDirty || actionLoading}
+                  onClick={handleSavePaymentNotes}
+                >
+                  Lưu ghi chú
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={actionLoading}
+                  onClick={() => handleMarkPaymentStatus("PROCESSING")}
+                >
+                  Đánh dấu đang kiểm tra
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={actionLoading}
+                  onClick={handleConfirmPayment}
+                >
+                  Xác nhận thanh toán
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
           <Card>

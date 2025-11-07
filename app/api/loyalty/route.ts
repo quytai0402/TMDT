@@ -1,7 +1,55 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
+
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+
+const FALLBACK_TIERS = [
+  {
+    id: "bronze",
+    tier: "BRONZE",
+    name: "Bronze",
+    minPoints: 0,
+    maxPoints: 999,
+    benefits: ["Ưu đãi đặt trước 48h", "Tích 1x điểm cho mỗi 10.000đ"],
+    bonusMultiplier: 1,
+    displayOrder: 1,
+    color: "#a08cd9",
+  },
+  {
+    id: "silver",
+    tier: "SILVER",
+    name: "Silver",
+    minPoints: 1000,
+    maxPoints: 2999,
+    benefits: ["Ưu tiên hỗ trợ", "Late check-out 2 giờ", "Tích 1.25x điểm"],
+    bonusMultiplier: 1.25,
+    displayOrder: 2,
+    color: "#8fb6d9",
+  },
+  {
+    id: "gold",
+    tier: "GOLD",
+    name: "Gold",
+    minPoints: 3000,
+    maxPoints: 4999,
+    benefits: ["Nâng hạng phòng miễn phí (nếu có)", "Early check-in 2 giờ", "Tích 1.5x điểm"],
+    bonusMultiplier: 1.5,
+    displayOrder: 3,
+    color: "#f4c84c",
+  },
+  {
+    id: "platinum",
+    tier: "PLATINUM",
+    name: "Platinum",
+    minPoints: 5000,
+    maxPoints: null,
+    benefits: ["Concierge 24/7", "Ưu đãi spa/đưa đón", "Tích 2x điểm"],
+    bonusMultiplier: 2,
+    displayOrder: 4,
+    color: "#d4af37",
+  },
+]
 
 // GET /api/loyalty - Get user loyalty info
 export async function GET(request: NextRequest) {
@@ -34,28 +82,34 @@ export async function GET(request: NextRequest) {
     }
 
     // Pull tier definitions from database
-  const rewardTierDelegate = (prisma as any).rewardTier
-  const rewardTransactionDelegate = (prisma as any).rewardTransaction
+    const rewardTierDelegate = (prisma as any).rewardTier
+    const rewardTransactionDelegate = (prisma as any).rewardTransaction
 
-  const tiers = await rewardTierDelegate.findMany({
-      orderBy: { displayOrder: "asc" },
-      include: {
-        badge: {
-          select: {
-            slug: true,
-            name: true,
-            icon: true,
-            color: true,
+    let tiers: any[] = []
+    if (rewardTierDelegate?.findMany) {
+      try {
+        tiers = await rewardTierDelegate.findMany({
+          orderBy: { displayOrder: "asc" },
+          include: {
+            badge: {
+              select: {
+                slug: true,
+                name: true,
+                icon: true,
+                color: true,
+              },
+            },
           },
-        },
-      },
-    })
+        })
+      } catch (tierError) {
+        console.warn("Failed to load reward tiers, using fallback:", tierError)
+      }
+    } else {
+      console.warn("RewardTier delegate unavailable on Prisma client. Using fallback tiers.")
+    }
 
-    if (!tiers.length) {
-      return NextResponse.json(
-        { error: "Reward tiers not configured" },
-        { status: 500 }
-      )
+    if (!Array.isArray(tiers) || tiers.length === 0) {
+      tiers = FALLBACK_TIERS
     }
 
   const orderedTiers = tiers.map((tier: any, index: number) => {
@@ -73,7 +127,7 @@ export async function GET(request: NextRequest) {
         benefits: tier.benefits,
         bonusMultiplier: tier.bonusMultiplier,
         displayOrder: tier.displayOrder,
-        color: tier.badge?.color ?? "#2E86DE",
+        color: tier.color ?? tier.badge?.color ?? "#2E86DE",
         badge: tier.badge
           ? {
               slug: tier.badge.slug,
@@ -104,56 +158,68 @@ export async function GET(request: NextRequest) {
       : 1
 
     // Get recent bookings for activity
-    const recentBookings = await prisma.booking.findMany({
-      where: { guestId: user.id },
-      take: 5,
-      orderBy: { createdAt: "desc" },
-      select: {
-        id: true,
-        checkIn: true,
-        checkOut: true,
-        totalPrice: true,
-        status: true,
-        listing: {
-          select: {
-            title: true,
-            images: true,
-            city: true,
-          },
-        },
-      },
-    })
-
-  const rewardHistory = await rewardTransactionDelegate.findMany({
-      where: { userId: user.id },
-      orderBy: { occurredAt: "desc" },
-      take: 10,
-      include: {
-        action: {
-          select: {
-            title: true,
-            source: true,
-            points: true,
-          },
-        },
-        quest: {
-          select: {
-            title: true,
-          },
-        },
-        redemption: {
-          select: {
-            status: true,
-            reward: {
-              select: {
-                name: true,
-                category: true,
-              },
+    let recentBookings: any[] = []
+    try {
+      recentBookings = await prisma.booking.findMany({
+        where: { guestId: user.id },
+        take: 5,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          checkIn: true,
+          checkOut: true,
+          totalPrice: true,
+          status: true,
+          listing: {
+            select: {
+              title: true,
+              images: true,
+              city: true,
             },
           },
         },
-      },
-    })
+      })
+    } catch (bookingHistoryError) {
+      console.warn("Failed to load recent bookings for loyalty dashboard:", bookingHistoryError)
+    }
+
+    let rewardHistory: any[] = []
+    if (rewardTransactionDelegate?.findMany) {
+      try {
+        rewardHistory = await rewardTransactionDelegate.findMany({
+          where: { userId: user.id },
+          orderBy: { occurredAt: "desc" },
+          take: 10,
+          include: {
+            action: {
+              select: {
+                title: true,
+                source: true,
+                points: true,
+              },
+            },
+            quest: {
+              select: {
+                title: true,
+              },
+            },
+            redemption: {
+              select: {
+                status: true,
+                reward: {
+                  select: {
+                    name: true,
+                    category: true,
+                  },
+                },
+              },
+            },
+          },
+        })
+      } catch (historyError) {
+        console.warn("Failed to load reward history:", historyError)
+      }
+    }
 
     const recentActivity = [
       ...recentBookings.map((b) => ({

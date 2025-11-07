@@ -472,6 +472,19 @@ export function ConciergeChat() {
             suggestions: ['Thêm dịch vụ cho chuyến này', 'Nhắn với host', 'Đổi lịch trình'],
           }
         }
+
+        if (matches(lowerQuery, ['dịch vụ', 'add service', 'service', 'thêm dịch vụ'])) {
+          const checkIn = new Date(booking.checkIn).toLocaleDateString('vi-VN')
+          const checkOut = new Date(booking.checkOut).toLocaleDateString('vi-VN')
+
+          return {
+            id: `booking-services-${timestamp.getTime()}`,
+            type: 'bot',
+            content: `Chuyến đi của bạn (${booking.listing.title}, ${booking.listing.city}) từ ${checkIn} đến ${checkOut} có thể bổ sung bữa sáng, xe đưa đón hoặc trang trí theo yêu cầu. Cho tôi biết số khách và thời gian cụ thể, tôi sẽ giữ chỗ và báo giá ngay.`,
+            timestamp,
+            suggestions: ['Đặt bữa sáng', 'Đặt xe sân bay', 'Trang trí kỷ niệm'],
+          }
+        }
       }
 
       if (/^[0-9]+$/.test(normalizedQuery.replace(/\s+/g, ''))) {

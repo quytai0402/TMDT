@@ -120,8 +120,8 @@ export default function CheckoutPage() {
   const guestInfoCompleted = useMemo(() => {
     return Boolean(
       guestInfo.fullName.trim() &&
-        guestInfo.phone.trim() &&
-        guestInfo.email.trim()
+      guestInfo.phone.trim() &&
+      guestInfo.email.trim()
     )
   }, [guestInfo])
 
@@ -272,13 +272,13 @@ export default function CheckoutPage() {
           acceptCancellation,
           loyaltySnapshot: loyaltyInfo
             ? {
-                memberTier: loyaltyInfo.memberTier,
-                discount: loyaltyInfo.discount,
-                totalBookings: loyaltyInfo.totalBookings,
-                totalSpent: loyaltyInfo.totalSpent,
-                perks: loyaltyInfo.perks,
-                nextTier: loyaltyInfo.nextTier,
-              }
+              memberTier: loyaltyInfo.memberTier,
+              discount: loyaltyInfo.discount,
+              totalBookings: loyaltyInfo.totalBookings,
+              totalSpent: loyaltyInfo.totalSpent,
+              perks: loyaltyInfo.perks,
+              nextTier: loyaltyInfo.nextTier,
+            }
             : undefined,
         }),
       })
@@ -629,6 +629,7 @@ export default function CheckoutPage() {
                 bookingId={bookingData.id}
                 amount={amountDue}
                 bookingCode={bookingCode}
+                transferReference={bookingData.transferReference ?? undefined}
                 disabled={!bookingReady}
               />
 
@@ -708,7 +709,7 @@ export default function CheckoutPage() {
           </div>
         </div>
       </main>
-      <Footer />
+      <Footer/>
     </div>
   )
 }

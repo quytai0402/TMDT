@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Menu, User, Heart, Globe, Trophy, Sparkles, Crown, Users, Compass, Calendar, MessageSquare, Building2, LayoutDashboard } from "lucide-react"
+import { Menu, User, Heart, Trophy, Sparkles, Crown, Users, Compass, Calendar, MessageSquare, Building2, LayoutDashboard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useSession, signOut } from "next-auth/react"
@@ -151,10 +151,6 @@ export function Header() {
 
           {/* Right Actions */}
           <div className="flex items-center space-x-2 md:space-x-3">
-            <Button variant="ghost" size="icon" className="hidden md:flex h-9 w-9 hover:bg-primary/10 hover:text-primary rounded-lg transition-all duration-200">
-              <Globe className="h-5 w-5" />
-            </Button>
-
             <Button 
               variant="ghost" 
               size="icon" 

@@ -15,10 +15,17 @@ interface PaymentMethodsProps {
   bookingId?: string
   amount?: number
   bookingCode?: string
+  transferReference?: string
   disabled?: boolean
 }
 
-export function PaymentMethods({ bookingId, amount, bookingCode, disabled = false }: PaymentMethodsProps) {
+export function PaymentMethods({
+  bookingId,
+  amount,
+  bookingCode,
+  transferReference: externalReference,
+  disabled = false,
+}: PaymentMethodsProps) {
   const [paymentMethod, setPaymentMethod] = useState("vnpay")
   const [isProcessing, setIsProcessing] = useState(false)
   const router = useRouter()
@@ -26,9 +33,12 @@ export function PaymentMethods({ bookingId, amount, bookingCode, disabled = fals
   const bankInfo = getBankTransferInfo()
 
   const transferReference = useMemo(() => {
+    if (externalReference) {
+      return externalReference
+    }
     if (!bookingCode && !bookingId) return formatTransferReference("BOOKING", "LUXESTAY")
     return formatTransferReference("BOOKING", bookingCode ?? bookingId ?? "")
-  }, [bookingCode, bookingId])
+  }, [bookingCode, bookingId, externalReference])
 
   const qrUrl = useMemo(() => {
     if (!amount || amount <= 0) return null

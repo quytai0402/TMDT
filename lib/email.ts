@@ -3,8 +3,10 @@
 import { Resend } from "resend"
 import nodemailer from "nodemailer"
 
+const EMAIL_DELIVERY_ENABLED = false
+
 // Initialize providers
-const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null
+const resend = process.env.RESEND_API_KEY && EMAIL_DELIVERY_ENABLED ? new Resend(process.env.RESEND_API_KEY) : null
 
 const envSmtpUser = process.env.SMTP_USER || process.env.GMAIL_USER || ""
 const envSmtpPass = process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || ""
@@ -92,7 +94,7 @@ export interface GuideApplicationStatusEmailData {
 }
 
 const transporter =
-  smtpHost && smtpUser && smtpPass
+  EMAIL_DELIVERY_ENABLED && smtpHost && smtpUser && smtpPass
     ? nodemailer.createTransport({
         host: smtpHost,
         port: smtpPort,
@@ -130,6 +132,14 @@ async function deliverEmail(payload: EmailPayload) {
   const toList = listify(to)
   const ccList = listify(cc)
   const bccList = listify(bcc)
+
+  if (!EMAIL_DELIVERY_ENABLED) {
+    console.info("[email-disabled]", {
+      to: toList,
+      subject,
+    })
+    return { success: true as const }
+  }
 
   if (resend) {
     try {

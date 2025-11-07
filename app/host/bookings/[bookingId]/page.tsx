@@ -37,11 +37,13 @@ type BookingStatus = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'COMPLETED' | strin
 
 type ServiceStatus = 'PENDING' | 'CONFIRMED' | 'COMPLETED'
 
-type PaymentStatus = 'PENDING' | 'PROCESSING' | 'PAID' | 'FAILED' | 'REFUNDED' | string
+type PaymentStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'REFUNDED' | 'PARTIALLY_REFUNDED' | string
 
 interface BookingDetail {
   id: string
   bookingRef: string
+  transferReference?: string | null
+  paymentStatus?: PaymentStatus | null
   status: BookingStatus
   listing: {
     title: string
@@ -99,13 +101,17 @@ const paymentStatusLabels: Record<string, { label: string; className: string }> 
     label: 'Đang xử lý',
     className: 'bg-amber-100 text-amber-700 border-amber-200',
   },
-  PAID: {
-    label: 'Đã thanh toán',
+  COMPLETED: {
+    label: 'Đã xác nhận thanh toán',
     className: 'bg-emerald-100 text-emerald-700 border-emerald-200',
   },
   REFUNDED: {
     label: 'Đã hoàn tiền',
     className: 'bg-sky-100 text-sky-700 border-sky-200',
+  },
+  PARTIALLY_REFUNDED: {
+    label: 'Hoàn 1 phần',
+    className: 'bg-purple-100 text-purple-700 border-purple-200',
   },
   FAILED: {
     label: 'Thanh toán thất bại',
@@ -169,6 +175,8 @@ const mapBookingDetail = (raw: any): BookingDetail => {
   return {
     id: raw.id,
     bookingRef: raw.bookingRef || raw.code || raw.id?.slice?.(-8)?.toUpperCase?.() || 'N/A',
+    transferReference: raw.transferReference ?? null,
+    paymentStatus: (raw.paymentStatus || payment?.status || 'PENDING').toUpperCase(),
     status: (raw.status || 'PENDING').toUpperCase(),
     listing: {
       title: listing.title || '—',
@@ -243,10 +251,11 @@ export default function HostBookingDetailPage({ params }: { params: { bookingId:
     }
   }, [booking])
 
-  const paymentStatus = useMemo(() => {
-    if (!booking?.payment) return null
-    return paymentStatusLabels[booking.payment.status] ?? {
-      label: booking.payment.status,
+  const paymentStatusBadge = useMemo(() => {
+    if (!booking) return null
+    const statusValue = (booking.paymentStatus || booking.payment?.status || 'PENDING').toUpperCase()
+    return paymentStatusLabels[statusValue] ?? {
+      label: statusValue,
       className: 'bg-slate-100 text-slate-700 border-slate-200',
     }
   }, [booking])
@@ -327,15 +336,20 @@ export default function HostBookingDetailPage({ params }: { params: { bookingId:
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {bookingStatus ? (
               <Badge variant="outline" className={`border ${bookingStatus.className}`}>
                 {bookingStatus.label}
               </Badge>
             ) : null}
-            {booking?.payment && paymentStatus ? (
-              <Badge variant="outline" className={`border ${paymentStatus.className}`}>
-                {paymentStatus.label}
+            {booking?.transferReference ? (
+              <Badge variant="outline" className="border font-mono text-xs">
+                {booking.transferReference}
+              </Badge>
+            ) : null}
+            {paymentStatusBadge ? (
+              <Badge variant="outline" className={`border ${paymentStatusBadge.className}`}>
+                {paymentStatusBadge.label}
               </Badge>
             ) : null}
           </div>
@@ -462,6 +476,9 @@ export default function HostBookingDetailPage({ params }: { params: { bookingId:
                       {booking.payment.transactionId ? (
                         <p className="text-muted-foreground">Mã giao dịch: {booking.payment.transactionId}</p>
                       ) : null}
+                      {booking.transferReference ? (
+                        <p className="text-muted-foreground">Nội dung chuyển khoản: <span className="font-mono text-foreground">{booking.transferReference}</span></p>
+                      ) : null}
                     </div>
                   ) : null}
                 </CardContent>
@@ -555,13 +572,9 @@ export default function HostBookingDetailPage({ params }: { params: { bookingId:
                 </CardHeader>
                 <CardContent className="space-y-4 pt-6">
                   {booking.status === 'PENDING' ? (
-                    <Button
-                      className="w-full"
-                      disabled={statusLoading}
-                      onClick={() => handleStatusChange('CONFIRMED')}
-                    >
-                      {statusLoading ? 'Đang cập nhật...' : 'Xác nhận đơn đặt phòng'}
-                    </Button>
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                      LuxeStay sẽ thông báo cho bạn ngay khi đơn được xác nhận thanh toán. Bạn có thể tiếp tục chuẩn bị lịch nhận khách.
+                    </div>
                   ) : null}
 
                   {booking.status === 'CONFIRMED' ? (

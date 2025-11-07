@@ -1556,6 +1556,7 @@ export function BookingCheckout({
             bookingId={bookingId ?? undefined}
             amount={amountDue}
             bookingCode={bookingCode ?? undefined}
+            transferReference={bookingData?.transferReference ?? undefined}
             disabled={!bookingCreated}
           />
           </div>

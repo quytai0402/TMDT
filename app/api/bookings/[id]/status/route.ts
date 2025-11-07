@@ -5,8 +5,9 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { notifyAdmins, notifyUser } from '@/lib/notifications'
 import { sendBookingConfirmationEmail } from '@/lib/email'
-import { NotificationType, PaymentStatus } from '@prisma/client'
 import { settleCompletedBookingFinancials } from '@/lib/finance'
+import { sendAutomationMessageForBooking } from '@/lib/host/automation'
+import { AutomationMessageTrigger, NotificationType, PaymentStatus } from '@prisma/client'
 
 const ALLOWED_STATUSES = ['PENDING', 'CONFIRMED', 'CANCELLED', 'COMPLETED'] as const
 
@@ -273,6 +274,8 @@ export async function PATCH(
           },
         })
       }
+
+      await sendAutomationMessageForBooking(updatedBooking, AutomationMessageTrigger.BOOKING_CONFIRMED)
     }
 
     if (status === 'CANCELLED') {

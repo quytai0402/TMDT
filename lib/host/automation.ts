@@ -3,8 +3,13 @@ import {
   AutomationMessageStatus,
   AutomationMessageTrigger,
   AutomationRecipientScope,
+  MessageType,
+  NotificationType,
   type AutomationTemplateCategory,
+  type Prisma,
 } from "@prisma/client"
+import { triggerPusherEvent } from "@/lib/pusher"
+import { notifyUser } from "@/lib/notifications"
 
 interface HostContextDetails {
   propertyName: string
@@ -16,6 +21,23 @@ interface HostContextDetails {
   wifiPassword?: string | null
   hostName?: string | null
   hostPhone?: string | null
+}
+
+type BookingWithRelations = Prisma.BookingGetPayload<{
+  include: { listing: true; guest: true; host: true }
+}>
+
+const DATE_FORMATTER = new Intl.DateTimeFormat("vi-VN", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+})
+
+function formatDate(value: Date | string | null | undefined) {
+  if (!value) return ""
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return ""
+  return DATE_FORMATTER.format(date)
 }
 
 const TEMPLATE_CATEGORIES = {
@@ -88,6 +110,35 @@ function composeAddress(listing: {
   const chunks = [listing.address, listing.city, listing.state, listing.country]
     .filter((value): value is string => Boolean(value && value.trim()))
   return chunks.join(", ")
+}
+
+function buildBookingVariables(booking: BookingWithRelations, context: HostContextDetails) {
+  const totalGuests = (booking.adults ?? 0) + (booking.children ?? 0) + (booking.infants ?? 0)
+  return {
+    guestName: booking.guest?.name || booking.contactName || "bạn",
+    propertyName: booking.listing.title || context.propertyName,
+    propertyAddress: composeAddress(booking.listing) || context.propertyAddress,
+    propertyCity: booking.listing.city || context.city,
+    checkInDate: formatDate(booking.checkIn),
+    checkOutDate: formatDate(booking.checkOut),
+    checkInTime: booking.listing.checkInTime || context.checkInTime,
+    checkOutTime: booking.listing.checkOutTime || context.checkOutTime,
+    guestCount: totalGuests ? String(totalGuests) : "",
+    bookingId: booking.id,
+    hostName: booking.host?.name || context.hostName || "Host LuxeStay",
+    hostPhone: booking.host?.phone || context.hostPhone || "",
+    wifiName: booking.listing.wifiName || context.wifiName || "",
+    wifiPassword: booking.listing.wifiPassword || context.wifiPassword || "",
+    doorCode: booking.listing.smartLockCode || "",
+    parkingInstructions: booking.listing.houseRules || "",
+    reviewLink: `https://luxestay.vn/trips/${booking.id}/review`,
+    discountCode: "",
+  }
+}
+
+function applyTemplate(text: string | null | undefined, variables: Record<string, string>) {
+  if (!text) return ""
+  return text.replace(/\{\{(\w+)\}\}/g, (_, key: string) => variables[key] ?? "")
 }
 
 async function resolveHostContext(hostId: string): Promise<HostContextDetails> {
@@ -501,4 +552,146 @@ export async function toggleScheduledMessageStatus(hostId: string, messageId: st
     where: { id: messageId },
     data: { status: nextStatus },
   })
+}
+
+async function ensureConversation(hostId: string, guestId: string, listingId?: string | null) {
+  const existing = await prisma.conversation.findFirst({
+    where: {
+      participants: { hasEvery: [hostId, guestId] },
+    },
+  })
+
+  if (existing) {
+    return existing
+  }
+
+  return prisma.conversation.create({
+    data: {
+      participants: [hostId, guestId],
+      listingId: listingId ?? null,
+      unreadCount: {
+        [hostId]: 0,
+        [guestId]: 0,
+      },
+    },
+  })
+}
+
+interface AutomationMessageInput {
+  booking: BookingWithRelations
+  content: string
+  subject?: string
+  templateName?: string
+}
+
+async function sendAutomatedConversationMessage({ booking, content, templateName }: AutomationMessageInput) {
+  if (!booking.guestId || !booking.guest) return
+
+  const conversation = await ensureConversation(booking.hostId, booking.guestId, booking.listingId)
+  const message = await prisma.message.create({
+    data: {
+      conversationId: conversation.id,
+      senderId: booking.hostId,
+      bookingId: booking.id,
+      content,
+      messageType: MessageType.AUTOMATED,
+      attachments: [],
+      isAutomated: true,
+    },
+    include: {
+      sender: {
+        select: {
+          id: true,
+          name: true,
+          image: true,
+        },
+      },
+    },
+  })
+
+  const unreadMap = (conversation.unreadCount as Record<string, number> | null) ?? {}
+  const updatedUnread = {
+    ...unreadMap,
+    [booking.guestId]: (unreadMap[booking.guestId] ?? 0) + 1,
+    [booking.hostId]: 0,
+  }
+
+  await prisma.conversation.update({
+    where: { id: conversation.id },
+    data: {
+      lastMessage: content.slice(0, 140),
+      lastMessageAt: message.createdAt,
+      unreadCount: updatedUnread,
+    },
+  })
+
+  await triggerPusherEvent(`conversation-${conversation.id}`, "new-message", message)
+  await triggerPusherEvent(`user-${booking.guestId}`, "new-conversation-message", {
+    conversationId: conversation.id,
+    message,
+  })
+
+  await notifyUser(booking.guestId, {
+    type: NotificationType.MESSAGE_RECEIVED,
+    title: templateName ? `Tin nhắn: ${templateName}` : "Tin nhắn tự động",
+    message: content.slice(0, 140),
+    link: `/messages?conversation=${conversation.id}`,
+    data: {
+      conversationId: conversation.id,
+      bookingId: booking.id,
+      listingId: booking.listingId,
+    },
+  })
+}
+
+export async function sendAutomationMessageForBooking(
+  booking: BookingWithRelations,
+  trigger: AutomationMessageTrigger,
+) {
+  try {
+    if (!booking.guestId || !booking.guest) {
+      return
+    }
+
+    const scheduledMessages = await prisma.hostScheduledMessage.findMany({
+      where: {
+        hostId: booking.hostId,
+        trigger,
+        status: AutomationMessageStatus.ACTIVE,
+        templateId: { not: null },
+      },
+      include: {
+        template: true,
+      },
+    })
+
+    if (!scheduledMessages.length) {
+      return
+    }
+
+    const context = await resolveHostContext(booking.hostId)
+    const variables = buildBookingVariables(booking, context)
+
+    for (const scheduled of scheduledMessages) {
+      if (!scheduled.template) continue
+      const content = applyTemplate(scheduled.template.content, variables).trim()
+      if (!content) continue
+
+      await sendAutomatedConversationMessage({
+        booking,
+        content,
+        templateName: scheduled.template.name,
+      })
+
+      await prisma.hostScheduledMessage.update({
+        where: { id: scheduled.id },
+        data: {
+          sentCount: { increment: 1 },
+          lastSent: new Date(),
+        },
+      })
+    }
+  } catch (error) {
+    console.error("Failed to process automation booking message", error)
+  }
 }

@@ -24,7 +24,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from '@/components/ui/use-toast'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Copy } from 'lucide-react'
-import { toast } from '@/components/ui/use-toast'
 
 interface MembershipStatusResponse {
   user: {

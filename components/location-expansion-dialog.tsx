@@ -101,6 +101,7 @@ export function LocationExpansionDialog({
   }, [session?.user?.id])
 
   const qrUrl = useMemo(() => createVietQRUrl(EXPANSION_FEE, transferReference, "compact"), [transferReference])
+  const noLocationsAvailable = !locationsLoading && locations.length === 0
 
   const resetForm = useCallback(() => {
     setSelectedLocationId("")
@@ -242,16 +243,27 @@ export function LocationExpansionDialog({
                 <SelectValue placeholder={locationsLoading ? "Đang tải danh sách khu vực..." : "Chọn khu vực"} />
               </SelectTrigger>
               <SelectContent>
-                {locations.map((location) => (
-                  <SelectItem key={location.id} value={location.id}>
-                    <span className="font-medium">{location.city}</span>
-                    <span className="text-muted-foreground"> — {location.state}</span>
-                  </SelectItem>
-                ))}
+                {locations.length === 0 ? (
+                  <div className="px-3 py-2 text-sm text-muted-foreground">
+                    Hiện chưa có khu vực khả dụng. Vui lòng liên hệ concierge để được hỗ trợ thêm.
+                  </div>
+                ) : (
+                  locations.map((location) => (
+                    <SelectItem key={location.id} value={location.id}>
+                      <span className="font-medium">{location.city}</span>
+                      <span className="text-muted-foreground"> — {location.state}</span>
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
             {selectedLocation?.description ? (
               <p className="text-sm text-muted-foreground">{selectedLocation.description}</p>
+            ) : null}
+            {noLocationsAvailable ? (
+              <p className="text-sm text-muted-foreground">
+                Nếu khu vực bạn cần chưa có trong danh sách, hãy gửi yêu cầu để đội vận hành bổ sung.
+              </p>
             ) : null}
           </div>
 

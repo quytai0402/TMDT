@@ -256,16 +256,139 @@ function normalizeText(value: string) {
     .trim()
 }
 
-function pickPlaceCandidate(primary?: SerpApiPlace, list?: SerpApiPlace[]): SerpApiPlace | undefined {
-  if (primary?.gps_coordinates?.latitude && primary.gps_coordinates.longitude) {
-    return primary
+interface CandidateContext {
+  query: string
+  address?: string
+  city?: string
+  country?: string
+}
+
+function computeCandidateScore(place: SerpApiPlace, context: CandidateContext): number {
+  if (!place?.gps_coordinates?.latitude || !place?.gps_coordinates?.longitude) {
+    return Number.NEGATIVE_INFINITY
   }
+
+  const normalizedTitle = normalizeText(place.title ?? "")
+  const normalizedCandidateAddress = normalizeText(place.address ?? "")
+  const normalizedQuery = normalizeText(context.query)
+  const normalizedStreet = context.address ? normalizeText(context.address) : ""
+  const normalizedCity = context.city ? normalizeText(context.city) : ""
+  const normalizedCountry = context.country ? normalizeText(context.country) : ""
+
+  let score = 0
+
+  const types = Array.isArray(place.types) ? place.types.map((type) => type.toLowerCase()) : []
+  const primaryType = (place.type ?? "").toLowerCase()
+  const allTypeTokens = [...types, primaryType]
+  const isAdministrative = allTypeTokens.some((token) =>
+    token.includes("administrative_area") || token.includes("locality") || token.includes("political"),
+  )
+  const isLodging = allTypeTokens.some((token) => token.includes("lodging") || token.includes("point_of_interest"))
+  const containsStreetNumber = /\d/.test(place.address ?? "") || /\d/.test(place.title ?? "")
+
+  if (normalizedStreet) {
+    if (normalizedCandidateAddress.includes(normalizedStreet) || normalizedTitle.includes(normalizedStreet)) {
+      score += 40
+    }
+
+    const streetTokens = normalizedStreet.split(/\s+/).filter((token) => token.length > 2)
+    const streetMatches = streetTokens.filter((token) =>
+      normalizedCandidateAddress.includes(token) || normalizedTitle.includes(token),
+    )
+    score += streetMatches.length * 5
+
+    if (/\d/.test(context.address ?? "")) {
+      if (containsStreetNumber) {
+        score += 10
+      } else {
+        score -= 6
+      }
+    }
+  }
+
+  if (normalizedCity) {
+    if (normalizedCandidateAddress.includes(normalizedCity) || normalizedTitle.includes(normalizedCity)) {
+      score += 8
+    } else {
+      score -= 4
+    }
+  }
+
+  if (normalizedCountry && normalizedCandidateAddress.includes(normalizedCountry)) {
+    score += 3
+  }
+
+  if (normalizedQuery && (normalizedCandidateAddress.includes(normalizedQuery) || normalizedTitle.includes(normalizedQuery))) {
+    score += 6
+  }
+
+  if (place.rating) {
+    score += place.rating
+  }
+
+  if (place.position) {
+    score += Math.max(0, 6 - place.position)
+  }
+
+  if (place.distance) {
+    const parsedDistance = parseDistance(place.distance)
+    if (parsedDistance !== null) {
+      score += parsedDistance < 1000 ? 6 : parsedDistance < 3000 ? 4 : Math.max(1, 5000 / parsedDistance)
+    }
+  }
+
+  if (isAdministrative) {
+    score -= 25
+  }
+
+  if (isLodging) {
+    score += 4
+  }
+
+  if (!containsStreetNumber && normalizedStreet && /\d/.test(normalizedStreet)) {
+    score -= 4
+  }
+
+  return score
+}
+
+function pickPlaceCandidate(primary: SerpApiPlace | undefined, list: SerpApiPlace[] | undefined, context: CandidateContext): SerpApiPlace | undefined {
+  const candidates: Array<{ place: SerpApiPlace; score: number; preferred: boolean }> = []
+
+  const pushCandidate = (place: SerpApiPlace | undefined, preferred: boolean) => {
+    if (!place?.gps_coordinates?.latitude || !place.gps_coordinates?.longitude) {
+      return
+    }
+    const score = computeCandidateScore(place, context)
+    if (Number.isFinite(score)) {
+      candidates.push({ place, score, preferred })
+    }
+  }
+
+  pushCandidate(primary, true)
 
   if (Array.isArray(list)) {
-    return list.find((candidate) => candidate?.gps_coordinates?.latitude && candidate.gps_coordinates?.longitude)
+    for (const candidate of list) {
+      pushCandidate(candidate, false)
+    }
   }
 
-  return undefined
+  if (candidates.length === 0) {
+    return undefined
+  }
+
+  candidates.sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score
+    }
+    if (a.preferred !== b.preferred) {
+      return Number(b.preferred) - Number(a.preferred)
+    }
+    return 0
+  })
+
+  const positiveCandidate = candidates.find((candidate) => candidate.score > 0)
+  return positiveCandidate?.place ?? candidates[0]?.place
 }
 
 function fallbackDestinationMatch(query: string): GeocodeResult | null {
@@ -598,7 +721,13 @@ export async function geocodeAddress(params: GeocodeParams): Promise<GeocodeResu
       ? ((data as any).local_results as SerpApiPlace[])
       : []
 
-    const selectBest = () => pickPlaceCandidate(placeResult, localResults)
+    const selectBest = () =>
+      pickPlaceCandidate(placeResult, localResults, {
+        query: resolved,
+        address: params.address,
+        city: params.city,
+        country: params.country,
+      })
     let bestMatch = selectBest()
 
     const fallbackQueries = Array.from(
@@ -631,7 +760,12 @@ export async function geocodeAddress(params: GeocodeParams): Promise<GeocodeResu
             ? ((fallbackData as any).local_results as SerpApiPlace[])
             : []
 
-          bestMatch = pickPlaceCandidate(fallbackPlaceResult, fallbackLocalResults)
+          bestMatch = pickPlaceCandidate(fallbackPlaceResult, fallbackLocalResults, {
+            query: fallbackQuery,
+            address: params.address,
+            city: params.city,
+            country: params.country,
+          })
           if (bestMatch) {
             break
           }
@@ -653,6 +787,10 @@ export async function geocodeAddress(params: GeocodeParams): Promise<GeocodeResu
       }
 
       throw new Error(`Location not found for query: ${resolved}`)
+    }
+
+    if (!bestMatch?.gps_coordinates?.latitude || !bestMatch.gps_coordinates?.longitude) {
+      throw new Error(`Best match missing coordinates for query: ${resolved}`)
     }
 
     const result: GeocodeResult = {

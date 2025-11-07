@@ -37,6 +37,7 @@ import {
   Compass,
   Sparkles,
   Wallet,
+  ClipboardCheck,
 } from "lucide-react"
 import { NotificationCenter } from "@/components/notification-center"
 
@@ -83,6 +84,11 @@ const NAV_ITEMS: NavItem[] = [
     title: "Trải nghiệm HDV",
     href: "/admin/guides/experiences",
     icon: Sparkles,
+  },
+  {
+    title: "Dịch vụ HDV",
+    href: "/admin/guides/services",
+    icon: ClipboardCheck,
   },
   {
     title: "Chỗ nghỉ",

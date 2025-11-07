@@ -249,8 +249,8 @@ export default function AdminSecurityPage() {
                   </TableHeader>
                   <TableBody>
                     <TableRow>
-                      <TableCell className="font-mono text-sm">2025-10-11 14:23:15</TableCell>
-                      <TableCell>admin@luxestay.com</TableCell>
+                      <TableCell className="font-mono text-sm">2025-11-07 14:23:15</TableCell>
+                      <TableCell>admin@gmail.com</TableCell>
                       <TableCell>Đăng nhập</TableCell>
                       <TableCell className="font-mono text-sm">192.168.1.1</TableCell>
                       <TableCell>
@@ -258,7 +258,7 @@ export default function AdminSecurityPage() {
                       </TableCell>
                     </TableRow>
                     <TableRow>
-                      <TableCell className="font-mono text-sm">2025-10-11 14:15:42</TableCell>
+                      <TableCell className="font-mono text-sm">2025-11-07 14:15:42</TableCell>
                       <TableCell>user@example.com</TableCell>
                       <TableCell>Đăng nhập thất bại</TableCell>
                       <TableCell className="font-mono text-sm">103.56.158.90</TableCell>
@@ -267,8 +267,8 @@ export default function AdminSecurityPage() {
                       </TableCell>
                     </TableRow>
                     <TableRow>
-                      <TableCell className="font-mono text-sm">2025-10-11 13:45:12</TableCell>
-                      <TableCell>nguyen.minh.anh@gmail.com</TableCell>
+                      <TableCell className="font-mono text-sm">2025-11-07 13:45:12</TableCell>
+                      <TableCell>host@gmail.com</TableCell>
                       <TableCell>Thay đổi mật khẩu</TableCell>
                       <TableCell className="font-mono text-sm">14.232.150.45</TableCell>
                       <TableCell>
@@ -276,7 +276,7 @@ export default function AdminSecurityPage() {
                       </TableCell>
                     </TableRow>
                     <TableRow>
-                      <TableCell className="font-mono text-sm">2025-10-11 12:30:08</TableCell>
+                      <TableCell className="font-mono text-sm">2025-11-07 12:30:08</TableCell>
                       <TableCell>unknown</TableCell>
                       <TableCell>Brute force attempt</TableCell>
                       <TableCell className="font-mono text-sm">185.220.101.3</TableCell>
@@ -318,7 +318,7 @@ export default function AdminSecurityPage() {
                       <TableRow>
                         <TableCell className="font-mono">185.220.101.3</TableCell>
                         <TableCell>Brute force attack</TableCell>
-                        <TableCell>2025-10-11 12:30</TableCell>
+                        <TableCell>2025-11-07 12:30</TableCell>
                         <TableCell>Vĩnh viễn</TableCell>
                         <TableCell className="text-right">
                           <Button variant="ghost" size="sm">Bỏ chặn</Button>
@@ -327,7 +327,7 @@ export default function AdminSecurityPage() {
                       <TableRow>
                         <TableCell className="font-mono">103.56.158.90</TableCell>
                         <TableCell>Nhiều lần đăng nhập thất bại</TableCell>
-                        <TableCell>2025-10-11 14:15</TableCell>
+                        <TableCell>2025-11-07 14:15</TableCell>
                         <TableCell>24 giờ</TableCell>
                         <TableCell className="text-right">
                           <Button variant="ghost" size="sm">Bỏ chặn</Button>
@@ -349,15 +349,15 @@ export default function AdminSecurityPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2 font-mono text-xs bg-black text-green-400 p-4 rounded-lg h-96 overflow-auto">
-                  <div>[2025-10-11 14:23:15] INFO: User login successful - admin@luxestay.com (192.168.1.1)</div>
-                  <div>[2025-10-11 14:15:42] WARN: Failed login attempt - user@example.com (103.56.158.90)</div>
-                  <div>[2025-10-11 14:15:45] WARN: Failed login attempt - user@example.com (103.56.158.90)</div>
-                  <div>[2025-10-11 14:15:48] ERROR: IP blocked due to rate limit - 103.56.158.90</div>
-                  <div>[2025-10-11 13:45:12] INFO: Password changed - nguyen.minh.anh@gmail.com</div>
-                  <div>[2025-10-11 12:30:08] CRITICAL: Brute force attack detected - 185.220.101.3</div>
-                  <div>[2025-10-11 12:30:10] INFO: IP permanently blocked - 185.220.101.3</div>
-                  <div>[2025-10-11 10:15:33] INFO: Database backup completed successfully</div>
-                  <div>[2025-10-11 09:00:00] INFO: Daily security scan completed - No threats detected</div>
+                  <div>[2025-11-07 14:23:15] INFO: User login successful - admin@gmail.com (192.168.1.1)</div>
+                  <div>[2025-11-07 14:15:42] WARN: Failed login attempt - user@example.com (103.56.158.90)</div>
+                  <div>[2025-11-07 14:15:45] WARN: Failed login attempt - user@example.com (103.56.158.90)</div>
+                  <div>[2025-11-07 14:15:48] ERROR: IP blocked due to rate limit - 103.56.158.90</div>
+                  <div>[2025-11-07 13:45:12] INFO: Password changed - host@gmail.com</div>
+                  <div>[2025-11-07 12:30:08] CRITICAL: Brute force attack detected - 185.220.101.3</div>
+                  <div>[2025-11-07 12:30:10] INFO: IP permanently blocked - 185.220.101.3</div>
+                  <div>[2025-11-07 10:15:33] INFO: Database backup completed successfully</div>
+                  <div>[2025-11-07 09:00:00] INFO: Daily security scan completed - No threats detected</div>
                 </div>
               </CardContent>
             </Card>

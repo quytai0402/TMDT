@@ -37,17 +37,10 @@ const BOOKING_INCLUDE = {
       loyaltyPoints: true,
     },
   },
-  paymentVerifier: {
-    select: {
-      id: true,
-      name: true,
-      email: true,
-    },
-  },
   review: true,
   payment: true,
   conciergePlans: {
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: 'desc' as const },
   },
 }
 

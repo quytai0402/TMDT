@@ -203,7 +203,7 @@ type HostCouponSeed = {
   listingRefs?: ListingReference[]
   allowedMembershipTiers?: LoyaltyTier[]
   durationDays?: number
-  metadata?: Record<string, unknown>
+  metadata?: Prisma.InputJsonValue
 }
 
 type SeededBookingRecord = {
@@ -241,10 +241,10 @@ type ReviewTemplate = {
   aiKeywords?: string[]
 }
 
-const PRIMARY_HOST_EMAIL = 'host@host.com'
-const GUIDE_ACCOUNT_EMAIL = 'huongdanvien@luxestay.com'
-const PRIMARY_ADMIN_EMAIL = 'admin@admin.com'
-const PRIMARY_GUEST_EMAIL = 'user@user.com'
+const PRIMARY_HOST_EMAIL = 'host@gmail.com'
+const GUIDE_ACCOUNT_EMAIL = 'huongdanvien@gmail.com'
+const PRIMARY_ADMIN_EMAIL = 'admin@gmail.com'
+const PRIMARY_GUEST_EMAIL = 'user@gmail.com'
 const PROMOTION_CODES = ['WELCOME10', 'WEEKDAY15', 'CITYCHEF500K', 'DALATRELAX12', 'SUNSETISLAND15', 'HOIANHERITAGE10']
 
 const GUEST_SEEDS: GuestSeed[] = [
@@ -3366,7 +3366,7 @@ async function seedData(options: { shouldReset: boolean }) {
     const defaultPasswordHash = await bcrypt.hash('Stay@2024', 10)
     const adminPasswordHash = await bcrypt.hash('admin', 10)
     const hostPasswordHash = await bcrypt.hash('host', 10)
-    const guidePasswordHash = await bcrypt.hash('hdv', 10)
+  const guidePasswordHash = await bcrypt.hash('huongdanvien', 10)
     const memberPasswordHash = await bcrypt.hash('user', 10)
 
     console.log('🔐 Thiết lập tài khoản quản trị & hệ thống...')
@@ -3534,7 +3534,7 @@ async function seedData(options: { shouldReset: boolean }) {
           bankName: 'Techcombank',
           bankBranch: 'Hội sở Hà Nội',
           accountNumber: '0123456789',
-          accountName: host.name,
+          accountName: host.name ?? 'LuxeStay Host',
           notes: 'Tài khoản demo seed',
         },
         create: {
@@ -3542,7 +3542,7 @@ async function seedData(options: { shouldReset: boolean }) {
           bankName: 'Techcombank',
           bankBranch: 'Hội sở Hà Nội',
           accountNumber: '0123456789',
-          accountName: host.name,
+          accountName: host.name ?? 'LuxeStay Host',
           notes: 'Tài khoản demo seed',
         },
       })
@@ -3683,6 +3683,13 @@ async function seedData(options: { shouldReset: boolean }) {
           .filter((id): id is string => Boolean(id))
 
         const slug = `${toSlug(signature.city)}-${toSlug(signature.title)}`
+        const signatureAny = signature as {
+          instantBookable?: boolean
+          allowPets?: boolean
+          allowSmoking?: boolean
+          allowEvents?: boolean
+          allowChildren?: boolean
+        }
         const listing = await prisma.listing.create({
           data: {
             hostId: primaryHostId,
@@ -3711,11 +3718,11 @@ async function seedData(options: { shouldReset: boolean }) {
             slug,
             featured: signature.featured ?? false,
             isSecret: false,
-            instantBookable: signature.instantBookable ?? true,
-            allowPets: signature.allowPets ?? false,
-            allowSmoking: signature.allowSmoking ?? false,
-            allowEvents: signature.allowEvents ?? false,
-            allowChildren: signature.allowChildren ?? true,
+            instantBookable: signatureAny.instantBookable ?? true,
+            allowPets: signatureAny.allowPets ?? false,
+            allowSmoking: signatureAny.allowSmoking ?? false,
+            allowEvents: signatureAny.allowEvents ?? false,
+            allowChildren: signatureAny.allowChildren ?? true,
             cancellationPolicy: CancellationPolicy.MODERATE,
             checkInTime: '14:00',
             checkOutTime: '11:00',
@@ -4156,7 +4163,7 @@ async function seedData(options: { shouldReset: boolean }) {
       source: PromotionSource
       listingIds: string[]
       propertyTypes: PropertyType[]
-      metadata: Record<string, unknown> | null
+  metadata: Prisma.InputJsonValue | null
       hostId: string
     }> = []
 
@@ -4205,7 +4212,7 @@ async function seedData(options: { shouldReset: boolean }) {
         source: PromotionSource.HOST,
         listingIds,
         propertyTypes: [],
-        metadata: coupon.metadata ?? null,
+  metadata: coupon.metadata ?? null,
         hostId,
       })
     }

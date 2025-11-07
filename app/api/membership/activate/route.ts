@@ -27,8 +27,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing membership plan" }, { status: 400 })
     }
 
+    const normalizedPlanSlug = planSlug.trim().toLowerCase()
+    if (!normalizedPlanSlug) {
+      return NextResponse.json({ error: "Missing membership plan" }, { status: 400 })
+    }
+
     const plan = await prisma.membershipPlan.findUnique({
-      where: { slug: planSlug },
+      where: { slug: normalizedPlanSlug },
     })
 
     if (!plan) {

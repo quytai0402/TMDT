@@ -3,6 +3,7 @@
 import Image from "next/image"
 import { useEffect, useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
+import { useRouter } from "next/navigation"
 
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
@@ -66,13 +67,13 @@ interface HostApplicationResponse {
 
 export default function BecomeHostPage() {
   const { data: session, status } = useSession()
+  const router = useRouter()
   const authModal = useAuthModal()
   const [regions, setRegions] = useState<RegionOption[]>([])
   const [regionsLoading, setRegionsLoading] = useState(true)
   const [applicationLoading, setApplicationLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [existingApplication, setExistingApplication] = useState<HostApplicationResponse["application"] | null>(null)
 
   const [form, setForm] = useState({
@@ -97,7 +98,6 @@ export default function BecomeHostPage() {
   const [registerIntroTemplate, setRegisterIntroTemplate] = useState<string | undefined>(undefined)
   const [registerSubmitting, setRegisterSubmitting] = useState(false)
   const [registerError, setRegisterError] = useState<string | null>(null)
-  const [registerSuccess, setRegisterSuccess] = useState<string | null>(null)
   const hostReference = useMemo(() => {
     const identifier = session?.user?.id ?? session?.user?.email ?? session?.user?.name ?? "HOST299K"
     return formatTransferReference("SERVICE", identifier)
@@ -207,7 +207,7 @@ export default function BecomeHostPage() {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
-    setSuccessMessage(null)
+    setError(null)
 
     if (!form.locationSlug) {
       setError("Vui lòng chọn khu vực bạn muốn khai thác homestay.")
@@ -218,6 +218,8 @@ export default function BecomeHostPage() {
       setError("Bạn cần đồng ý với chính sách phí duy trì và lệ phí nền tảng.")
       return
     }
+
+    const isUpdate = Boolean(existingApplication)
 
     try {
       setSubmitting(true)
@@ -230,6 +232,7 @@ export default function BecomeHostPage() {
           introduction: form.introduction,
           experience: form.experience,
           maintenanceAcknowledged: form.maintenanceAcknowledged,
+          paymentReference: hostReference,
         }),
       })
 
@@ -239,7 +242,10 @@ export default function BecomeHostPage() {
       }
 
       setExistingApplication(data.application)
-      setSuccessMessage("Yêu cầu đã được gửi. Đội ngũ LuxeStay sẽ phản hồi trong 24-48 giờ.")
+      router.push(
+        `/apply/success?type=host&reference=${encodeURIComponent(hostReference)}&mode=${isUpdate ? "update" : "new"}`,
+      )
+      return
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -250,7 +256,7 @@ export default function BecomeHostPage() {
   const handleRegister = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setRegisterError(null)
-    setRegisterSuccess(null)
+    setRegisterError(null)
 
     if (!registerForm.locationSlug) {
       setRegisterError("Vui lòng chọn khu vực homestay.")
@@ -282,6 +288,7 @@ export default function BecomeHostPage() {
           locationSlug: registerForm.locationSlug,
           locationName: selectedRegisterRegion?.name || registerForm.locationSlug,
           maintenanceAcknowledged: registerForm.maintenanceAcknowledged,
+          paymentReference: registerHostReference,
         }),
       })
 
@@ -290,20 +297,10 @@ export default function BecomeHostPage() {
         throw new Error(data.error || "Không thể đăng ký host.")
       }
 
-      setRegisterSuccess(
-        data.message || "Đăng ký thành công. Vui lòng đăng nhập bằng tài khoản vừa tạo để tiếp tục.",
+      router.push(
+        `/apply/success?type=host&reference=${encodeURIComponent(registerHostReference)}&mode=register`,
       )
-      setRegisterForm({
-        name: "",
-        email: "",
-        phone: "",
-        password: "",
-        confirmPassword: "",
-        locationSlug: "",
-        introduction: "",
-        experience: "",
-        maintenanceAcknowledged: false,
-      })
+      return
     } catch (err) {
       setRegisterError((err as Error).message)
     } finally {
@@ -498,14 +495,6 @@ export default function BecomeHostPage() {
                     ) : null}
 
                     {registerError && <p className="text-sm text-red-600">{registerError}</p>}
-                    {registerSuccess && (
-                      <p className="text-sm text-green-600">
-                        {registerSuccess}{" "}
-                        <Button variant="link" className="px-1" onClick={authModal.openLogin}>
-                          Đăng nhập ngay
-                        </Button>
-                      </p>
-                    )}
 
                     <div className="flex items-center justify-between">
                       <Button type="submit" disabled={registerSubmitting || regionsLoading}>
@@ -668,7 +657,6 @@ export default function BecomeHostPage() {
                   ) : null}
 
                   {error && <p className="text-sm text-red-600">{error}</p>}
-                  {successMessage && <p className="text-sm text-green-600">{successMessage}</p>}
 
                   <div className="flex items-center gap-3">
                     <Button type="submit" disabled={submitting}>

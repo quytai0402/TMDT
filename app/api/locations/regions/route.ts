@@ -58,7 +58,6 @@ export async function GET() {
     // Manual aggregation because MongoDB connector does not support groupBy
     const listings = await prisma.listing.findMany({
       where: {
-        city: { not: null },
         status: {
           in: [ListingStatus.ACTIVE, ListingStatus.PENDING_REVIEW, ListingStatus.INACTIVE],
         },

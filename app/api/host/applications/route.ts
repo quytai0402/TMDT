@@ -14,6 +14,11 @@ const hostApplicationSchema = z.object({
   maintenanceAcknowledged: z.boolean().refine((val) => val === true, {
     message: "Bạn cần đồng ý với chi phí duy trì và lệ phí nền tảng",
   }),
+  paymentReference: z
+    .string()
+    .min(6, "Mã tham chiếu không hợp lệ")
+    .max(64, "Mã tham chiếu quá dài")
+    .optional(),
 })
 
 export async function GET() {
@@ -56,7 +61,14 @@ export async function POST(request: NextRequest) {
       select: { isHost: true, role: true },
     })
 
-    if (existingHost?.isHost || existingHost?.role === UserRole.HOST) {
+    // If user doesn't exist, session is stale
+    if (!existingHost) {
+      return NextResponse.json({ 
+        error: "Phiên đăng nhập đã hết hạn. Vui lòng đăng xuất và đăng nhập lại." 
+      }, { status: 401 })
+    }
+
+    if (existingHost.isHost || existingHost.role === UserRole.HOST) {
       return NextResponse.json({ error: "Bạn đã được kích hoạt quyền host" }, { status: 400 })
     }
 
@@ -66,6 +78,8 @@ export async function POST(request: NextRequest) {
         status: { in: [HostApplicationStatus.PENDING, HostApplicationStatus.APPROVED] },
       },
     })
+
+    const paymentReference = payload.paymentReference?.trim() || null
 
     if (existingApplication && existingApplication.status === HostApplicationStatus.PENDING) {
       const updated = await prisma.hostApplication.update({
@@ -79,8 +93,33 @@ export async function POST(request: NextRequest) {
           status: HostApplicationStatus.PENDING,
           reviewedAt: null,
           adminNotes: null,
+          paymentReference,
         },
       })
+
+      // Tạo notification cho admin về đơn đã cập nhật
+      const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { name: true, email: true },
+      })
+
+      const admins = await prisma.user.findMany({
+        where: { role: UserRole.ADMIN },
+        select: { id: true },
+      })
+
+      if (admins.length > 0) {
+        await prisma.notification.createMany({
+          data: admins.map((admin) => ({
+            userId: admin.id,
+            type: 'SYSTEM',
+            title: 'Đơn đăng ký host đã cập nhật',
+            message: `${user?.name || user?.email || 'Người dùng'} đã cập nhật đơn đăng ký host tại ${payload.locationName}. Mã tham chiếu: ${paymentReference || 'Chưa cập nhật'}`,
+            link: `/admin/hosts/applications`,
+            isRead: false,
+          })),
+        })
+      }
 
       return NextResponse.json({ application: updated })
     }
@@ -94,15 +133,43 @@ export async function POST(request: NextRequest) {
         experience: payload.experience,
         maintenanceAcknowledged: payload.maintenanceAcknowledged,
         status: HostApplicationStatus.PENDING,
+        paymentReference,
       },
     })
 
-    await prisma.user.update({
+    // Update user status if exists
+    const user = await prisma.user.findUnique({
       where: { id: session.user.id },
-      data: {
-        status: UserStatus.ACTIVE,
-      },
+      select: { id: true, name: true, email: true },
     })
+    
+    if (user) {
+      await prisma.user.update({
+        where: { id: session.user.id },
+        data: {
+          status: UserStatus.ACTIVE,
+        },
+      })
+    }
+
+    // Tạo notification cho tất cả admin
+    const admins = await prisma.user.findMany({
+      where: { role: UserRole.ADMIN },
+      select: { id: true },
+    })
+
+    if (admins.length > 0) {
+      await prisma.notification.createMany({
+        data: admins.map((admin) => ({
+          userId: admin.id,
+          type: 'SYSTEM',
+          title: 'Đơn đăng ký host mới',
+          message: `${user?.name || user?.email || 'Người dùng'} đã gửi đơn đăng ký trở thành host tại ${payload.locationName}. Mã tham chiếu: ${paymentReference || 'Chưa cập nhật'}`,
+          link: `/admin/hosts/applications`,
+          isRead: false,
+        })),
+      })
+    }
 
     return NextResponse.json({ application })
   } catch (error) {

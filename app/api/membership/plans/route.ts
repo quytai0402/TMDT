@@ -7,8 +7,13 @@ export async function GET(req: NextRequest) {
     const slug = searchParams.get('slug')
 
     if (slug) {
+      const normalizedSlug = slug.trim().toLowerCase()
+      if (!normalizedSlug) {
+        return NextResponse.json({ error: 'Membership plan not found' }, { status: 404 })
+      }
+
       const plan = await prisma.membershipPlan.findUnique({
-        where: { slug },
+        where: { slug: normalizedSlug },
       })
 
       if (!plan) {

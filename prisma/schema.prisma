@@ -501,6 +501,7 @@ model HostApplication {
   status                  HostApplicationStatus @default(PENDING)
   adminNotes              String?
   maintenanceAcknowledged Boolean               @default(false)
+  paymentReference        String?               // Mã tham chiếu thanh toán cho admin xác nhận
   createdAt               DateTime              @default(now())
   reviewedAt              DateTime?
 
@@ -827,7 +828,7 @@ model Booking {
   appliedPromotions       Json?
   totalPrice              Float
   currency                String @default("VND")
-  transferReference       String? @unique
+  transferReference       String?
   paymentStatus           PaymentStatus @default(PENDING)
   paymentNotes            String?
   paymentConfirmedAt      DateTime?
@@ -883,7 +884,6 @@ model Booking {
   @@index([listingId, status, checkIn(sort: Desc)])
   @@index([status, checkIn, checkOut])
   @@index([contactPhoneNormalized])
-  @@index([transferReference])
   @@map("bookings")
 }
 

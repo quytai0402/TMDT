@@ -83,7 +83,7 @@ const formatCurrency = (value?: number | null) =>
   currencyFormatter.format(Math.max(0, Math.round(value ?? 0)))
 
 export default function AdminPayoutsPage() {
-  const [statusFilter, setStatusFilter] = useState<(typeof statusOptions)[number]["value"]>("PENDING")
+  const [statusFilter, setStatusFilter] = useState<(typeof statusOptions)[number]["value"]>("ALL")
   const [payouts, setPayouts] = useState<AdminPayout[]>([])
   const [summary, setSummary] = useState<PayoutSummary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -95,12 +95,18 @@ export default function AdminPayoutsPage() {
       setLoading(true)
       const query = statusFilter === "ALL" ? "" : `?status=${statusFilter}`
       const [listResponse, summaryResponse] = await Promise.all([
-        fetch(`/api/admin/payouts${query}`, { cache: "no-store" }),
-        fetch("/api/admin/payouts?summary=true", { cache: "no-store" }),
+        fetch(`/api/admin/payouts${query}`, { cache: "no-store", credentials: "include" }),
+        fetch("/api/admin/payouts?summary=true", { cache: "no-store", credentials: "include" }),
       ])
 
       const listPayload = await listResponse.json()
       if (!listResponse.ok) {
+        if (listResponse.status === 401) {
+          throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại để xem yêu cầu rút tiền.")
+        }
+        if (listResponse.status === 403) {
+          throw new Error("Bạn không có quyền truy cập mục quản lý rút tiền.")
+        }
         throw new Error(listPayload?.error ?? "Không thể tải danh sách yêu cầu rút tiền")
       }
       setPayouts(Array.isArray(listPayload?.payouts) ? listPayload.payouts : [])
@@ -143,10 +149,17 @@ export default function AdminPayoutsPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ payoutId, action }),
+        credentials: "include",
       })
 
       const payload = await response.json()
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.")
+        }
+        if (response.status === 403) {
+          throw new Error("Bạn không có quyền thực hiện thao tác này.")
+        }
         throw new Error(payload?.error ?? "Không thể cập nhật trạng thái")
       }
 

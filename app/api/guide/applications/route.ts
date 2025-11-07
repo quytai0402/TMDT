@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { z } from "zod"
-import { GuideApplicationStatus, NotificationType } from "@prisma/client"
+import { GuideApplicationStatus, NotificationType, Prisma } from "@prisma/client"
 
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -20,6 +20,11 @@ const guideApplicationSchema = z.object({
   subscriptionAcknowledged: z.boolean().refine((value) => value === true, {
     message: "Bạn cần đồng ý mức phí 399.000đ/tháng để trở thành hướng dẫn viên",
   }),
+  paymentReference: z
+    .string()
+    .min(6, "Mã tham chiếu không hợp lệ")
+    .max(64, "Mã tham chiếu quá dài")
+    .optional(),
 })
 
 export async function GET() {
@@ -58,6 +63,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const payload = guideApplicationSchema.parse(body)
 
+    // Check if user still exists in database
     const existingGuide = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: {
@@ -68,7 +74,14 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    if (existingGuide?.isGuide && existingGuide.guideProfile?.status === "APPROVED") {
+    // If user doesn't exist, session is stale
+    if (!existingGuide) {
+      return NextResponse.json({ 
+        error: "Phiên đăng nhập đã hết hạn. Vui lòng đăng xuất và đăng nhập lại." 
+      }, { status: 401 })
+    }
+
+    if (existingGuide.isGuide && existingGuide.guideProfile?.status === "APPROVED") {
       return NextResponse.json({ error: "Bạn đã được kích hoạt vai trò hướng dẫn viên" }, { status: 400 })
     }
 
@@ -80,6 +93,26 @@ export async function POST(request: NextRequest) {
     })
 
     const unique = (values: string[]) => Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)))
+
+    const paymentReference = payload.paymentReference?.trim() || null
+
+    const currentDocuments: Record<string, unknown> =
+      existingApplication?.documents &&
+      typeof existingApplication.documents === "object" &&
+      !Array.isArray(existingApplication.documents)
+        ? { ...(existingApplication.documents as Record<string, unknown>) }
+        : {}
+
+    if (paymentReference) {
+      currentDocuments.paymentReference = paymentReference
+    }
+
+    const documents: Prisma.JsonValue | null =
+      Object.keys(currentDocuments).length > 0
+        ? (currentDocuments as Prisma.JsonObject)
+        : paymentReference
+        ? ({ paymentReference } as Prisma.JsonObject)
+        : null
 
     const data = {
       displayName: payload.displayName.trim(),
@@ -96,6 +129,7 @@ export async function POST(request: NextRequest) {
       adminNotes: null,
       reviewedAt: null,
       guideProfileId: null,
+      documents,
     }
 
     const application = existingApplication
@@ -111,19 +145,27 @@ export async function POST(request: NextRequest) {
           },
         })
 
-    if (!existingGuide?.isGuide) {
-      await prisma.user.update({
-        where: { id: session.user.id },
-        data: {
-          isGuide: false,
-        },
-      })
+    // Only update user if they exist and are not already a guide
+    if (existingGuide && !existingGuide.isGuide) {
+      try {
+        await prisma.user.update({
+          where: { id: session.user.id },
+          data: {
+            isGuide: false,
+          },
+        })
+      } catch (error) {
+        console.error('Failed to update user guide status:', error)
+        // Continue even if update fails - application is already created
+      }
     }
 
     await notifyAdmins({
       type: NotificationType.SYSTEM,
       title: "Yêu cầu hướng dẫn viên mới",
-      message: `${payload.displayName} vừa gửi hồ sơ trở thành hướng dẫn viên`,
+      message: `${payload.displayName} vừa gửi hồ sơ trở thành hướng dẫn viên${
+        paymentReference ? ` • Mã tham chiếu: ${paymentReference}` : ""
+      }`,
       link: "/admin/guides/applications",
       data: {
         applicantId: session.user.id,

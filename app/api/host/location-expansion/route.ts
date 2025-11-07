@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
       type: NotificationType.SYSTEM,
       title: "Hồ sơ host • Yêu cầu mở rộng khu vực",
       message: `${session.user.name ?? "Host"} muốn đăng tin tại ${location.city}, ${location.state}. Phí xử lý: ${formattedFee}.`,
-      link: `/admin/hosts/applications?tab=pending`,
+      link: `/admin/hosts/applications`,
       data: {
         requestId: request.id,
         transactionId: transaction.id,

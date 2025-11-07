@@ -32,6 +32,11 @@ const signupSchema = z.object({
   subscriptionAcknowledged: z.boolean().refine((value) => value, {
     message: "Bạn cần đồng ý với phí thành viên 399.000đ/tháng.",
   }),
+  paymentReference: z
+    .string()
+    .min(6, "Mã tham chiếu không hợp lệ")
+    .max(64, "Mã tham chiếu quá dài")
+    .optional(),
 })
 
 const uniqueValues = (values: string[]) =>
@@ -69,6 +74,8 @@ export async function POST(request: NextRequest) {
 
     const hashedPassword = await hashPassword(payload.password)
 
+    const paymentReference = payload.paymentReference?.trim() || null
+
     const user = await prisma.user.create({
       data: {
         name: payload.name.trim(),
@@ -95,13 +102,16 @@ export async function POST(request: NextRequest) {
         availabilityNotes: payload.availabilityNotes?.trim() ?? null,
         portfolioLinks: uniqueValues(payload.portfolioLinks ?? []),
         subscriptionAcknowledged: payload.subscriptionAcknowledged,
+        documents: paymentReference ? ({ paymentReference } as Prisma.JsonObject) : null,
       },
     })
 
     await notifyAdmins({
       type: NotificationType.SYSTEM,
       title: "Hồ sơ hướng dẫn viên mới",
-      message: `${payload.displayName} vừa đăng ký tài khoản và gửi hồ sơ hướng dẫn viên mới.`,
+      message: `${payload.displayName} vừa đăng ký tài khoản và gửi hồ sơ hướng dẫn viên mới${
+        paymentReference ? ` • Mã tham chiếu: ${paymentReference}` : ""
+      }`,
       link: "/admin/guides/applications",
       data: {
         applicantId: user.id,

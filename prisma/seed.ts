@@ -46,7 +46,32 @@ const buildNearbyPlaces = (city: string, latitude: number, longitude: number) =>
   }
 }
 
+async function resetDatabase() {
+  console.log('🧨 Resetting database before seeding...')
+  try {
+    await prisma.$runCommandRaw({ dropDatabase: 1 })
+    console.log('✅ Existing data cleared.')
+  } catch (error: any) {
+    if (error?.codeName === 'NamespaceNotFound') {
+      console.log('ℹ️ Database already empty, skipping drop.')
+    } else {
+      console.error('❌ Failed to drop database:', error)
+      throw error
+    }
+  } finally {
+    await prisma.$disconnect()
+    await prisma.$connect()
+  }
+}
+
 async function main() {
+  // Only reset database if RESET_DB environment variable is set to 'true'
+  if (process.env.RESET_DB === 'true') {
+    await resetDatabase()
+  } else {
+    console.log('ℹ️  Skipping database reset (set RESET_DB=true to reset)')
+  }
+
   console.log('🌱 Starting database seeding...')
 
   // Clean existing data (optional - uncomment if you want to reset)
@@ -59,16 +84,47 @@ async function main() {
 
   // Create Users
   console.log('👥 Creating users...')
-  
-  const hashedPassword = await bcrypt.hash('password123', 10)
 
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@luxestay.com' },
-    update: {},
+  const hashedPassword = await bcrypt.hash('password123', 10)
+  const adminPasswordHash = await bcrypt.hash('admin', 10)
+  const hostPasswordHash = await bcrypt.hash('host', 10)
+  const guidePasswordHash = await bcrypt.hash('huongdanvien', 10)
+  const demoGuestPasswordHash = await bcrypt.hash('user', 10)
+
+  // Main admin account
+  const mainAdmin = await prisma.user.upsert({
+    where: { email: 'admin' },
+    update: {
+      name: 'Admin',
+      password: adminPasswordHash,
+      role: 'ADMIN',
+      isHost: true,
+      emailVerified: new Date(),
+      phone: '0900000000',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=mainadmin',
+      bio: 'Super Admin',
+      referralCode: 'SUPERADMIN',
+    },
     create: {
-      email: 'admin@luxestay.com',
+      email: 'admin',
+      name: 'Admin',
+      password: adminPasswordHash,
+      role: 'ADMIN',
+      isHost: true,
+      emailVerified: new Date(),
+      phone: '0900000000',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=mainadmin',
+      bio: 'Super Admin',
+      referralCode: 'SUPERADMIN',
+    },
+  })
+
+  // Main demo accounts với domain riêng
+  const admin = await prisma.user.upsert({
+    where: { email: 'admin@admin.com' },
+    update: {
       name: 'Admin LuxeStay',
-      password: hashedPassword,
+      password: adminPasswordHash,
       role: 'ADMIN',
       isHost: true,
       emailVerified: new Date(),
@@ -76,16 +132,112 @@ async function main() {
       image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
       bio: 'Quản trị viên hệ thống LuxeStay',
       referralCode: 'ADMIN2024',
-    }
+    },
+    create: {
+      email: 'admin@admin.com',
+      name: 'Admin LuxeStay',
+      password: adminPasswordHash,
+      role: 'ADMIN',
+      isHost: true,
+      emailVerified: new Date(),
+      phone: '0901234567',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
+      bio: 'Quản trị viên hệ thống LuxeStay',
+      referralCode: 'ADMIN2024',
+    },
   })
 
-  const host1 = await prisma.user.upsert({
-    where: { email: 'nguyen.minh.anh@gmail.com' },
-    update: {},
+  const demoHost = await prisma.user.upsert({
+    where: { email: 'host@host.com' },
+    update: {
+      name: 'Demo Host',
+      password: hostPasswordHash,
+      role: 'HOST',
+      isHost: true,
+      isSuperHost: false,
+      emailVerified: new Date(),
+      phone: '0912340000',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=demohost',
+      bio: 'Tài khoản demo cho chủ nhà',
+      languages: ['Tiếng Việt', 'English'],
+      referralCode: 'DEMOHOST',
+    },
     create: {
-      email: 'nguyen.minh.anh@gmail.com',
+      email: 'host@host.com',
+      name: 'Demo Host',
+      password: hostPasswordHash,
+      role: 'HOST',
+      isHost: true,
+      isSuperHost: false,
+      emailVerified: new Date(),
+      phone: '0912340000',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=demohost',
+      bio: 'Tài khoản demo cho chủ nhà',
+      languages: ['Tiếng Việt', 'English'],
+      referralCode: 'DEMOHOST',
+    },
+  })
+
+  const demoGuide = await prisma.user.upsert({
+    where: { email: 'huongdanvien@huongdanvien.com' },
+    update: {
+      name: 'Demo Guide',
+      password: guidePasswordHash,
+      role: 'HOST',
+      isHost: true,
+      isGuide: true,
+      emailVerified: new Date(),
+      phone: '0977000000',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=demoguide',
+      bio: 'Tài khoản demo cho hướng dẫn viên',
+      languages: ['Tiếng Việt', 'English'],
+      referralCode: 'DEMOGUIDE',
+    },
+    create: {
+      email: 'huongdanvien@huongdanvien.com',
+      name: 'Demo Guide',
+      password: guidePasswordHash,
+      role: 'HOST',
+      isHost: true,
+      isGuide: true,
+      emailVerified: new Date(),
+      phone: '0977000000',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=demoguide',
+      bio: 'Tài khoản demo cho hướng dẫn viên',
+      languages: ['Tiếng Việt', 'English'],
+      referralCode: 'DEMOGUIDE',
+    },
+  })
+
+  const demoUser = await prisma.user.upsert({
+    where: { email: 'user@user.com' },
+    update: {
+      name: 'Demo User',
+      password: demoGuestPasswordHash,
+      role: 'GUEST',
+      emailVerified: new Date(),
+      phone: '0934560000',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=demouser',
+      referralCode: 'DEMOUSER',
+    },
+    create: {
+      email: 'user@user.com',
+      name: 'Demo User',
+      password: demoGuestPasswordHash,
+      role: 'GUEST',
+      emailVerified: new Date(),
+      phone: '0934560000',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=demouser',
+      referralCode: 'DEMOUSER',
+    },
+  })
+
+  // Tài khoản host và guide với Gmail domain (có dữ liệu thực)
+  const host1 = await prisma.user.upsert({
+    where: { email: 'host@gmail.com' },
+    update: {
       name: 'Nguyễn Minh Anh',
-      password: hashedPassword,
+      password: hostPasswordHash,
       role: 'HOST',
       isHost: true,
       isSuperHost: true,
@@ -95,7 +247,21 @@ async function main() {
       bio: 'Super Host với hơn 5 năm kinh nghiệm cho thuê homestay tại Đà Lạt và Nha Trang',
       languages: ['Tiếng Việt', 'English', '한국어'],
       referralCode: 'HOST1ANH',
-    }
+    },
+    create: {
+      email: 'host@gmail.com',
+      name: 'Nguyễn Minh Anh',
+      password: hostPasswordHash,
+      role: 'HOST',
+      isHost: true,
+      isSuperHost: true,
+      emailVerified: new Date(),
+      phone: '0912345678',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=host1',
+      bio: 'Super Host với hơn 5 năm kinh nghiệm cho thuê homestay tại Đà Lạt và Nha Trang',
+      languages: ['Tiếng Việt', 'English', '한국어'],
+      referralCode: 'HOST1ANH',
+    },
   })
 
   const host2 = await prisma.user.upsert({
@@ -116,19 +282,57 @@ async function main() {
     }
   })
 
-  const guest1 = await prisma.user.upsert({
-    where: { email: 'khach1@gmail.com' },
-    update: {},
+  const guide = await prisma.user.upsert({
+    where: { email: 'huongdanvien@gmail.com' },
+    update: {
+      name: 'Huỳnh Gia Huy',
+      password: guidePasswordHash,
+      role: 'HOST',
+      isHost: true,
+      isGuide: true,
+      emailVerified: new Date(),
+      phone: '0977001122',
+      image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=600&q=80',
+      bio: 'Lead concierge & hướng dẫn viên cao cấp của LuxeStay.',
+      languages: ['Tiếng Việt', 'English'],
+    },
     create: {
-      email: 'khach1@gmail.com',
+      email: 'huongdanvien@gmail.com',
+      name: 'Huỳnh Gia Huy',
+      password: guidePasswordHash,
+      role: 'HOST',
+      isHost: true,
+      isGuide: true,
+      emailVerified: new Date(),
+      phone: '0977001122',
+      image: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=600&q=80',
+      bio: 'Lead concierge & hướng dẫn viên cao cấp của LuxeStay.',
+      languages: ['Tiếng Việt', 'English'],
+      referralCode: 'GUIDEVIP',
+    },
+  })
+
+  const guest1 = await prisma.user.upsert({
+    where: { email: 'user@gmail.com' },
+    update: {
       name: 'Lê Thị Thu',
-      password: hashedPassword,
+      password: demoGuestPasswordHash,
       role: 'GUEST',
       emailVerified: new Date(),
       phone: '0934567890',
       image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=guest1',
       referralCode: 'GUESTTHU',
-    }
+    },
+    create: {
+      email: 'user@gmail.com',
+      name: 'Lê Thị Thu',
+      password: demoGuestPasswordHash,
+      role: 'GUEST',
+      emailVerified: new Date(),
+      phone: '0934567890',
+      image: 'https://api.dicebear.com/7.x/avataaars/svg?seed=guest1',
+      referralCode: 'GUESTTHU',
+    },
   })
 
   const guest2 = await prisma.user.upsert({
@@ -166,6 +370,8 @@ async function main() {
       languages: ['Tiếng Việt', 'English'],
     },
   })
+
+  void guide
 
   const guideApplicationPayload = {
     displayName: 'Tai Quy Experiences',
@@ -468,6 +674,31 @@ async function main() {
       bookingDiscountRate: 12,
       applyDiscountToServices: true,
       displayOrder: 3,
+    },
+    {
+      slug: 'luxe-diamond',
+      name: 'Luxe Diamond',
+      tagline: 'Đặc quyền thượng lưu với concierge riêng 24/7',
+      description: 'Gói cao cấp nhất của LuxeStay dành cho hội viên Diamond với đặc quyền du lịch, ưu đãi dịch vụ và trải nghiệm độc bản.',
+      icon: '🔹',
+      color: '#0F4C81',
+      monthlyPrice: 1499000,
+      annualPrice: 14999000,
+      savings: 28,
+      isPopular: false,
+      features: [
+        'Giảm 15% cho mọi booking và dịch vụ',
+        'Concierge riêng 24/7 với hotline ưu tiên',
+        'Ưu tiên nâng hạng biệt thự/phòng tổng thống khi còn trống',
+      ],
+      exclusiveFeatures: [
+        '2 đêm nghỉ dưỡng miễn phí mỗi năm tại bộ sưu tập Luxe Private',
+        'Ưu đãi 20% cho dịch vụ trải nghiệm HDV và sự kiện đặc biệt',
+        'Đặc quyền mời 1 khách đi kèm sử dụng tiện ích Diamond Lounge',
+      ],
+      bookingDiscountRate: 15,
+      applyDiscountToServices: true,
+      displayOrder: 4,
     },
   ]
 
@@ -2703,6 +2934,34 @@ async function main() {
 
   console.log('✅ Host profiles created')
 
+  // Create Guide Profile
+  console.log('👨‍🏫 Creating guide profile...')
+  const guideProfile = await prismaAny.guideProfile.upsert({
+    where: { userId: guide.id },
+    update: {},
+    create: {
+      userId: guide.id,
+      displayName: 'Huỳnh Gia Huy Travel Guide',
+      tagline: 'Khám phá Việt Nam cùng local expert',
+      bio: 'Xin chào! Tôi là Huy, hướng dẫn viên du lịch chuyên nghiệp với 8 năm kinh nghiệm dẫn tour tại các điểm đến nổi tiếng Việt Nam. Chuyên về văn hóa, ẩm thực và thiên nhiên. Đã phục vụ hơn 2000 khách quốc tế.',
+      languages: ['Tiếng Việt', 'English', 'Mandarin'],
+      serviceAreas: ['TP.HCM', 'Đà Nẵng', 'Hội An', 'Nha Trang', 'Đà Lạt'],
+      specialties: ['Văn hóa', 'Ẩm thực', 'Nhiếp ảnh', 'Trekking'],
+      yearsExperience: 8,
+      status: 'APPROVED',
+      subscriptionStatus: 'ACTIVE',
+      subscriptionStarted: new Date('2023-01-01'),
+      averageRating: 4.9,
+      totalReviews: 156,
+      totalBookings: 420,
+      totalEarnings: 350000000,
+      totalPayouts: 315000000,
+      spotlight: true,
+      featuredHighlights: ['Hướng dẫn viên được yêu thích nhất', 'Chuyên gia về văn hóa và ẩm thực', 'Đánh giá 5 sao'],
+    },
+  })
+  console.log('✅ Guide profile created')
+
   // Create Host Applications
   console.log('📝 Creating host applications...')
   await prismaAny.hostApplication.createMany({
@@ -3371,6 +3630,110 @@ async function main() {
     },
   })
 
+  // Experiences by Guide
+  const experience3 = await prismaAny.experience.create({
+    data: {
+      hostId: guide.id,
+      title: 'Walking Tour Sài Gòn về Đêm - Khám Phá Văn Hóa & Ẩm Thực',
+      description: 'Khám phá Sài Gòn về đêm với hướng dẫn viên địa phương. Trải nghiệm ẩm thực đường phố, văn hóa và lịch sử thành phố qua các câu chuyện thú vị.',
+      category: 'FOOD_DRINK',
+      city: 'Hồ Chí Minh',
+      location: 'Quận 1 - Bến Thành',
+      latitude: 10.7723,
+      longitude: 106.6980,
+      image: 'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=800',
+      images: [
+        'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=800',
+        'https://images.unsplash.com/photo-1552566626-52f8b828add9?w=800',
+        'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800',
+      ],
+      price: 450000,
+      currency: 'VND',
+      duration: '4 giờ',
+      groupSize: 'Tối đa 6 người',
+      minGuests: 1,
+      maxGuests: 6,
+      includedItems: ['Hướng dẫn viên', 'Đồ ăn nhẹ', 'Nước uống', 'Phí tham quan'],
+      notIncluded: ['Vận chuyển đến điểm hẹn', 'Đồ uống có cồn'],
+      requirements: ['Mang giày thoải mái', 'Sẵn sàng đi bộ khoảng 3km'],
+      languages: ['Tiếng Việt', 'English'],
+      tags: ['Ẩm thực', 'Văn hóa', 'Đi bộ', 'Đêm', 'Nhiếp ảnh'],
+      status: 'ACTIVE',
+      isVerified: true,
+      averageRating: 5.0,
+      totalReviews: 89,
+      totalBookings: 203,
+    },
+  })
+
+  const experience4 = await prismaAny.experience.create({
+    data: {
+      hostId: guide.id,
+      title: 'Tour Nhiếp Ảnh Hội An - Bắt Trọn Phố Cổ',
+      description: 'Tour nhiếp ảnh độc đáo tại phố cổ Hội An với hướng dẫn viên chuyên nghiệp. Học cách chụp ảnh đẹp và khám phá những góc ẩn ít người biết.',
+      category: 'WORKSHOP',
+      city: 'Hội An',
+      location: 'Phố Cổ Hội An',
+      latitude: 15.8801,
+      longitude: 108.3380,
+      image: 'https://images.unsplash.com/photo-1555881400-74d7acaacd8b?w=800',
+      images: [
+        'https://images.unsplash.com/photo-1555881400-74d7acaacd8b?w=800',
+        'https://images.unsplash.com/photo-1587899897387-091ebd01a6b2?w=800',
+      ],
+      price: 650000,
+      currency: 'VND',
+      duration: '3 giờ',
+      groupSize: 'Tối đa 4 người',
+      minGuests: 1,
+      maxGuests: 4,
+      includedItems: ['Hướng dẫn nhiếp ảnh chuyên nghiệp', 'Các góc chụp đẹp', 'Tips chỉnh sửa ảnh', 'Nước uống'],
+      notIncluded: ['Máy ảnh (tự mang theo)', 'Bữa ăn'],
+      requirements: ['Mang theo máy ảnh hoặc smartphone', 'Đam mê nhiếp ảnh'],
+      languages: ['Tiếng Việt', 'English', 'Mandarin'],
+      tags: ['Nhiếp ảnh', 'Văn hóa', 'Phố cổ', 'Nghệ thuật'],
+      status: 'ACTIVE',
+      isVerified: true,
+      averageRating: 4.9,
+      totalReviews: 67,
+      totalBookings: 145,
+    },
+  })
+
+  const experience5 = await prismaAny.experience.create({
+    data: {
+      hostId: guide.id,
+      title: 'Trekking Tà Năng - Phan Dũng 2 Ngày 1 Đêm',
+      description: 'Chinh phục cung đường trekking đẹp nhất Việt Nam với hướng dẫn viên giàu kinh nghiệm. Ngắm bình minh trên núi, cắm trại dưới trời sao.',
+      category: 'ADVENTURE',
+      city: 'Đà Lạt',
+      location: 'Tà Năng - Phan Dũng',
+      latitude: 11.7512,
+      longitude: 108.4378,
+      image: 'https://images.unsplash.com/photo-1551632811-561732d1e306?w=800',
+      images: [
+        'https://images.unsplash.com/photo-1551632811-561732d1e306?w=800',
+        'https://images.unsplash.com/photo-1478131143081-80f7f84ca84d?w=800',
+      ],
+      price: 1500000,
+      currency: 'VND',
+      duration: '2 ngày 1 đêm',
+      groupSize: 'Tối đa 8 người',
+      minGuests: 4,
+      maxGuests: 8,
+      includedItems: ['Hướng dẫn viên', 'Lều trại', 'Túi ngủ', 'Bữa ăn (3 bữa)', 'Nước uống', 'Vận chuyển'],
+      notIncluded: ['Bảo hiểm du lịch', 'Đồ cá nhân'],
+      requirements: ['Sức khỏe tốt', 'Kinh nghiệm trekking cơ bản', 'Trên 16 tuổi'],
+      languages: ['Tiếng Việt', 'English'],
+      tags: ['Trekking', 'Cắm trại', 'Thiên nhiên', 'Phiêu lưu', 'Núi'],
+      status: 'ACTIVE',
+      isVerified: true,
+      averageRating: 4.8,
+      totalReviews: 34,
+      totalBookings: 78,
+    },
+  })
+
   console.log('✅ Experiences created')
 
   // Create Experience Bookings and Reviews
@@ -3960,7 +4323,7 @@ async function main() {
         action: 'CREATE_USER',
         entityType: 'User',
         entityId: guest1.id,
-        changes: { email: 'khach1@gmail.com', role: 'GUEST' },
+        changes: { email: 'user@gmail.com', role: 'GUEST' },
         ipAddress: '127.0.0.1',
         userAgent: 'Seed Script',
       },

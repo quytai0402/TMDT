@@ -19,6 +19,7 @@ interface HostApplication {
   experience?: string | null
   status: "PENDING" | "APPROVED" | "REJECTED"
   maintenanceAcknowledged: boolean
+  paymentReference?: string | null
   createdAt: string
   reviewedAt?: string | null
   adminNotes?: string | null
@@ -36,7 +37,7 @@ interface HostApplication {
 export default function AdminHostApplicationsPage() {
   const [applications, setApplications] = useState<HostApplication[]>([])
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<"all" | "pending" | "approved" | "rejected">("pending")
+  const [activeTab, setActiveTab] = useState<"all" | "pending" | "approved" | "rejected">("all")
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [notes, setNotes] = useState<Record<string, string>>({})
 
@@ -102,10 +103,10 @@ export default function AdminHostApplicationsPage() {
 
         <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
           <TabsList>
+            <TabsTrigger value="all">Tất cả</TabsTrigger>
             <TabsTrigger value="pending">Chờ duyệt</TabsTrigger>
             <TabsTrigger value="approved">Đã duyệt</TabsTrigger>
             <TabsTrigger value="rejected">Đã từ chối</TabsTrigger>
-            <TabsTrigger value="all">Tất cả</TabsTrigger>
           </TabsList>
 
           <TabsContent value={activeTab} className="space-y-4">
@@ -154,6 +155,14 @@ export default function AdminHostApplicationsPage() {
                         <p>Xác minh: {application.user.isVerified ? "Đã xác minh" : "Chưa"}</p>
                       </div>
                     </div>
+
+                    {application.paymentReference && (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                        <p className="text-sm font-semibold text-blue-900">Mã tham chiếu thanh toán</p>
+                        <p className="mt-1 text-lg font-mono font-bold text-blue-700">{application.paymentReference}</p>
+                        <p className="mt-1 text-xs text-blue-600">Sử dụng mã này để xác nhận thanh toán trong hệ thống ngân hàng</p>
+                      </div>
+                    )}
 
                     {application.introduction && (
                       <div className="rounded-lg border p-4">

@@ -5,7 +5,7 @@ import FacebookProvider from 'next-auth/providers/facebook'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { prisma } from '@/lib/prisma'
 import { verifyPassword, generateReferralCode } from '@/lib/helpers'
-import type { Profile as NextAuthProfile, Session, User } from 'next-auth'
+import type { Session, User } from 'next-auth'
 import type {
   Adapter,
   AdapterAccount,
@@ -13,7 +13,7 @@ import type {
   AdapterUser,
 } from 'next-auth/adapters'
 import type { JWT } from 'next-auth/jwt'
-import type { UserRole } from '@prisma/client'
+import type { Prisma, UserRole } from '@prisma/client'
 
 type MembershipPlanSnapshot = {
   slug: string
@@ -391,7 +391,7 @@ export const authOptions: NextAuthOptions = {
         let attempts = 0
 
         while (attempts < 5) {
-          const existing = await prisma.user.findUnique({
+          const existing = await prisma.user.findFirst({
             where: { referralCode },
           })
           if (!existing) break
@@ -406,25 +406,86 @@ export const authOptions: NextAuthOptions = {
             lastLoginAt: new Date(),
           },
         })
+
+        // Ensure default user settings exist for the new account
+        await prisma.userSettings
+          .create({
+            data: {
+              userId: user.id,
+            },
+          })
+          .catch((settingsError: unknown) => {
+            const errorWithCode = settingsError as { code?: string }
+            if (errorWithCode?.code !== 'P2002') {
+              console.error('Failed to initialize user settings for new user:', settingsError)
+            }
+          })
       } catch (error) {
         console.error('createUser event error:', error)
       }
     },
-    async signIn({ user }) {
+    async signIn({ user, account, profile, isNewUser }) {
       if (!user?.id) return
       try {
         const existing = await prisma.user.findUnique({
           where: { id: user.id },
-          select: { emailVerified: true },
+          select: {
+            emailVerified: true,
+            name: true,
+            image: true,
+          },
         })
+
+  const updateData: Prisma.UserUpdateInput = {
+          lastLoginAt: new Date(),
+          emailVerified: existing?.emailVerified ?? new Date(),
+        }
+
+        const provider = account?.provider?.toLowerCase()
+        const isOAuthFirstLogin =
+          Boolean(isNewUser) && !!provider && ['google', 'facebook'].includes(provider)
+
+        if (isOAuthFirstLogin) {
+          const profileData = (profile ?? {}) as Record<string, unknown>
+          const givenName = typeof profileData['given_name'] === 'string' ? profileData['given_name'] : undefined
+          const familyName = typeof profileData['family_name'] === 'string' ? profileData['family_name'] : undefined
+          const rawProfileName = typeof profileData['name'] === 'string' ? profileData['name'] : undefined
+          const fallbackEmailName = typeof user.email === 'string' ? user.email.split('@')[0] : undefined
+          const computedName =
+            rawProfileName ||
+            [givenName, familyName].filter((part): part is string => Boolean(part)).join(' ').trim() ||
+            (typeof user.name === 'string' ? user.name : undefined) ||
+            fallbackEmailName ||
+            undefined
+
+          const computedImage =
+            (typeof profileData['picture'] === 'string' && profileData['picture']) ||
+            (typeof profileData['image'] === 'string' && profileData['image']) ||
+            (typeof profileData['avatar'] === 'string' && profileData['avatar']) ||
+            (typeof profileData['avatar_url'] === 'string' && profileData['avatar_url']) ||
+            (typeof user.image === 'string' ? user.image : undefined)
+
+          if (!existing?.name && computedName) {
+            updateData.name = computedName
+          }
+
+          if (!existing?.image && computedImage) {
+            updateData.image = computedImage
+          }
+        }
 
         await prisma.user.update({
           where: { id: user.id },
-          data: {
-            lastLoginAt: new Date(),
-            emailVerified: existing?.emailVerified ?? new Date(),
-          },
+          data: updateData,
         })
+
+        if (isOAuthFirstLogin) {
+          await prisma.userSettings.upsert({
+            where: { userId: user.id },
+            update: {},
+            create: { userId: user.id },
+          })
+        }
       } catch (error) {
         console.error('signIn event update error:', error)
       }

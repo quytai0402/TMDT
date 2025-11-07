@@ -102,11 +102,11 @@ const tabToStatus: Record<TabValue, GuideApplicationStatus | null> = {
 }
 
 const tabItems: { value: TabValue; label: string }[] = [
+  { value: "all", label: "Tất cả" },
   { value: "pending", label: "Chờ duyệt" },
   { value: "needs_revision", label: "Cần chỉnh sửa" },
   { value: "approved", label: "Đã duyệt" },
   { value: "rejected", label: "Đã từ chối" },
-  { value: "all", label: "Tất cả" },
 ]
 
 const numberFormatter = new Intl.NumberFormat("vi-VN", {
@@ -120,17 +120,24 @@ const percentFormatter = new Intl.NumberFormat("vi-VN", {
   maximumFractionDigits: 1,
 })
 
-const buildDocumentList = (documents: unknown) => {
+const FRIENDLY_DOCUMENT_LABELS: Record<string, string> = {
+  paymentReference: "Mã tham chiếu thanh toán",
+}
+
+const buildDocumentList = (documents: unknown): { label: string; value: string }[] => {
   if (Array.isArray(documents)) {
     return documents
-      .filter((item): item is string => typeof item === "string" && item.length > 0)
-      .map((item) => ({ label: item, url: item }))
+      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .map((item) => ({ label: item, value: item }))
   }
 
   if (documents && typeof documents === "object") {
     return Object.entries(documents as Record<string, unknown>)
-      .filter(([, value]) => typeof value === "string" && value.length > 0)
-      .map(([key, value]) => ({ label: key, url: value as string }))
+      .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
+      .map(([key, value]) => ({
+        label: FRIENDLY_DOCUMENT_LABELS[key] ?? key,
+        value: value as string,
+      }))
   }
 
   return []
@@ -139,7 +146,7 @@ const buildDocumentList = (documents: unknown) => {
 export default function AdminGuideApplicationsPage() {
   const [applications, setApplications] = useState<GuideApplication[]>([])
   const [meta, setMeta] = useState<GuideMeta>({ fee: 399_000, commissionRate: 0.1 })
-  const [activeTab, setActiveTab] = useState<TabValue>("pending")
+  const [activeTab, setActiveTab] = useState<TabValue>("all")
   const [loading, setLoading] = useState(false)
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [notes, setNotes] = useState<Record<string, string>>({})
@@ -475,19 +482,34 @@ export default function AdminGuideApplicationsPage() {
 
                       {documentEntries.length > 0 ? (
                         <div className="rounded-lg border p-4">
-                          <p className="text-sm font-semibold text-muted-foreground">Tài liệu đính kèm</p>
+                          <p className="text-sm font-semibold text-muted-foreground">Thông tin bổ sung</p>
                           <div className="mt-2 flex flex-col gap-2 text-sm">
-                            {documentEntries.map((doc) => (
-                              <Link
-                                key={doc.url}
-                                href={doc.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-2 text-primary hover:underline"
-                              >
-                                <ExternalLink className="h-4 w-4" /> {doc.label}
-                              </Link>
-                            ))}
+                            {documentEntries.map((doc, index) => {
+                              const key = `${doc.label}-${index}`
+                              const isLink = /^https?:\/\//i.test(doc.value)
+                              if (isLink) {
+                                return (
+                                  <Link
+                                    key={key}
+                                    href={doc.value}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-2 text-primary hover:underline"
+                                  >
+                                    <ExternalLink className="h-4 w-4" /> {doc.label || doc.value}
+                                  </Link>
+                                )
+                              }
+
+                              return (
+                                <div key={key} className="flex flex-wrap items-center gap-2">
+                                  <span className="text-muted-foreground">{doc.label || "Thông tin"}:</span>
+                                  <code className="rounded bg-muted px-2 py-1 text-sm text-foreground">
+                                    {doc.value}
+                                  </code>
+                                </div>
+                              )
+                            })}
                           </div>
                         </div>
                       ) : null}

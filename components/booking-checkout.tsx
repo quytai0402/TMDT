@@ -338,7 +338,7 @@ export function BookingCheckout({
   const [bookingCode, setBookingCode] = useState<string | null>(null)
   const paymentSectionRef = useRef<HTMLDivElement | null>(null)
   const splitSuggestionSectionRef = useRef<HTMLDivElement | null>(null)
-  const autoCouponRef = useRef(false)
+  const previousBookingIdRef = useRef<string | null>(null)
   const [splitSuggestion, setSplitSuggestion] = useState<SplitStaySuggestion | null>(null)
   const [selectedAlternatives, setSelectedAlternatives] = useState<Record<string, string>>({})
   const [splitPlanApplied, setSplitPlanApplied] = useState(false)
@@ -397,32 +397,40 @@ export function BookingCheckout({
   const sessionMembershipStatus = sessionUser?.membershipStatus ?? null
   const loyaltyTier = sessionUser?.membership ?? null
   const planSnapshot = sessionUser?.membershipPlan ?? null
-  const planActive = planSnapshot
-    ? sessionMembershipStatus !== "INACTIVE" &&
-      sessionMembershipStatus !== "CANCELLED" &&
-      sessionMembershipStatus !== "EXPIRED"
-    : false
+  const activePlan = useMemo(() => {
+    if (!planSnapshot) {
+      return null
+    }
+    if (
+      sessionMembershipStatus === "INACTIVE" ||
+      sessionMembershipStatus === "CANCELLED" ||
+      sessionMembershipStatus === "EXPIRED"
+    ) {
+      return null
+    }
+    return planSnapshot
+  }, [planSnapshot, sessionMembershipStatus])
   const loyaltyConfig = getLoyaltyDiscountConfig(loyaltyTier)
-  const previewDiscountRate = planActive ? planSnapshot.discountRate ?? 0 : loyaltyConfig.rate
-  const previewAppliesToServices = planActive
-    ? Boolean(planSnapshot?.applyDiscountToServices)
+  const previewDiscountRate = activePlan ? activePlan.discountRate ?? 0 : loyaltyConfig.rate
+  const previewAppliesToServices = activePlan
+    ? Boolean(activePlan.applyDiscountToServices)
     : loyaltyConfig.applyToServices
   const previewDiscountBase =
     previewDiscountRate > 0 ? subtotal + (previewAppliesToServices ? servicesTotal : 0) : 0
   const previewMembershipDiscount =
     previewDiscountBase > 0 ? Math.round((previewDiscountBase * previewDiscountRate) / 100) : 0
-  const previewMembershipLabel = planActive ? planSnapshot?.name : loyaltyConfig.label
+  const previewMembershipLabel = activePlan?.name ?? loyaltyConfig.label
 
   const serverMembershipDiscount = Math.round(bookingData?.membershipDiscount ?? 0)
   const serverPromotionDiscount = Math.round(bookingData?.promotionDiscount ?? 0)
-  const appliedPromotions = useMemo(() => {
+  const appliedPromotions = useMemo<Array<Record<string, any>>>(() => {
     if (!bookingData?.appliedPromotions) {
-      return [] as Array<Record<string, any>>
+      return []
     }
     if (Array.isArray(bookingData.appliedPromotions)) {
-      return bookingData.appliedPromotions.filter((entry): entry is Record<string, any> => Boolean(entry) && typeof entry === "object")
+      return bookingData.appliedPromotions.filter((entry: unknown): entry is Record<string, any> => Boolean(entry) && typeof entry === "object")
     }
-    return [] as Array<Record<string, any>>
+    return []
   }, [bookingData?.appliedPromotions])
 
   const membershipPromotion = useMemo(() => {
@@ -809,12 +817,28 @@ export function BookingCheckout({
   }, [fetchConciergePlans])
 
   useEffect(() => {
-    if (bookingId && initialCouponCode && !autoCouponRef.current) {
-      autoCouponRef.current = true
-      setCouponCode(initialCouponCode)
-      applyCoupon(initialCouponCode, { silent: true })
+    if (!bookingId) {
+      previousBookingIdRef.current = null
+      return
     }
-  }, [applyCoupon, bookingId, initialCouponCode])
+
+    if (previousBookingIdRef.current === bookingId) {
+      return
+    }
+
+    previousBookingIdRef.current = bookingId
+
+    if (couponPromotion) {
+      return
+    }
+
+    const pendingCode = couponCode.trim()
+    if (!pendingCode) {
+      return
+    }
+
+    applyCoupon(pendingCode, { silent: true })
+  }, [applyCoupon, bookingId, couponCode, couponPromotion])
 
   const canCreateBooking = tripInfoValid && guestInfoCompleted
   const confirmButtonLabel = isSubmitting

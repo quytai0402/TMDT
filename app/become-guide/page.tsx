@@ -150,7 +150,6 @@ export default function BecomeGuidePage() {
   const [registerForm, setRegisterForm] = useState<RegisterFormState>(initialRegisterFormState)
   const [registerSubmitting, setRegisterSubmitting] = useState(false)
   const [registerError, setRegisterError] = useState<string | null>(null)
-  const [registerSuccess, setRegisterSuccess] = useState<string | null>(null)
   const guideReference = useMemo(() => {
     const identifier = session?.user?.id ?? session?.user?.email ?? session?.user?.name ?? "GUIDE399K"
     return formatTransferReference("MEMBERSHIP", identifier)
@@ -303,6 +302,8 @@ export default function BecomeGuidePage() {
       return
     }
 
+    const isUpdate = Boolean(existingApplication)
+
     try {
       setSubmitting(true)
       const payload = {
@@ -316,6 +317,7 @@ export default function BecomeGuidePage() {
         availabilityNotes: form.availabilityNotes.trim() || undefined,
         portfolioLinks: portfolioLinks.length ? portfolioLinks : undefined,
         subscriptionAcknowledged: form.subscriptionAcknowledged,
+        paymentReference: guideReference,
       }
 
       const response = await fetch("/api/guide/applications", {
@@ -332,6 +334,10 @@ export default function BecomeGuidePage() {
       setFormError(null)
       setExistingApplication(data.application)
       toast.success("Đã gửi hồ sơ hướng dẫn viên. Admin sẽ phản hồi trong 24-48 giờ")
+      router.push(
+        `/apply/success?type=guide&reference=${encodeURIComponent(guideReference)}&mode=${isUpdate ? "update" : "new"}`,
+      )
+      return
     } catch (error) {
       console.error(error)
       const message = (error as Error).message
@@ -344,8 +350,7 @@ export default function BecomeGuidePage() {
 
   const handleRegister = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setRegisterError(null)
-    setRegisterSuccess(null)
+  setRegisterError(null)
 
     if (!registerForm.name.trim()) {
       setRegisterError("Vui lòng nhập họ tên đầy đủ.")
@@ -405,6 +410,7 @@ export default function BecomeGuidePage() {
           availabilityNotes: registerForm.availabilityNotes.trim() || undefined,
           portfolioLinks: parseList(registerForm.portfolioLinks),
           subscriptionAcknowledged: registerForm.subscriptionAcknowledged,
+          paymentReference: registerGuideReference,
         }),
       })
 
@@ -413,11 +419,10 @@ export default function BecomeGuidePage() {
         throw new Error(data.error || "Không thể đăng ký tài khoản hướng dẫn viên.")
       }
 
-      setRegisterSuccess(
-        data.message ||
-          "Đăng ký thành công. Vui lòng kiểm tra email để xác nhận và đăng nhập theo dõi trạng thái hồ sơ.",
+      router.push(
+        `/apply/success?type=guide&reference=${encodeURIComponent(registerGuideReference)}&mode=register`,
       )
-      setRegisterForm(initialRegisterFormState)
+      return
     } catch (error) {
       setRegisterError((error as Error).message)
     } finally {
@@ -572,6 +577,7 @@ export default function BecomeGuidePage() {
                         <Input
                           id="displayName"
                           placeholder="Ví dụ: Anh Minh - Saigon Food Walks"
+                          maxLength={80}
                           value={form.displayName}
                           onChange={(event) => setForm((prev) => ({ ...prev, displayName: event.target.value }))}
                           required
@@ -582,6 +588,7 @@ export default function BecomeGuidePage() {
                         <Input
                           id="tagline"
                           placeholder="Trải nghiệm ẩm thực đường phố cùng local foodie"
+                          maxLength={160}
                           value={form.tagline}
                           onChange={(event) => setForm((prev) => ({ ...prev, tagline: event.target.value }))}
                         />
@@ -920,6 +927,7 @@ export default function BecomeGuidePage() {
                         <Label htmlFor="register-displayName">Tên thương hiệu *</Label>
                         <Input
                           id="register-displayName"
+                          maxLength={80}
                           value={registerForm.displayName}
                           onChange={(event) =>
                             setRegisterForm((prev) => ({ ...prev, displayName: event.target.value }))
@@ -932,6 +940,7 @@ export default function BecomeGuidePage() {
                         <Label htmlFor="register-tagline">Tagline (tuỳ chọn)</Label>
                         <Input
                           id="register-tagline"
+                          maxLength={160}
                           value={registerForm.tagline}
                           onChange={(event) => setRegisterForm((prev) => ({ ...prev, tagline: event.target.value }))}
                           placeholder="Trải nghiệm ẩm thực đường phố"
@@ -1172,14 +1181,6 @@ export default function BecomeGuidePage() {
                     ) : null}
 
                     {registerError ? <p className="text-sm text-red-600">{registerError}</p> : null}
-                    {registerSuccess ? (
-                      <p className="text-sm text-green-600">
-                        {registerSuccess}{" "}
-                        <Button variant="link" className="px-1" onClick={authModal.openLogin}>
-                          Đăng nhập ngay
-                        </Button>
-                      </p>
-                    ) : null}
 
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <Button type="submit" size="lg" disabled={registerSubmitting}>

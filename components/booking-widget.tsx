@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { Star, Users, CreditCard, Calendar, TicketPercent } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { Star, Users, CreditCard, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { useRouter } from "next/navigation"
@@ -21,8 +21,98 @@ import {
 } from "@/components/ui/dialog"
 import { useAuthModal } from "@/hooks/use-auth-modal"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
 import { getLoyaltyDiscountConfig } from "@/lib/loyalty-discounts"
+
+const formatInputDate = (date: Date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+const parseInputDate = (value?: string | null) => {
+  if (!value) return null
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+const shiftDate = (date: Date, amount: number) => {
+  const result = new Date(date)
+  result.setDate(result.getDate() + amount)
+  return result
+}
+
+const findFirstConflictDate = (start: Date, end: Date, busyDates: Set<string>) => {
+  const cursor = new Date(start)
+  while (cursor < end) {
+    if (busyDates.has(formatInputDate(cursor))) {
+      return new Date(cursor)
+    }
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return null
+}
+
+const findNextAvailableRange = (start: Date, nights: number, busyDates: Set<string>) => {
+  if (nights <= 0) {
+    return null
+  }
+
+  const searchLimit = shiftDate(start, 180)
+  const candidate = new Date(start)
+
+  while (candidate < searchLimit) {
+    let available = true
+    for (let offset = 0; offset < nights; offset += 1) {
+      const dayKey = formatInputDate(shiftDate(candidate, offset))
+      if (busyDates.has(dayKey)) {
+        available = false
+        break
+      }
+    }
+
+    if (available) {
+      const checkOut = shiftDate(candidate, nights)
+      return {
+        checkIn: formatInputDate(candidate),
+        checkOut: formatInputDate(checkOut),
+      }
+    }
+
+    candidate.setDate(candidate.getDate() + 1)
+  }
+
+  return null
+}
+
+type AlternateSuggestion = {
+  checkIn: string
+  checkOut: string
+}
+
+type ShortenSuggestion = {
+  checkOut: string
+}
+
+type AvailabilityConflictState = {
+  conflictDate: Date
+  conflictKey: string
+  shortenSuggestion?: ShortenSuggestion
+  alternateSuggestion?: AlternateSuggestion
+}
+
+type BlockedDatePayload = {
+  id: string
+  startDate: string
+  endDate: string
+}
+
+type BookingSummaryPayload = {
+  id: string
+  checkIn: string
+  checkOut: string
+  status: string
+}
 
 interface BookingWidgetProps {
   listingId: string
@@ -70,8 +160,10 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
   const [selectedServices, setSelectedServices] = useState<SelectedServiceSummary[]>([])
   const [showServices, setShowServices] = useState(false)
   const [showAvailability, setShowAvailability] = useState(false)
-  const [couponCode, setCouponCode] = useState("")
-  const [pendingCoupon, setPendingCoupon] = useState<string | null>(null)
+  const [busyDateKeys, setBusyDateKeys] = useState<string[]>([])
+  const [availabilityLoading, setAvailabilityLoading] = useState(true)
+  const [availabilityError, setAvailabilityError] = useState<string | null>(null)
+  const [availabilityConflict, setAvailabilityConflict] = useState<AvailabilityConflictState | null>(null)
 
   const sessionUser = session?.user
   const membershipStatus = sessionUser?.membershipStatus ?? null
@@ -96,28 +188,97 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
   ].filter(Boolean) as string[]
   const membershipPerks = perkKeyCandidates.map((key) => MEMBERSHIP_PERKS[key]).find((perks) => Array.isArray(perks)) ?? null
 
+  useEffect(() => {
+    let cancelled = false
+
+    const markBusyRange = (set: Set<string>, startValue: string, endValue: string, inclusiveEnd = false) => {
+      const startDate = parseInputDate(startValue)
+      const endDate = parseInputDate(endValue)
+      if (!startDate || !endDate) {
+        return
+      }
+
+      const limit = inclusiveEnd ? shiftDate(endDate, 1) : new Date(endDate)
+      const cursor = new Date(startDate)
+
+      while (cursor < limit) {
+        set.add(formatInputDate(cursor))
+        cursor.setDate(cursor.getDate() + 1)
+      }
+    }
+
+    const loadAvailability = async () => {
+      setAvailabilityLoading(true)
+      setAvailabilityError(null)
+
+      try {
+        const [blockedRes, bookingsRes] = await Promise.all([
+          fetch(`/api/listings/${listingId}/blocked-dates`, { cache: "no-store" }),
+          fetch(`/api/listings/${listingId}/bookings?status=CONFIRMED,COMPLETED,PENDING&public=1`, { cache: "no-store" }),
+        ])
+
+        if (cancelled) return
+
+        const busySet = new Set<string>()
+        let allFailed = true
+
+        if (blockedRes.ok) {
+          const blockedData = (await blockedRes.json()) as BlockedDatePayload[]
+          blockedData.forEach((blocked) => {
+            markBusyRange(busySet, blocked.startDate, blocked.endDate, true)
+          })
+          allFailed = false
+        } else if (blockedRes.status !== 404) {
+          console.error("Không thể tải ngày bị chặn cho listing", listingId)
+        }
+
+        if (bookingsRes.ok) {
+          const bookingsData = (await bookingsRes.json()) as BookingSummaryPayload[]
+          bookingsData.forEach((booking) => {
+            markBusyRange(busySet, booking.checkIn, booking.checkOut, false)
+          })
+          allFailed = false
+        } else if (bookingsRes.status !== 404) {
+          console.error("Không thể tải booking công khai cho listing", listingId)
+        }
+
+        setBusyDateKeys(Array.from(busySet))
+        setAvailabilityError(allFailed ? "Không thể tải lịch trống. Vui lòng thử lại." : null)
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Lỗi khi tải lịch trống:", error)
+          setBusyDateKeys([])
+          setAvailabilityError("Không thể tải lịch trống. Vui lòng thử lại.")
+        }
+      } finally {
+        if (!cancelled) {
+          setAvailabilityLoading(false)
+        }
+      }
+    }
+
+    loadAvailability()
+
+    return () => {
+      cancelled = true
+    }
+  }, [listingId])
+
   const ensureFutureCheckout = (newCheckIn: string) => {
     if (!newCheckIn) return
     if (!checkOut || checkOut <= newCheckIn) {
       const nextDay = new Date(newCheckIn)
       nextDay.setDate(nextDay.getDate() + 1)
-      setCheckOut(formatForInput(nextDay))
+      setCheckOut(formatInputDate(nextDay))
     }
-  }
-
-  const formatForInput = (date: Date) => {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, "0")
-    const day = String(date.getDate()).padStart(2, "0")
-    return `${year}-${month}-${day}`
   }
 
   useEffect(() => {
     const today = new Date()
     const tomorrow = new Date(today)
     tomorrow.setDate(today.getDate() + 1)
-    const todayInput = formatForInput(today)
-    const tomorrowInput = formatForInput(tomorrow)
+    const todayInput = formatInputDate(today)
+    const tomorrowInput = formatInputDate(tomorrow)
     setCheckIn((prev) => prev || todayInput)
     setCheckOut((prev) => {
       if (!prev) return tomorrowInput
@@ -125,17 +286,17 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
     })
   }, [])
 
-  const todayInput = useMemo(() => formatForInput(new Date()), [])
+  const todayInput = useMemo(() => formatInputDate(new Date()), [])
 
   const minCheckout = useMemo(() => {
     if (!checkIn) {
       const tomorrow = new Date()
       tomorrow.setDate(tomorrow.getDate() + 1)
-      return formatForInput(tomorrow)
+      return formatInputDate(tomorrow)
     }
     const nextDay = new Date(checkIn)
     nextDay.setDate(nextDay.getDate() + 1)
-    return formatForInput(nextDay)
+    return formatInputDate(nextDay)
   }, [checkIn])
 
   const calculateNights = () => {
@@ -157,28 +318,109 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
   const membershipDiscountAmount =
     discountBase > 0 ? Math.round((discountBase * appliedDiscountRate) / 100) : 0
   const total = Math.max(0, totalBeforeDiscount - membershipDiscountAmount)
+  const busyDateSet = useMemo(() => new Set(busyDateKeys), [busyDateKeys])
 
-  const handleCouponAttach = () => {
-    const normalized = couponCode.trim().toUpperCase()
-    if (!normalized) {
-      toast({
-        title: "Mã chưa hợp lệ",
-        description: "Vui lòng nhập mã ưu đãi trước khi lưu.",
-        variant: "destructive",
-      })
+  const evaluateAvailabilityRange = useCallback(
+    (startValue: string, endValue: string): AvailabilityConflictState | null => {
+      if (!startValue || !endValue) {
+        return null
+      }
+
+      if (!busyDateSet.size) {
+        return null
+      }
+
+      const startDate = parseInputDate(startValue)
+      const endDate = parseInputDate(endValue)
+
+      if (!startDate || !endDate || !(startDate < endDate)) {
+        return null
+      }
+
+      const conflictDate = findFirstConflictDate(startDate, endDate, busyDateSet)
+
+      if (!conflictDate) {
+        return null
+      }
+
+      const conflictKey = formatInputDate(conflictDate)
+      const shortenCheckOut = conflictKey
+      const shortenSuggestion =
+        shortenCheckOut === startValue ? undefined : { checkOut: shortenCheckOut }
+
+      const alternateSuggestion =
+        nights > 0
+          ? findNextAvailableRange(shiftDate(conflictDate, 1), nights, busyDateSet) ?? undefined
+          : undefined
+
+      return {
+        conflictDate,
+        conflictKey,
+        shortenSuggestion,
+        alternateSuggestion,
+      }
+    },
+    [busyDateSet, nights],
+  )
+
+  useEffect(() => {
+    if (!checkIn || !checkOut || availabilityLoading || availabilityError || nights <= 0) {
+      setAvailabilityConflict(null)
       return
     }
 
-    setPendingCoupon(normalized)
-    toast({
-      title: "Đã lưu mã ưu đãi",
-      description: "Mã sẽ được chuyển sang bước tạo đơn để áp dụng nhanh.",
-    })
-  }
+    setAvailabilityConflict(evaluateAvailabilityRange(checkIn, checkOut))
+  }, [
+    availabilityError,
+    availabilityLoading,
+    checkIn,
+    checkOut,
+    evaluateAvailabilityRange,
+    nights,
+  ])
+
+  const checkInDisplay = checkIn ? new Date(checkIn).toLocaleDateString("vi-VN") : ""
+  const checkOutDisplay = checkOut ? new Date(checkOut).toLocaleDateString("vi-VN") : ""
+  const conflictDateLabel = availabilityConflict?.conflictDate.toLocaleDateString("vi-VN")
+  const shortenCheckoutLabel = availabilityConflict?.shortenSuggestion
+    ? new Date(availabilityConflict.shortenSuggestion.checkOut).toLocaleDateString("vi-VN")
+    : null
+  const alternateLabel = availabilityConflict?.alternateSuggestion
+    ? `${new Date(availabilityConflict.alternateSuggestion.checkIn).toLocaleDateString("vi-VN")} - ${new Date(availabilityConflict.alternateSuggestion.checkOut).toLocaleDateString("vi-VN")}`
+    : null
 
   const handleServicesChange = (totalPrice: number, services: SelectedServiceSummary[]) => {
     setServicesTotal(totalPrice)
     setSelectedServices(services)
+  }
+
+  const handleApplyShorten = () => {
+    if (!availabilityConflict?.shortenSuggestion) {
+      return
+    }
+
+    const nextCheckout = availabilityConflict.shortenSuggestion.checkOut
+    setAvailabilityConflict(null)
+    setCheckOut(nextCheckout)
+    toast({
+      title: "Đã cập nhật ngày trả phòng",
+      description: `Chuyến đi sẽ kết thúc vào ${new Date(nextCheckout).toLocaleDateString("vi-VN")}.`,
+    })
+  }
+
+  const handleApplyAlternate = () => {
+    if (!availabilityConflict?.alternateSuggestion) {
+      return
+    }
+
+    const { checkIn: nextCheckIn, checkOut: nextCheckOut } = availabilityConflict.alternateSuggestion
+    setAvailabilityConflict(null)
+    setCheckIn(nextCheckIn)
+    setCheckOut(nextCheckOut)
+    toast({
+      title: "Đã áp dụng khoảng ngày gợi ý",
+      description: `Chuyến đi mới: ${new Date(nextCheckIn).toLocaleDateString("vi-VN")} – ${new Date(nextCheckOut).toLocaleDateString("vi-VN")}.`,
+    })
   }
 
   const handleBooking = () => {
@@ -200,6 +442,36 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
       return
     }
 
+    if (availabilityLoading) {
+      toast({
+        title: "Đang kiểm tra lịch trống",
+        description: "Vui lòng đợi lịch phòng tải xong trước khi đặt.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (availabilityError) {
+      toast({
+        title: "Không thể xác minh lịch trống",
+        description: "Hãy mở lịch phòng trống để kiểm tra lại trước khi tiếp tục.",
+        variant: "destructive",
+      })
+      setShowAvailability(true)
+      return
+    }
+
+    const conflict = evaluateAvailabilityRange(checkIn, checkOut)
+    if (conflict) {
+      setAvailabilityConflict(conflict)
+      toast({
+        title: "Khoảng ngày bạn chọn chưa khả dụng",
+        description: `Ngày ${conflict.conflictDate.toLocaleDateString("vi-VN")} đã có khách khác. Vui lòng điều chỉnh lịch trình theo gợi ý.`,
+        variant: "destructive",
+      })
+      return
+    }
+
     const params = new URLSearchParams({
       checkIn,
       checkOut,
@@ -209,10 +481,6 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
     if (selectedServices.length > 0) {
       params.set("services", encodeURIComponent(JSON.stringify(selectedServices)))
       params.set("servicesTotal", servicesTotal.toString())
-    }
-
-    if (pendingCoupon) {
-      params.set("coupon", pendingCoupon)
     }
 
     toast({
@@ -321,6 +589,46 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
           Kiểm tra phòng trống
         </Button>
 
+        {availabilityLoading ? (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-xs text-primary">
+            Đang đồng bộ lịch trống để đảm bảo chuyến đi của bạn không gặp ngày hết phòng.
+          </div>
+        ) : null}
+
+        {!availabilityLoading && availabilityError ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Không thể kiểm tra lịch trống. Vui lòng mở lịch phòng bên trên để thử lại trước khi đặt.
+          </div>
+        ) : null}
+
+        {!availabilityLoading && !availabilityError && availabilityConflict ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 space-y-3">
+            <div>
+              <p className="text-sm font-semibold text-amber-800">
+                Ngày {conflictDateLabel} đã có khách đặt trước
+              </p>
+              <p className="text-xs text-amber-700">
+                Khoảng {checkInDisplay} – {checkOutDisplay} không còn trọn vẹn. Bạn có thể điều chỉnh theo các gợi ý bên dưới.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {availabilityConflict.shortenSuggestion && shortenCheckoutLabel ? (
+                <Button variant="outline" size="sm" onClick={handleApplyShorten}>
+                  Kết thúc sớm vào {shortenCheckoutLabel}
+                </Button>
+              ) : null}
+              {availabilityConflict.alternateSuggestion && alternateLabel ? (
+                <Button variant="outline" size="sm" onClick={handleApplyAlternate}>
+                  Đổi sang {alternateLabel}
+                </Button>
+              ) : null}
+              <Button variant="ghost" size="sm" onClick={() => setShowAvailability(true)}>
+                Mở lịch trống
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
         <Button onClick={handleBooking} disabled={!checkIn || !checkOut || nights <= 0} className="w-full bg-primary hover:bg-primary-hover text-white font-semibold py-6">
           {instantBookable ? "Đặt phòng" : "Yêu cầu đặt phòng"}
         </Button>
@@ -410,29 +718,6 @@ export function BookingWidget({ listingId, price, rating, reviews, instantBookab
             )}
           </div>
         )}
-
-        <div className="rounded-xl border border-dashed border-border/60 p-4 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-            <TicketPercent className="h-4 w-4 text-primary" />
-            <span>Mã ưu đãi</span>
-          </div>
-          <Input
-            value={couponCode}
-            onChange={(event) => setCouponCode(event.target.value)}
-            placeholder="NHAPMA"
-            className="uppercase tracking-wide"
-          />
-          <Button type="button" variant="outline" className="w-full" onClick={handleCouponAttach}>
-            Lưu mã để áp dụng ở bước tiếp theo
-          </Button>
-          {pendingCoupon ? (
-            <p className="text-xs text-muted-foreground">
-              Mã <span className="font-semibold text-foreground">{pendingCoupon}</span> sẽ tự động được mang sang bước tạo đơn.
-            </p>
-          ) : (
-            <p className="text-xs text-muted-foreground">Bạn có thể nhập mã thành viên hoặc voucher để tiết kiệm hơn.</p>
-          )}
-        </div>
       </CardContent>
 
       <SplitPaymentModal open={showSplitPayment} onOpenChange={setShowSplitPayment} totalAmount={total} bookingId="BOOK123" />

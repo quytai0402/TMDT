@@ -653,7 +653,15 @@ export default function HostPayoutsPage() {
       )}
 
       <Dialog open={accountModalOpen} onOpenChange={(open) => !accountSaving && setAccountModalOpen(open)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent
+          className="max-w-lg"
+          onInteractOutside={(event) => {
+            const target = event.target as HTMLElement | null
+            if (target && target.closest('[data-radix-select-content]')) {
+              event.preventDefault()
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>Thông tin tài khoản ngân hàng</DialogTitle>
             <DialogDescription>
@@ -669,12 +677,12 @@ export default function HostPayoutsPage() {
                 onValueChange={(value) => handleAccountChange("bankName", value)}
                 disabled={accountSaving}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full truncate text-left">
                   <SelectValue placeholder="Chọn ngân hàng" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-w-[min(480px,90vw)]">
                   {VIETNAMESE_BANKS.map((bank) => (
-                    <SelectItem key={bank.code} value={bank.shortName}>
+                    <SelectItem key={bank.code} value={bank.shortName} className="whitespace-normal leading-5">
                       {bank.shortName} — {bank.name}
                     </SelectItem>
                   ))}
@@ -682,7 +690,7 @@ export default function HostPayoutsPage() {
                     !VIETNAMESE_BANKS.some(
                       (bank) => bank.shortName === accountForm.bankName || bank.name === accountForm.bankName,
                     ) && (
-                      <SelectItem value={accountForm.bankName}>
+                      <SelectItem value={accountForm.bankName} className="whitespace-normal leading-5">
                         {accountForm.bankName} (tùy chỉnh)
                       </SelectItem>
                     )}

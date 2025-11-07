@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { z } from "zod"
-import { DiscountType, PromotionRedemptionStatus } from "@prisma/client"
+import { DiscountType, PromotionRedemptionStatus, Prisma } from "@prisma/client"
 
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -69,16 +69,60 @@ const buildMembershipEntry = (existing: Array<Record<string, any>>, fallbackAmou
   return null
 }
 
-const ensureBookingAccess = (booking: { guestId: string | null; hostId: string; }, session: { user?: { id?: string; role?: string } }) => {
-  const userId = session.user?.id
-  if (!userId) {
-    return false
+class PromotionUsageLimitReachedError extends Error {
+  constructor() {
+    super("Promotion usage limit reached")
+    this.name = "PromotionUsageLimitReachedError"
   }
-  const isGuest = booking.guestId && booking.guestId === userId
-  const isHost = booking.hostId === userId
-  const isAdmin = session.user?.role === "ADMIN"
+}
 
-  return Boolean(isGuest || isHost || isAdmin)
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const MAX_TRANSACTION_RETRIES = 3
+
+async function runTransactionWithRetry<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown
+
+  for (let attempt = 0; attempt < MAX_TRANSACTION_RETRIES; attempt += 1) {
+    try {
+      return await operation()
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034" && attempt < MAX_TRANSACTION_RETRIES - 1) {
+        lastError = error
+        await delay(100 * (attempt + 1))
+        continue
+      }
+
+      throw error
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError
+  }
+
+  throw new Error("Transaction failed after retries")
+}
+
+type SessionContext = {
+  user?: {
+    id?: string
+    role?: string
+  }
+} | null
+
+const ensureBookingAccess = (booking: { guestId: string | null; hostId: string }, session: SessionContext) => {
+  const userId = session?.user?.id
+  if (userId) {
+    const isGuest = booking.guestId && booking.guestId === userId
+    const isHost = booking.hostId === userId
+    const isAdmin = session?.user?.role === "ADMIN"
+
+    if (isGuest || isHost || isAdmin) {
+      return true
+    }
+  }
+
+  return booking.guestId === null
 }
 
 export async function POST(
@@ -88,10 +132,6 @@ export async function POST(
   try {
     const { id } = await params
     const session = await getServerSession(authOptions)
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Bạn cần đăng nhập để áp dụng mã ưu đãi." }, { status: 401 })
-    }
 
     const body = await request.json()
     const { code } = applyPromotionSchema.parse(body)
@@ -121,8 +161,12 @@ export async function POST(
     }
 
     if (!ensureBookingAccess(booking, session)) {
-      return NextResponse.json({ error: "Bạn không có quyền cập nhật đơn này." }, { status: 403 })
+      return NextResponse.json({ error: "Bạn không có quyền cập nhật đơn này." }, { status: session?.user?.id ? 403 : 401 })
     }
+
+    const sessionUserId = session?.user?.id ?? null
+    const effectiveUserId = sessionUserId ?? booking.guestId ?? null
+    const isAnonymousGuest = !effectiveUserId
 
     const promotion = await prisma.promotion.findUnique({
       where: { code: normalizedCode },
@@ -144,13 +188,14 @@ export async function POST(
       return NextResponse.json({ error: "Mã ưu đãi đã đạt giới hạn sử dụng." }, { status: 400 })
     }
 
-    const userId = session.user.id
-    if (!userId) {
-      return NextResponse.json({ error: "Không xác định được người dùng." }, { status: 400 })
-    }
+    if (promotion.userIds.length > 0) {
+      if (!effectiveUserId) {
+        return NextResponse.json({ error: "Mã ưu đãi này yêu cầu đăng nhập để sử dụng." }, { status: 400 })
+      }
 
-    if (promotion.userIds.length > 0 && !promotion.userIds.includes(userId)) {
-      return NextResponse.json({ error: "Mã ưu đãi này không áp dụng cho tài khoản của bạn." }, { status: 400 })
+      if (!promotion.userIds.includes(effectiveUserId)) {
+        return NextResponse.json({ error: "Mã ưu đãi này không áp dụng cho tài khoản của bạn." }, { status: 400 })
+      }
     }
 
     if (promotion.listingIds.length > 0 && !promotion.listingIds.includes(booking.listingId)) {
@@ -178,11 +223,11 @@ export async function POST(
       return NextResponse.json({ error: "Bạn đã áp dụng mã khác. Vui lòng gỡ mã cũ trước." }, { status: 400 })
     }
 
-    if (promotion.maxUsesPerUser && promotion.maxUsesPerUser > 0) {
+    if (!isAnonymousGuest && promotion.maxUsesPerUser && promotion.maxUsesPerUser > 0) {
       const userUsedCount = await prisma.promotionRedemption.count({
         where: {
           promotionId: promotion.id,
-          userId,
+          userId: effectiveUserId!,
           status: PromotionRedemptionStatus.USED,
         },
       })
@@ -242,8 +287,9 @@ export async function POST(
     const totalDiscount = membershipDiscountAmount + promotionDiscount
     const newTotalPrice = Math.max(0, totalBeforeDiscounts - totalDiscount)
 
-    const updatedBooking = await prisma.$transaction(async (tx) => {
-      const bookingUpdate = await tx.booking.update({
+    const updatedBooking = await runTransactionWithRetry(() =>
+      prisma.$transaction(async (tx) => {
+        const bookingUpdate = await tx.booking.update({
         where: { id: booking.id },
         data: {
           promotionDiscount,
@@ -252,67 +298,97 @@ export async function POST(
           appliedPromotions: updatedAppliedPromotions,
         },
         include: bookingInclude,
-      })
-
-      let shouldIncrementUsage = false
-
-      const existingRedemption = await tx.promotionRedemption.findFirst({
-        where: {
-          promotionId: promotion.id,
-          userId,
-        },
-      })
-
-      if (existingRedemption) {
-        await tx.promotionRedemption.update({
-          where: { id: existingRedemption.id },
-          data: {
-            status: PromotionRedemptionStatus.USED,
-            appliedBookingId: booking.id,
-            metadata: {
-              ...(existingRedemption.metadata as Record<string, unknown> | null ?? {}),
-              lastAppliedAt: new Date().toISOString(),
-            },
-          },
         })
 
-        if (
-          existingRedemption.status !== PromotionRedemptionStatus.USED ||
-          existingRedemption.appliedBookingId !== booking.id
-        ) {
-          shouldIncrementUsage = true
+        let shouldIncrementUsage = true
+
+        if (!isAnonymousGuest) {
+          shouldIncrementUsage = false
+
+          const existingRedemption = await tx.promotionRedemption.findFirst({
+            where: {
+              promotionId: promotion.id,
+              userId: effectiveUserId!,
+            },
+          })
+
+          if (existingRedemption) {
+            await tx.promotionRedemption.update({
+              where: { id: existingRedemption.id },
+              data: {
+                status: PromotionRedemptionStatus.USED,
+                appliedBookingId: booking.id,
+                metadata: {
+                  ...(existingRedemption.metadata as Record<string, unknown> | null ?? {}),
+                  lastAppliedAt: new Date().toISOString(),
+                },
+              },
+            })
+
+            if (
+              existingRedemption.status !== PromotionRedemptionStatus.USED ||
+              existingRedemption.appliedBookingId !== booking.id
+            ) {
+              shouldIncrementUsage = true
+            }
+          } else {
+            await tx.promotionRedemption.create({
+              data: {
+                promotionId: promotion.id,
+                userId: effectiveUserId!,
+                status: PromotionRedemptionStatus.USED,
+                appliedBookingId: booking.id,
+                metadata: {
+                  appliedAt: new Date().toISOString(),
+                },
+              },
+            })
+            shouldIncrementUsage = true
+          }
         }
-      } else {
-        await tx.promotionRedemption.create({
-          data: {
-            promotionId: promotion.id,
-            userId,
-            status: PromotionRedemptionStatus.USED,
-            appliedBookingId: booking.id,
-            metadata: {
-              appliedAt: new Date().toISOString(),
+
+        if (shouldIncrementUsage) {
+          const latestPromotion = await tx.promotion.findUnique({
+            where: { id: promotion.id },
+            select: {
+              id: true,
+              usedCount: true,
+              maxUses: true,
             },
-          },
-        })
-        shouldIncrementUsage = true
-      }
+          })
 
-      if (shouldIncrementUsage) {
-        await tx.promotion.update({
-          where: { id: promotion.id },
-          data: {
-            usedCount: {
-              increment: 1,
+          if (!latestPromotion) {
+            throw new Error("Promotion not found during update")
+          }
+
+          if (
+            typeof latestPromotion.maxUses === "number" &&
+            latestPromotion.maxUses > 0 &&
+            latestPromotion.usedCount >= latestPromotion.maxUses
+          ) {
+            throw new PromotionUsageLimitReachedError()
+          }
+
+          await tx.promotion.update({
+            where: { id: promotion.id },
+            data: {
+              usedCount: {
+                increment: 1,
+              },
             },
-          },
-        })
-      }
+          })
+        }
 
-      return bookingUpdate
-    })
+        return bookingUpdate
+      })
+    )
 
-    return NextResponse.json(formatBookingResponse(updatedBooking, session.user.id))
+    return NextResponse.json(formatBookingResponse(updatedBooking, effectiveUserId ?? "anonymous-guest"))
   } catch (error) {
+    if (error instanceof PromotionUsageLimitReachedError) {
+      return NextResponse.json({ error: "Mã ưu đãi đã đạt giới hạn sử dụng." }, { status: 400 })
+    }
+
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues[0]?.message ?? "Dữ liệu không hợp lệ" }, { status: 400 })
     }
@@ -329,10 +405,6 @@ export async function DELETE(
   try {
     const { id } = await params
     const session = await getServerSession(authOptions)
-
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Bạn cần đăng nhập để thao tác." }, { status: 401 })
-    }
 
     const booking = await prisma.booking.findUnique({
       where: { id },
@@ -352,8 +424,11 @@ export async function DELETE(
     }
 
     if (!ensureBookingAccess(booking, session)) {
-      return NextResponse.json({ error: "Bạn không có quyền cập nhật đơn này." }, { status: 403 })
+      return NextResponse.json({ error: "Bạn không có quyền cập nhật đơn này." }, { status: session?.user?.id ? 403 : 401 })
     }
+
+    const sessionUserId = session?.user?.id ?? null
+    const effectiveUserId = sessionUserId ?? booking.guestId ?? null
 
     const appliedPromotions = parsePromotionArray(booking.appliedPromotions)
     const promotionEntry = appliedPromotions.find((entry) => entry.type === "PROMOTION")
@@ -379,8 +454,9 @@ export async function DELETE(
       updatedAppliedPromotions.push(membershipEntry)
     }
 
-    const updatedBooking = await prisma.$transaction(async (tx) => {
-      const bookingUpdate = await tx.booking.update({
+    const updatedBooking = await runTransactionWithRetry(() =>
+      prisma.$transaction(async (tx) => {
+        const bookingUpdate = await tx.booking.update({
         where: { id: booking.id },
         data: {
           promotionDiscount: 0,
@@ -389,51 +465,54 @@ export async function DELETE(
           appliedPromotions: updatedAppliedPromotions,
         },
         include: bookingInclude,
-      })
+        })
 
-      if (promotionCode) {
-        const promotion = await tx.promotion.findUnique({ where: { code: promotionCode } })
+        if (promotionCode) {
+          const promotion = await tx.promotion.findUnique({ where: { code: promotionCode } })
 
-        if (promotion) {
-          const redemption = await tx.promotionRedemption.findFirst({
-            where: {
-              promotionId: promotion.id,
-              userId: session.user.id,
-              appliedBookingId: booking.id,
-            },
-          })
-
-          if (redemption) {
-            await tx.promotionRedemption.update({
-              where: { id: redemption.id },
-              data: {
-                status: PromotionRedemptionStatus.ACTIVE,
-                appliedBookingId: null,
-                metadata: {
-                  ...(redemption.metadata as Record<string, unknown> | null ?? {}),
-                  removedAt: new Date().toISOString(),
+          if (promotion) {
+            if (sessionUserId) {
+              const redemption = await tx.promotionRedemption.findFirst({
+                where: {
+                  promotionId: promotion.id,
+                  userId: sessionUserId,
+                  appliedBookingId: booking.id,
                 },
-              },
-            })
-          }
+              })
 
-          if (promotion.usedCount > 0) {
-            await tx.promotion.update({
-              where: { id: promotion.id },
-              data: {
-                usedCount: {
-                  decrement: 1,
+              if (redemption) {
+                await tx.promotionRedemption.update({
+                  where: { id: redemption.id },
+                  data: {
+                    status: PromotionRedemptionStatus.ACTIVE,
+                    appliedBookingId: null,
+                    metadata: {
+                      ...(redemption.metadata as Record<string, unknown> | null ?? {}),
+                      removedAt: new Date().toISOString(),
+                    },
+                  },
+                })
+              }
+            }
+
+            if (promotion.usedCount > 0) {
+              await tx.promotion.update({
+                where: { id: promotion.id },
+                data: {
+                  usedCount: {
+                    decrement: 1,
+                  },
                 },
-              },
-            })
+              })
+            }
           }
         }
-      }
 
-      return bookingUpdate
-    })
+        return bookingUpdate
+      })
+    )
 
-    return NextResponse.json(formatBookingResponse(updatedBooking, session.user.id))
+    return NextResponse.json(formatBookingResponse(updatedBooking, effectiveUserId ?? "anonymous-guest"))
   } catch (error) {
     console.error("Remove promotion error:", error)
     return NextResponse.json({ error: "Không thể gỡ mã ưu đãi." }, { status: 500 })

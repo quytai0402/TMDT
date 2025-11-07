@@ -30,7 +30,14 @@ export async function GET(request: NextRequest) {
       select: { role: true },
     })
 
-    if (user?.role !== "ADMIN" && user?.role !== "SUPER_ADMIN") {
+    if (!user) {
+      return NextResponse.json(
+        { error: "Phiên đăng nhập đã hết hạn. Vui lòng đăng xuất và đăng nhập lại." },
+        { status: 401 },
+      )
+    }
+
+    if (user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
       return NextResponse.json({ error: "Forbidden - Admin only" }, { status: 403 })
     }
 
@@ -135,7 +142,14 @@ export async function PATCH(request: NextRequest) {
       select: { role: true },
     })
 
-    if (admin?.role !== "ADMIN" && admin?.role !== "SUPER_ADMIN") {
+    if (!admin) {
+      return NextResponse.json(
+        { error: "Phiên đăng nhập đã hết hạn. Vui lòng đăng xuất và đăng nhập lại." },
+        { status: 401 },
+      )
+    }
+
+    if (admin.role !== "ADMIN" && admin.role !== "SUPER_ADMIN") {
       return NextResponse.json({ error: "Forbidden - Admin only" }, { status: 403 })
     }
 
@@ -174,12 +188,17 @@ export async function PATCH(request: NextRequest) {
 
     // Send notification to host
     if (updatedListing.hostId) {
-      const statusText = candidate === 'ACTIVE' ? 'đã được duyệt' : 'đã bị từ chối'
+      const statusText = candidate === "ACTIVE" ? "đã được duyệt" : "đã bị từ chối"
       await notifyUser(updatedListing.hostId, {
-        type: candidate === 'ACTIVE' ? 'LISTING_APPROVED' : 'LISTING_REJECTED',
         title: `Listing ${statusText}`,
-        message: `Listing "${updatedListing.title}" ${statusText} bởi admin`,
-        link: `/host/listings/${listingId}/edit`,
+        message:
+          candidate === "ACTIVE"
+            ? `Tin vui! Nhóm kiểm duyệt đã phê duyệt danh sách "${updatedListing.title}" của bạn.`
+            : `Rất tiếc, danh sách "${updatedListing.title}" của bạn đã bị từ chối.`,
+        data: {
+          listingId: updatedListing.id,
+          status: candidate,
+        },
       })
     }
 
@@ -211,7 +230,14 @@ export async function DELETE(request: NextRequest) {
       select: { role: true },
     })
 
-    if (admin?.role !== "ADMIN" && admin?.role !== "SUPER_ADMIN") {
+    if (!admin) {
+      return NextResponse.json(
+        { error: "Phiên đăng nhập đã hết hạn. Vui lòng đăng xuất và đăng nhập lại." },
+        { status: 401 },
+      )
+    }
+
+    if (admin.role !== "ADMIN" && admin.role !== "SUPER_ADMIN") {
       return NextResponse.json({ error: "Forbidden - Admin only" }, { status: 403 })
     }
 

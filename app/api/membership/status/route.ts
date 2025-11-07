@@ -13,11 +13,33 @@ const MEMBERSHIP_CONFIG = {
   DIAMOND: { freeNights: 4, upgrades: 4 },
 } as const
 
+const buildDefaultResponse = (tiers: Awaited<ReturnType<typeof prisma.rewardTier.findMany>>) => {
+  return {
+    user: null,
+    currentTier: null,
+    metrics: {
+      bookingsThisYear: 0,
+      freeNightsUsed: 0,
+      freeNightsRemaining: 0,
+      upgradesReceived: 0,
+      eventsAttended: 0,
+      totalSavings: 0,
+    },
+    tiers,
+    membership: null,
+    pendingPurchase: null,
+  }
+}
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
+    const tiers = await prisma.rewardTier.findMany({
+      orderBy: { minPoints: "asc" },
+    })
+
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json(buildDefaultResponse(tiers))
     }
 
     const userWhere: Prisma.UserWhereInput[] = []
@@ -29,7 +51,7 @@ export async function GET() {
     }
 
     if (userWhere.length === 0) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json(buildDefaultResponse(tiers))
     }
 
     const user = await prisma.user.findFirst({
@@ -60,12 +82,8 @@ export async function GET() {
     })
 
     if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 })
+      return NextResponse.json(buildDefaultResponse(tiers))
     }
-
-    const tiers = await prisma.rewardTier.findMany({
-      orderBy: { minPoints: "asc" },
-    })
 
     const currentTier = tiers.find((tier) => tier.tier === user.loyaltyTier)
     const currentTierIndex = tiers.findIndex((tier) => tier.tier === user.loyaltyTier)

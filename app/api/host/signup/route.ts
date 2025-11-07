@@ -17,6 +17,11 @@ const signupSchema = z.object({
   maintenanceAcknowledged: z.boolean().refine((value) => value, {
     message: "Bạn cần đồng ý với chính sách phí duy trì và lệ phí nền tảng.",
   }),
+  paymentReference: z
+    .string()
+    .min(6, "Mã tham chiếu không hợp lệ")
+    .max(64, "Mã tham chiếu quá dài")
+    .optional(),
 })
 
 export async function POST(request: NextRequest) {
@@ -57,6 +62,8 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    const paymentReference = payload.paymentReference?.trim() || null
+
     await prisma.hostApplication.create({
       data: {
         userId: user.id,
@@ -66,6 +73,7 @@ export async function POST(request: NextRequest) {
         experience: payload.experience,
         maintenanceAcknowledged: payload.maintenanceAcknowledged,
         status: HostApplicationStatus.PENDING,
+        paymentReference,
       },
     })
 

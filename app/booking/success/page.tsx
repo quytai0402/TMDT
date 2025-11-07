@@ -80,8 +80,12 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
   const checkOutTime = listing.checkOutTime ?? "11:00"
   const bookingCode = booking.id.slice(-8).toUpperCase()
   const paymentStatus = booking.paymentStatus ?? "PENDING"
-  const awaitingPayment = paymentStatus !== "COMPLETED"
-  const isPending = awaitingPayment || params.pending === 'true'
+  const bookingStatus = booking.status ?? "PENDING"
+  const paymentCompleted = paymentStatus === "COMPLETED"
+  const bookingConfirmed = bookingStatus === "CONFIRMED" || bookingStatus === "COMPLETED"
+  const awaitingPayment = !paymentCompleted && !bookingConfirmed
+  const manualPending = params.pending === 'true' && awaitingPayment
+  const isPending = awaitingPayment
   const totalLabel = currencyFormatter.format(totalPrice)
   const locationLabel = [listing.city, listing.state ?? undefined].filter(Boolean).join(", ")
   const host = listing.host
@@ -119,9 +123,13 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
                   <h2 className="font-semibold text-xl text-foreground">Thông tin đặt phòng</h2>
                   <div className="flex flex-col items-end gap-1">
                     <span className="text-sm font-medium text-primary">Mã đặt phòng: {bookingCode}</span>
-                    {isPending && (
+                    {isPending ? (
                       <span className="text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700 font-medium">
                         Chờ xác nhận thanh toán
+                      </span>
+                    ) : (
+                      <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 font-medium">
+                        Đặt phòng đã được xác nhận
                       </span>
                     )}
                   </div>
@@ -215,7 +223,7 @@ export default async function BookingSuccessPage({ searchParams }: PageProps) {
               <CardContent className="p-6">
                 <h3 className="font-semibold text-lg text-foreground mb-4">Bước tiếp theo</h3>
                 <ul className="space-y-3">
-                  {isPending && paymentMethod === 'bank' && (
+                  {manualPending && paymentMethod === 'bank' && (
                     <li className="flex items-start gap-3 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                       <div className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500 flex items-center justify-center text-sm font-semibold text-white">
                         !

@@ -17,26 +17,63 @@ export async function GET(request: NextRequest) {
 
     const statusFilter = request.nextUrl.searchParams.get("status")
 
-    const applications = await prisma.hostApplication.findMany({
+    // First, find all applications
+    const allApplications = await prisma.hostApplication.findMany({
       where: statusFilter ? { status: statusFilter as HostApplicationStatus } : {},
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            status: true,
-            role: true,
-            isVerified: true,
-          },
-        },
-      },
       orderBy: { createdAt: "desc" },
-      take: 100,
     })
 
-    return NextResponse.json({ applications })
+    console.log(`[Admin Host Applications] Found ${allApplications.length} total applications`)
+
+    // Get all user IDs
+    const userIds = allApplications.map(app => app.userId)
+    
+    // Find existing users
+    const users = await prisma.user.findMany({
+      where: {
+        id: { in: userIds }
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        status: true,
+        role: true,
+        isVerified: true,
+      }
+    })
+
+    // Create a map of users by ID
+    const userMap = new Map(users.map(u => [u.id, u]))
+
+    // Filter applications that have valid users and attach user data
+    const validApplications = allApplications
+      .filter(app => userMap.has(app.userId))
+      .map(app => ({
+        ...app,
+        user: userMap.get(app.userId)!
+      }))
+
+    console.log(`[Admin Host Applications] Applications with users: ${validApplications.length}`)
+    console.log(`[Admin Host Applications] Orphaned applications: ${allApplications.length - validApplications.length}`)
+
+    // Delete orphaned applications in the background (don't wait)
+    const orphanedIds = allApplications
+      .filter(app => !userMap.has(app.userId))
+      .map(app => app.id)
+    
+    if (orphanedIds.length > 0) {
+      prisma.hostApplication.deleteMany({
+        where: { id: { in: orphanedIds } }
+      }).then(() => {
+        console.log(`[Admin Host Applications] Cleaned up ${orphanedIds.length} orphaned applications`)
+      }).catch(err => {
+        console.error('[Admin Host Applications] Failed to cleanup orphaned applications:', err)
+      })
+    }
+
+    return NextResponse.json({ applications: validApplications })
   } catch (error) {
     console.error("Admin host applications GET error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

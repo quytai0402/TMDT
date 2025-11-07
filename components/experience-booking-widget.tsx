@@ -106,8 +106,8 @@ export function ExperienceBookingWidget({
       setBookingInfo(result.booking)
 
       toast({
-        title: "Đặt trải nghiệm thành công!",
-        description: "Hoàn tất thanh toán theo hướng dẫn để giữ chỗ.",
+        title: "Đã tạo hướng dẫn thanh toán",
+        description: "Quét mã hoặc chuyển khoản theo thông tin bên dưới, rồi bấm Đặt ngay để hoàn tất.",
       })
     } catch (error) {
       console.error(error)
@@ -245,12 +245,16 @@ export function ExperienceBookingWidget({
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               Đang xử lý...
             </>
+          ) : bookingInfo ? (
+            "Tạo lại mã thanh toán"
           ) : (
-            "Đặt ngay"
+            "Thanh toán"
           )}
         </Button>
 
-        <p className="text-xs text-center text-muted-foreground">Bạn chưa bị trừ tiền</p>
+        <p className="text-xs text-center text-muted-foreground">
+          Thực hiện bước thanh toán để hiển thị mã QR và thông tin chuyển khoản.
+        </p>
 
         {bookingInfo &&
           (() => {
@@ -306,7 +310,6 @@ export function ExperienceBookingWidget({
                 <div className="space-y-2">
                   <Button
                     className="w-full"
-                    variant="secondary"
                     onClick={handlePaymentConfirmation}
                     disabled={confirmingPayment}
                   >
@@ -316,7 +319,7 @@ export function ExperienceBookingWidget({
                         Đang gửi thông tin...
                       </>
                     ) : (
-                      "Tôi đã chuyển khoản"
+                      "Đặt ngay"
                     )}
                   </Button>
                   <Button
@@ -328,8 +331,7 @@ export function ExperienceBookingWidget({
                   </Button>
                 </div>
                 <p className="text-[11px] text-muted-foreground text-center">
-                  Sau khi bấm “Tôi đã chuyển khoản”, hướng dẫn viên và concierge
-                  sẽ nhận được thông báo để xác nhận lịch trình cho bạn.
+                  Sau khi bấm “Đặt ngay”, hướng dẫn viên và concierge sẽ nhận được thông báo để xác nhận lịch trình cho bạn.
                 </p>
               </div>
             )

@@ -14,6 +14,14 @@ import { resolveMembershipDiscount } from './utils'
 const bookingsCache = new Map<string, { data: any; timestamp: number }>()
 const CACHE_TTL = 10000
 
+const invalidateBookingsCache = (userId: string) => {
+  for (const key of Array.from(bookingsCache.keys())) {
+    if (key.startsWith(`${userId}-`)) {
+      bookingsCache.delete(key)
+    }
+  }
+}
+
 const createBookingSchema = z
   .object({
     listingId: z.string(),
@@ -323,6 +331,11 @@ export async function POST(req: NextRequest) {
     }
 
     const sessionUser = session?.user
+    const rawGuestName = validatedData.guestName?.trim()
+    const rawGuestEmail = validatedData.guestEmail?.trim()
+    const rawGuestPhone = validatedData.guestPhone?.trim()
+    const normalizedGuestPhone = rawGuestPhone ? rawGuestPhone.replace(/\D/g, '') : null
+
     const userWhere: Prisma.UserWhereInput[] = []
     if (sessionUser?.id) {
       userWhere.push({ id: sessionUser.id })
@@ -330,34 +343,55 @@ export async function POST(req: NextRequest) {
     if (sessionUser?.email) {
       userWhere.push({ email: sessionUser.email })
     }
+    if (rawGuestEmail) {
+      userWhere.push({ email: rawGuestEmail })
+    }
+    if (normalizedGuestPhone) {
+      userWhere.push({ phone: normalizedGuestPhone })
+    }
+    if (rawGuestPhone && rawGuestPhone !== normalizedGuestPhone) {
+      userWhere.push({ phone: rawGuestPhone })
+    }
 
-    const guestUser = userWhere.length
+    const guestSelect = {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      loyaltyTier: true,
+      membershipStatus: true,
+      membershipExpiresAt: true,
+      membershipPlan: {
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          bookingDiscountRate: true,
+          applyDiscountToServices: true,
+        },
+      },
+    } as const
+
+    let guestUser = userWhere.length
       ? await prisma.user.findFirst({
           where: { OR: userWhere },
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            loyaltyTier: true,
-            membershipStatus: true,
-            membershipExpiresAt: true,
-            membershipPlan: {
-              select: {
-                id: true,
-                slug: true,
-                name: true,
-                bookingDiscountRate: true,
-                applyDiscountToServices: true,
-              },
-            },
-          },
+          select: guestSelect,
         })
       : null
 
-    const rawGuestName = validatedData.guestName?.trim()
-    const rawGuestEmail = validatedData.guestEmail?.trim()
-    const rawGuestPhone = validatedData.guestPhone?.trim()
+    if (!guestUser && rawGuestEmail) {
+      guestUser = await prisma.user.findUnique({
+        where: { email: rawGuestEmail },
+        select: guestSelect,
+      })
+    }
+
+    if (!guestUser && normalizedGuestPhone) {
+      guestUser = await prisma.user.findFirst({
+        where: { phone: normalizedGuestPhone },
+        select: guestSelect,
+      })
+    }
 
     if (!guestUser) {
       if (!rawGuestName) {
@@ -917,6 +951,11 @@ export async function POST(req: NextRequest) {
         }
       }
     }
+
+    if (guestUser?.id) {
+      invalidateBookingsCache(guestUser.id)
+    }
+    invalidateBookingsCache(listing.hostId)
 
     const bookingRef = booking.id.slice(-6).toUpperCase()
     const transferReference = booking.transferReference ?? formatTransferReference("BOOKING", bookingRef)

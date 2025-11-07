@@ -277,9 +277,13 @@ function computeCandidateScore(place: SerpApiPlace, context: CandidateContext): 
 
   let score = 0
 
-  const types = Array.isArray(place.types) ? place.types.map((type) => type.toLowerCase()) : []
-  const primaryType = (place.type ?? "").toLowerCase()
-  const allTypeTokens = [...types, primaryType]
+  const types = Array.isArray(place.types)
+    ? place.types
+        .filter((type): type is string => typeof type === "string")
+        .map((type) => type.toLowerCase())
+    : []
+  const primaryType = typeof place.type === "string" ? place.type.toLowerCase() : ""
+  const allTypeTokens = primaryType ? [...types, primaryType] : types
   const isAdministrative = allTypeTokens.some((token) =>
     token.includes("administrative_area") || token.includes("locality") || token.includes("political"),
   )

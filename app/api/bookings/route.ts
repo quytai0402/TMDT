@@ -893,13 +893,17 @@ export async function POST(req: NextRequest) {
     const totalDiscount = membershipDiscountAmount + promotionDiscountAmount
     const totalPrice = Math.max(0, totalBeforeDiscounts - totalDiscount)
 
+    // Determine the actual guestId - prioritize session user
+    const actualGuestId = sessionUser?.id ?? guestUser?.id ?? undefined
+    const isRegisteredGuest = Boolean(actualGuestId)
+
     // Create booking
     let booking = await prisma.booking.create({
       data: {
         listingId: validatedData.listingId,
-        guestId: guestUser?.id ?? undefined,
+        guestId: actualGuestId,
         hostId: listing.hostId,
-        guestType: guestUser ? 'REGISTERED' : 'WALK_IN',
+        guestType: isRegisteredGuest ? 'REGISTERED' : 'WALK_IN',
         contactName,
         contactEmail: contactEmail || undefined,
         contactPhone: contactPhone || undefined,
@@ -953,7 +957,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (guestUser?.id) {
+    if (actualGuestId) {
+      invalidateBookingsCache(actualGuestId)
+    }
+    if (guestUser?.id && guestUser.id !== actualGuestId) {
       invalidateBookingsCache(guestUser.id)
     }
     invalidateBookingsCache(listing.hostId)

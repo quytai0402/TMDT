@@ -130,7 +130,9 @@ export async function POST(request: NextRequest) {
       prisma.booking.findMany({
         where: {
           hostId: session.user.id,
-          status: "COMPLETED",
+          status: {
+            in: ["CONFIRMED", "COMPLETED"],
+          },
           hostPayoutStatus: HostPayoutStatus.PENDING,
           ...(requestedBookingIds?.length
             ? { id: { in: requestedBookingIds } }
@@ -202,7 +204,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (amount - (profile.availableBalance ?? 0) > 1) {
+    // Use same logic as GET: if availableBalance is 0 or not set, use totalFromBookings
+    const reportedAvailable = profile.availableBalance ?? 0
+    const actualAvailableBalance = reportedAvailable > 0 ? reportedAvailable : totalFromBookings
+
+    if (amount - actualAvailableBalance > 1) {
       return NextResponse.json(
         { error: "Số dư khả dụng không đủ để thực hiện yêu cầu rút tiền" },
         { status: 400 },
@@ -232,10 +238,12 @@ export async function POST(request: NextRequest) {
         },
       })
 
+      // Update balances: if availableBalance was 0, set it explicitly
+      const currentAvailable = profile.availableBalance ?? 0
       await tx.hostProfile.update({
         where: { userId: session.user.id },
         data: {
-          availableBalance: { decrement: amount },
+          availableBalance: currentAvailable > 0 ? { decrement: amount } : 0,
           pendingPayoutBalance: { increment: amount },
         },
       })

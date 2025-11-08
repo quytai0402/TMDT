@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
+import { BookingStatus, RewardRedemptionStatus } from "@prisma/client"
 
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -50,6 +51,14 @@ const FALLBACK_TIERS = [
     color: "#d4af37",
   },
 ]
+
+const MEMBERSHIP_CONFIG = {
+  BRONZE: { freeNights: 0, upgrades: 0 },
+  SILVER: { freeNights: 1, upgrades: 1 },
+  GOLD: { freeNights: 2, upgrades: 2 },
+  PLATINUM: { freeNights: 3, upgrades: 3 },
+  DIAMOND: { freeNights: 4, upgrades: 4 },
+} as const
 
 // GET /api/loyalty - Get user loyalty info
 export async function GET(request: NextRequest) {
@@ -112,7 +121,7 @@ export async function GET(request: NextRequest) {
       tiers = FALLBACK_TIERS
     }
 
-  const orderedTiers = tiers.map((tier: any, index: number) => {
+    const orderedTiers = tiers.map((tier: any, index: number) => {
       const nextTier = tiers[index + 1]
       const pointsToNext = nextTier
         ? Math.max(nextTier.minPoints - user.loyaltyPoints, 0)
@@ -156,6 +165,56 @@ export async function GET(request: NextRequest) {
             Math.max(nextTierData.minPoints - currentTierData.minPoints, 1)
         )
       : 1
+
+    const startOfYear = new Date(new Date().getFullYear(), 0, 1)
+    const redemptionStatusFilter = {
+      in: [RewardRedemptionStatus.FULFILLED, RewardRedemptionStatus.APPROVED],
+    } as const
+
+    const [
+      bookingsThisYear,
+      experienceBookings,
+      freeNightRedemptions,
+      upgradeRedemptions,
+    ] = await Promise.all([
+      prisma.booking.count({
+        where: {
+          guestId: user.id,
+          status: { in: [BookingStatus.COMPLETED, BookingStatus.CONFIRMED] },
+          checkIn: { gte: startOfYear },
+        },
+      }),
+      prisma.experienceBooking.count({
+        where: {
+          guestId: user.id,
+          status: { in: [BookingStatus.COMPLETED, BookingStatus.CONFIRMED] },
+        },
+      }),
+      prisma.rewardRedemption.count({
+        where: {
+          userId: user.id,
+          status: redemptionStatusFilter,
+          reward: {
+            slug: { contains: "free-night", mode: "insensitive" },
+          },
+        },
+      }),
+      prisma.rewardRedemption.count({
+        where: {
+          userId: user.id,
+          status: redemptionStatusFilter,
+          reward: {
+            category: "UPGRADE",
+          },
+        },
+      }),
+    ])
+
+    const normalizedTier = (user.loyaltyTier ?? "BRONZE").toUpperCase()
+    const config =
+      MEMBERSHIP_CONFIG[normalizedTier as keyof typeof MEMBERSHIP_CONFIG] ??
+      MEMBERSHIP_CONFIG.BRONZE
+    const freeNightsRemaining = Math.max(config.freeNights - freeNightRedemptions, 0)
 
     // Get recent bookings for activity
     let recentBookings: any[] = []
@@ -272,8 +331,16 @@ export async function GET(request: NextRequest) {
       },
       currentTier: currentTierData,
       allTiers: orderedTiers,
+      metrics: {
+        bookingsThisYear,
+        freeNightsRemaining,
+        freeNightsUsed: freeNightRedemptions,
+        upgradesReceived: upgradeRedemptions,
+        eventsAttended: experienceBookings,
+        totalSavings: Math.max(user.loyaltyPoints * 1000, 0),
+      },
       recentActivity,
-  rewardHistory: rewardHistory.map((transaction: any) => ({
+      rewardHistory: rewardHistory.map((transaction: any) => ({
         id: transaction.id,
         occurredAt: transaction.occurredAt,
         points: transaction.points,

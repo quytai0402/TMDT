@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
@@ -16,6 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
 import { AlertCircle, CheckCircle2, Gift, Loader2, Sparkles } from "lucide-react"
+import { meetsTierRequirement, normalizeMembershipTier } from "@/lib/membership-tier"
 
 interface CatalogItem {
   id: string
@@ -37,6 +38,7 @@ interface CatalogItem {
 type PreviewItem = CatalogItem & {
   previewImage: string | null
   canRedeem: boolean
+  tierEligible: boolean
 }
 
 export function RewardsCatalogPreview() {
@@ -48,12 +50,9 @@ export function RewardsCatalogPreview() {
   const [redeeming, setRedeeming] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [userPoints, setUserPoints] = useState(0)
+  const [userTier, setUserTier] = useState<string | null>(null)
 
-  useEffect(() => {
-    void fetchItems()
-  }, [])
-
-  const fetchItems = async () => {
+  const fetchItems = useCallback(async () => {
     try {
       setLoading(true)
       const res = await fetch("/api/rewards/catalog?limit=6&available=true", { cache: "no-store" })
@@ -63,6 +62,7 @@ export function RewardsCatalogPreview() {
       const payload = await res.json()
       setItems(Array.isArray(payload?.items) ? payload.items : [])
       setUserPoints(typeof payload?.userPoints === "number" ? payload.userPoints : 0)
+      setUserTier(typeof payload?.userTier === "string" ? payload.userTier : null)
     } catch (error) {
       console.error("Rewards catalog preview error:", error)
       toast({
@@ -73,9 +73,14 @@ export function RewardsCatalogPreview() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [toast])
+
+  useEffect(() => {
+    void fetchItems()
+  }, [fetchItems])
 
   const handleRedeemClick = (item: PreviewItem) => {
+    if (!item.canRedeem) return
     setSelectedItem(item)
     setDialogOpen(true)
   }
@@ -123,13 +128,22 @@ export function RewardsCatalogPreview() {
     }
   }
 
+  const normalizedUserTier = useMemo(() => normalizeMembershipTier(userTier), [userTier])
+
   const derivedItems = useMemo<PreviewItem[]>(() => {
-    return items.map((item) => ({
-      ...item,
-      previewImage: item.imageUrl ?? item.image ?? null,
-      canRedeem: item.canAfford !== false && item.isActive !== false && item.isAvailable !== false,
-    }))
-  }, [items])
+    return items.map((item) => {
+      const normalizedRequiredTier = normalizeMembershipTier(item.requiredTier)
+      const tierEligible = meetsTierRequirement(normalizedUserTier, normalizedRequiredTier)
+      const isAvailable = item.isActive !== false && item.isAvailable !== false
+
+      return {
+        ...item,
+        previewImage: item.imageUrl ?? item.image ?? null,
+        tierEligible,
+        canRedeem: item.canAfford !== false && isAvailable && tierEligible,
+      }
+    })
+  }, [items, normalizedUserTier])
 
   return (
     <Card>
@@ -185,15 +199,34 @@ export function RewardsCatalogPreview() {
 
                 <div className="mt-4 flex flex-col gap-2">
                   {item.requiredTier && (
-                    <p className="text-xs text-muted-foreground">Yêu cầu hạng {item.requiredTier}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Yêu cầu hạng {item.requiredTier}
+                      {!item.tierEligible && normalizedUserTier
+                        ? ` · Bạn đang ở hạng ${normalizedUserTier}`
+                        : null}
+                    </p>
                   )}
+                  {!item.tierEligible && !normalizedUserTier && item.requiredTier && (
+                    <p className="text-xs text-muted-foreground">
+                      Đăng nhập để kiểm tra quyền lợi hạng {item.requiredTier}.
+                    </p>
+                  )}
+                  {item.isAvailable === false || item.isActive === false ? (
+                    <p className="text-xs text-muted-foreground">Quà tặng tạm hết hàng.</p>
+                  ) : null}
                   <Button
                     onClick={() => handleRedeemClick(item)}
-                    disabled={!item.canRedeem || (item.canAfford === false)}
+                    disabled={!item.canRedeem}
                     className="flex items-center justify-center gap-2"
                   >
                     <Gift className="h-4 w-4" />
-                    {item.canAfford === false ? "Chưa đủ điểm" : "Đổi ngay"}
+                    {item.isAvailable === false || item.isActive === false
+                      ? "Hết hàng"
+                      : !item.tierEligible && item.requiredTier
+                        ? `Cần hạng ${item.requiredTier}`
+                        : item.canAfford === false
+                          ? "Chưa đủ điểm"
+                          : "Đổi ngay"}
                   </Button>
                 </div>
               </div>

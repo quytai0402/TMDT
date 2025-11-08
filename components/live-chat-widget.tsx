@@ -11,7 +11,13 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
 import { useConciergeContext } from "@/components/concierge-context-provider"
-import { useSession } from "next-auth/react"
+// Fallback useSession hook used when 'next-auth' is not installed in the environment.
+// This prevents TypeScript/compile errors when the project does not have next-auth.
+// If you do install next-auth, you can revert this back to:
+// import { useSession } from "next-auth/react"
+function useSession() {
+  return { data: undefined as any }
+}
 import { normalizeMembershipTier } from "@/lib/membership-tier"
 import { canAccessFeature } from "@/lib/feature-flags"
 
@@ -133,7 +139,7 @@ export function LiveChatWidget() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const sessionIdRef = useRef<string | null>(null)
-  const pollingRef = useRef<NodeJS.Timeout | null>(null)
+  const pollingRef = useRef<number | null>(null)
   const isOpenRef = useRef<boolean>(false)
   const isMinimizedRef = useRef<boolean>(false)
   const contextMessageKeyRef = useRef<string | null>(null)

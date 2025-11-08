@@ -6,6 +6,7 @@ import { z } from "zod"
 import { notifyAdmins } from "@/lib/notifications"
 import { formatTransferReference } from "@/lib/payments"
 import { NotificationType, type TransactionType } from "@prisma/client"
+import { getFallbackLocationById } from "@/lib/fallback-locations"
 
 const LOCATION_EXPANSION_FEE = 500000 // 500,000 VND per new location
 const LOCATION_EXPANSION_TRANSACTION_TYPE = "LOCATION_EXPANSION" as TransactionType
@@ -74,10 +75,20 @@ export async function POST(req: NextRequest) {
         ? validated.transferReference.trim().toUpperCase()
         : formatTransferReference("LOCATION_EXPANSION", session.user.id)
 
-    // Get location details
-    const location = await prisma.location.findUnique({
-      where: { id: validated.locationId },
-    })
+    // Get location details (from DB or fallback list)
+    const fallbackLocation = getFallbackLocationById(validated.locationId)
+    const dbLocation = fallbackLocation
+      ? null
+      : await prisma.location.findUnique({
+          where: { id: validated.locationId },
+          select: {
+            id: true,
+            city: true,
+            state: true,
+            country: true,
+          },
+        })
+    const location = fallbackLocation ?? dbLocation
 
     if (!location) {
       return NextResponse.json({ error: "Location not found" }, { status: 404 })
@@ -113,7 +124,7 @@ export async function POST(req: NextRequest) {
     const transaction = await prisma.transaction.create({
       data: {
         userId: session.user.id,
-  type: LOCATION_EXPANSION_TRANSACTION_TYPE,
+        type: LOCATION_EXPANSION_TRANSACTION_TYPE,
         amount: LOCATION_EXPANSION_FEE,
         currency: "VND",
         status: "PENDING",

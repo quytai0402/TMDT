@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { getFallbackLocationById } from "@/lib/fallback-locations"
 
 const STATUS_BADGE_MAP: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
   PENDING: { label: "Đang chờ thanh toán", variant: "secondary" },
@@ -79,17 +80,23 @@ export default async function TransactionDetailPage({
 
   let locationLabel: string | null = null
   if (transaction.type === "LOCATION_EXPANSION" && transaction.referenceId) {
-    const location = await prisma.location.findUnique({
-      where: { id: transaction.referenceId },
-      select: {
-        city: true,
-        state: true,
-        country: true,
-      },
-    })
-    if (location) {
-      const parts = [location.city, location.state, location.country].filter(Boolean)
+    const fallbackLocation = getFallbackLocationById(transaction.referenceId)
+    if (fallbackLocation) {
+      const parts = [fallbackLocation.city, fallbackLocation.state, fallbackLocation.country].filter(Boolean)
       locationLabel = parts.join(", ")
+    } else {
+      const location = await prisma.location.findUnique({
+        where: { id: transaction.referenceId },
+        select: {
+          city: true,
+          state: true,
+          country: true,
+        },
+      })
+      if (location) {
+        const parts = [location.city, location.state, location.country].filter(Boolean)
+        locationLabel = parts.join(", ")
+      }
     }
   }
 

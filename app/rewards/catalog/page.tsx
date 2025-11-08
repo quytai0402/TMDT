@@ -130,7 +130,7 @@ export default function RewardsCatalogPage() {
       }
     } catch (error) {
       console.error("Error fetching catalog:", error)
-      toast.error("Failed to load rewards catalog")
+      toast.error("Không thể tải danh mục quà tặng")
     } finally {
       setLoading(false)
     }
@@ -167,22 +167,22 @@ export default function RewardsCatalogPage() {
       const data = await res.json()
 
       if (res.ok) {
-        toast.success("Reward redeemed successfully!", {
-          description: `Redemption code: ${data.redemption.code}`
+        toast.success("Đổi quà thành công!", {
+          description: `Mã đổi quà: ${data.redemption.code}`
         })
         setRedeemDialogOpen(false)
         fetchCatalogItems() // Refresh to update points and availability
         router.push("/rewards/history")
       } else {
-        toast.error(data.error || "Failed to redeem reward", {
+        toast.error(data.error || "Không thể đổi quà", {
           description: data.shortfall 
-            ? `You need ${data.shortfall} more points`
+            ? `Bạn cần thêm ${data.shortfall} điểm`
             : undefined
         })
       }
     } catch (error) {
       console.error("Error redeeming reward:", error)
-      toast.error("Failed to redeem reward")
+      toast.error("Không thể đổi quà")
     } finally {
       setRedeeming(false)
     }
@@ -215,17 +215,17 @@ export default function RewardsCatalogPage() {
           <div className="mb-8">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-4xl font-bold mb-2">Rewards Catalog</h1>
+                <h1 className="text-4xl font-bold mb-2">Danh mục quà tặng</h1>
                 <p className="text-muted-foreground">
-                  Redeem your points for exclusive rewards
+                  Đổi điểm để nhận những ưu đãi dành riêng cho bạn
                 </p>
               </div>
               <div className="text-right">
                 {isAuthenticated ? (
                   <>
-                    <p className="text-sm text-muted-foreground">Your Balance</p>
+                    <p className="text-sm text-muted-foreground">Điểm hiện có</p>
                     <p className="text-3xl font-bold text-primary">
-                      {userPoints.toLocaleString()} pts
+                      {userPoints.toLocaleString()} điểm
                     </p>
                   </>
                 ) : (
@@ -246,12 +246,12 @@ export default function RewardsCatalogPage() {
               <div className="grid gap-4 md:grid-cols-3">
                 {/* Search */}
                 <div className="space-y-2">
-                  <Label htmlFor="search">Search</Label>
+                  <Label htmlFor="search">Tìm kiếm</Label>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="search"
-                      placeholder="Search rewards..."
+                      placeholder="Tìm kiếm quà tặng..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="pl-10"
@@ -261,13 +261,13 @@ export default function RewardsCatalogPage() {
 
                 {/* Category */}
                 <div className="space-y-2">
-                  <Label>Category</Label>
+                  <Label>Hạng mục</Label>
                   <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Categories</SelectItem>
+                      <SelectItem value="all">Tất cả hạng mục</SelectItem>
                       {categories.map(cat => (
                         <SelectItem key={cat} value={cat}>
                           {cat.replace(/_/g, " ")}
@@ -279,15 +279,15 @@ export default function RewardsCatalogPage() {
 
                 {/* Sort */}
                 <div className="space-y-2">
-                  <Label>Sort By</Label>
+                  <Label>Sắp xếp</Label>
                   <Select value={sortBy} onValueChange={setSortBy}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="points-asc">Points: Low to High</SelectItem>
-                      <SelectItem value="points-desc">Points: High to Low</SelectItem>
-                      <SelectItem value="name">Name</SelectItem>
+                      <SelectItem value="points-asc">Điểm: Thấp → Cao</SelectItem>
+                      <SelectItem value="points-desc">Điểm: Cao → Thấp</SelectItem>
+                      <SelectItem value="name">Tên A → Z</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -317,7 +317,7 @@ export default function RewardsCatalogPage() {
                     <CardTitle className="text-lg">{item.name}</CardTitle>
                     {item.stock !== null && item.stock !== undefined && item.stock < 10 && (
                       <Badge variant="destructive" className="text-xs">
-                        {item.stock} left
+                        Còn {item.stock}
                       </Badge>
                     )}
                   </div>
@@ -331,18 +331,18 @@ export default function RewardsCatalogPage() {
                       <span className="text-3xl font-bold text-primary">
                         {item.pointsCost.toLocaleString()}
                       </span>
-                      <span className="text-muted-foreground">points</span>
+                      <span className="text-muted-foreground">điểm</span>
                     </div>
 
                     {item.requiredTier && (
                       <div className="text-sm text-muted-foreground">
-                        Requires {item.requiredTier} tier
+                        Yêu cầu hạng {item.requiredTier}
                       </div>
                     )}
 
                     {item.validityDays && (
                       <div className="text-sm text-muted-foreground">
-                        Valid for {item.validityDays} days
+                        Có hạn sử dụng {item.validityDays} ngày
                       </div>
                     )}
 
@@ -352,12 +352,12 @@ export default function RewardsCatalogPage() {
                       onClick={() => handleRedeemClick(item)}
                     >
                       {!item.isAvailable 
-                        ? "Out of Stock"
+                        ? "Hết hàng"
                         : !isAuthenticated
                         ? "Đăng nhập để nhận"
                         : !item.canAfford 
-                        ? `Need ${(item.pointsCost - userPoints).toLocaleString()} more`
-                        : "Redeem Now"}
+                        ? `Cần thêm ${(item.pointsCost - userPoints).toLocaleString()} điểm`
+                        : "Đổi ngay"}
                     </Button>
                   </div>
                 </CardContent>
@@ -369,7 +369,7 @@ export default function RewardsCatalogPage() {
             <Card>
               <CardContent className="py-12 text-center">
                 <Gift className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No rewards found</p>
+                <p className="text-muted-foreground">Không tìm thấy quà tặng phù hợp</p>
               </CardContent>
             </Card>
           )}
@@ -381,9 +381,9 @@ export default function RewardsCatalogPage() {
       <Dialog open={redeemDialogOpen} onOpenChange={setRedeemDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Confirm Redemption</DialogTitle>
+            <DialogTitle>Xác nhận đổi quà</DialogTitle>
             <DialogDescription>
-              Are you sure you want to redeem this reward?
+              Bạn chắc chắn muốn đổi quà này chứ?
             </DialogDescription>
           </DialogHeader>
 
@@ -407,29 +407,29 @@ export default function RewardsCatalogPage() {
                     {selectedItem.description}
                   </p>
                   <div className="text-2xl font-bold text-primary">
-                    {selectedItem.pointsCost.toLocaleString()} points
+                    {selectedItem.pointsCost.toLocaleString()} điểm
                   </div>
                 </div>
               </div>
 
               <div className="space-y-2 p-4 bg-muted rounded-lg">
                 <div className="flex justify-between text-sm">
-                  <span>Current Balance:</span>
+                  <span>Điểm hiện tại:</span>
                   <span className="font-semibold">
-                    {userPoints.toLocaleString()} pts
+                    {userPoints.toLocaleString()} điểm
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span>Cost:</span>
+                  <span>Chi phí:</span>
                   <span className="font-semibold text-destructive">
-                    -{selectedItem.pointsCost.toLocaleString()} pts
+                    -{selectedItem.pointsCost.toLocaleString()} điểm
                   </span>
                 </div>
                 <div className="h-px bg-border my-2" />
                 <div className="flex justify-between text-sm font-bold">
-                  <span>New Balance:</span>
+                  <span>Số điểm sau đổi:</span>
                   <span>
-                    {(userPoints - selectedItem.pointsCost).toLocaleString()} pts
+                    {(userPoints - selectedItem.pointsCost).toLocaleString()} điểm
                   </span>
                 </div>
               </div>
@@ -437,7 +437,7 @@ export default function RewardsCatalogPage() {
               {selectedItem.validityDays && (
                 <div className="flex items-start gap-2 p-3 bg-blue-50 text-blue-900 rounded text-sm">
                   <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                  <p>This reward will be valid for {selectedItem.validityDays} days after redemption.</p>
+                  <p>Quà tặng có hiệu lực trong {selectedItem.validityDays} ngày kể từ khi đổi.</p>
                 </div>
               )}
             </div>
@@ -449,7 +449,7 @@ export default function RewardsCatalogPage() {
               onClick={() => setRedeemDialogOpen(false)}
               disabled={redeeming}
             >
-              Cancel
+              Huỷ
             </Button>
             <Button 
               onClick={handleRedeem}
@@ -458,12 +458,12 @@ export default function RewardsCatalogPage() {
               {redeeming ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Redeeming...
+                  Đang đổi...
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="h-4 w-4 mr-2" />
-                  Confirm Redemption
+                  Xác nhận đổi quà
                 </>
               )}
             </Button>

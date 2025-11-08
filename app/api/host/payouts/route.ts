@@ -39,7 +39,9 @@ export async function GET() {
         where: {
           hostId: session.user.id,
           hostPayoutStatus: HostPayoutStatus.PENDING,
-          status: "COMPLETED",
+          status: {
+            in: ["CONFIRMED", "COMPLETED"],
+          },
         },
         select: {
           id: true,
@@ -70,12 +72,17 @@ export async function GET() {
     const totalBookable = bookingFinancials.reduce((sum, item) => sum + item.amount, 0)
     const reportedAvailable = profile?.availableBalance ?? 0
     const availableBalance = reportedAvailable > 0 ? reportedAvailable : totalBookable
+    const pendingPayouts = profile?.pendingPayoutBalance ?? 0
+
+    const reportedLifetime = profile?.totalEarnings ?? 0
+    const lifetimeEarnings =
+      reportedLifetime > 0 ? reportedLifetime : availableBalance + pendingPayouts
 
     return NextResponse.json({
       balance: {
         available: availableBalance,
-        pending: profile?.pendingPayoutBalance ?? 0,
-        lifetime: profile?.totalEarnings ?? 0,
+        pending: pendingPayouts,
+        lifetime: lifetimeEarnings,
       },
       pendingBookings: bookingFinancials,
       payouts,

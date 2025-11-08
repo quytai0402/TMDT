@@ -150,7 +150,11 @@ export default function HostPayoutsPage() {
       }
       const payload = (await response.json()) as HostPayoutResponse
       setData({
-        balance: payload.balance,
+        balance: {
+          available: payload.balance.available,
+          pending: payload.balance.pending,
+          lifetime: payload.balance.lifetime,
+        },
         pendingBookings: Array.isArray(payload.pendingBookings) ? payload.pendingBookings : [],
         payouts: Array.isArray(payload.payouts) ? payload.payouts : [],
         requiresPayoutSetup: Boolean(payload.requiresPayoutSetup),
@@ -439,7 +443,7 @@ export default function HostPayoutsPage() {
               <CardContent className="flex items-center justify-between">
                 <div>
                   <p className="text-2xl font-bold text-foreground">{formatCurrency(data.balance.available)}</p>
-                  <p className="text-xs text-muted-foreground">Có thể rút ngay</p>
+                  <p className="text-xs text-muted-foreground">Đã trừ 10% phí nền tảng • Có thể rút ngay</p>
                 </div>
                 <PiggyBank className="h-8 w-8 text-primary" />
               </CardContent>
@@ -452,7 +456,9 @@ export default function HostPayoutsPage() {
               <CardContent className="flex items-center justify-between">
                 <div>
                   <p className="text-2xl font-bold text-foreground">{formatCurrency(data.balance.pending)}</p>
-                  <p className="text-xs text-muted-foreground">Chờ duyệt bởi admin</p>
+                  <p className="text-xs text-muted-foreground">
+                    Đang chờ admin duyệt yêu cầu rút tiền
+                  </p>
                 </div>
                 <Receipt className="h-8 w-8 text-orange-500" />
               </CardContent>
